@@ -194,7 +194,7 @@ function displayExportStatus(data) {
 
 async function checkExportStatus(userId) {
     try {
-        const idToken = await currentUser.getIdToken();
+        const idToken = await currentUser.getIdToken(true);
         const res = await fetch(`/api/export/status?userId=${encodeURIComponent(userId)}`, {
             headers: { 'Authorization': `Bearer ${idToken}` }
         });
@@ -215,7 +215,7 @@ if (exportBtn) {
         exportBtn.textContent = 'Requesting...';
 
         try {
-            const idToken = await currentUser.getIdToken();
+            const idToken = await currentUser.getIdToken(true);
             const res = await fetch('/api/export/request', {
                 method: 'POST',
                 headers: {

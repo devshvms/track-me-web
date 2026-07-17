@@ -57,7 +57,7 @@ async function authFetch(url, options = {}) {
         throw new Error('Admin is not signed in.');
     }
 
-    const idToken = await auth.currentUser.getIdToken();
+    const idToken = await auth.currentUser.getIdToken(true);
     return fetch(url, {
         ...options,
         headers: {
@@ -83,8 +83,8 @@ onAuthStateChanged(auth, async (user) => {
                 loadMetrics();
                 loadTelemetry();
             } else {
-                // Not an admin
-                throw new Error('Access Denied. You do not have administrator privileges.');
+                const errorData = await adminResponse.json().catch(() => ({}));
+                throw new Error(errorData.error || 'Access Denied. You do not have administrator privileges.');
             }
         } catch (err) {
             console.error("Auth Error:", err);
