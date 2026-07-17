@@ -7,17 +7,29 @@ import { assertOwnsUserId, requireUser, sendAuthError } from '../../lib/auth';
 
 const EXPORT_TTL_SECONDS = 48 * 60 * 60;
 
+function downloadToken(data: any): string {
+  return typeof data.downloadToken === 'string' && data.downloadToken.length >= 32
+    ? data.downloadToken
+    : crypto.randomBytes(32).toString('base64url');
+}
+
+function downloadPath(requestId: string, token: string): string {
+  return `/api/export/download?${new URLSearchParams({ requestId, token }).toString()}`;
+}
+
 function completedExportRequest(request: VercelRequest, data: any) {
   const now = new Date();
   const requestId = data.requestId || crypto.randomUUID();
+  const token = downloadToken(data);
 
   return {
     ...data,
     requestId,
+    downloadToken: token,
     status: 'COMPLETED',
     completedAt: data.completedAt || now.toISOString(),
     expiresAt: data.expiresAt || new Date(Date.now() + EXPORT_TTL_SECONDS * 1000).toISOString(),
-    downloadUrl: absoluteUrl(request, `/api/export/download?requestId=${requestId}`),
+    downloadUrl: absoluteUrl(request, downloadPath(requestId, token)),
     message: 'Your historical data archive (.zip containing GPX traces and JSON metadata) is ready for download.',
   };
 }
@@ -86,17 +98,22 @@ export default async function handler(
               redis.del(`export:request:${existingRequest.requestId}`),
             ]);
           } else {
+            const normalizedRequest = completedExportRequest(request, existingRequest);
+            delete normalizedRequest.archiveSizeBytes;
+
+            await Promise.all([
+              redis.set(userKey, JSON.stringify(normalizedRequest), { EX: Math.max(1, Math.floor((expiresAtMs - now) / 1000)) }),
+              redis.set(`export:request:${normalizedRequest.requestId}`, JSON.stringify(normalizedRequest), { EX: Math.max(1, Math.floor((expiresAtMs - now) / 1000)) }),
+            ]);
+
             return response.status(200).json({
-              requestId: existingRequest.requestId,
-              userId: existingRequest.userId,
+              requestId: normalizedRequest.requestId,
+              userId: normalizedRequest.userId,
               status: 'COMPLETED',
-              completedAt: existingRequest.completedAt || existingRequest.requestedAt,
-              downloadAccessedAt: existingRequest.downloadAccessedAt,
-              downloadUrl:
-                existingRequest.downloadUrl && /^https?:\/\//i.test(existingRequest.downloadUrl)
-                  ? existingRequest.downloadUrl
-                  : absoluteUrl(request, existingRequest.downloadUrl || `/api/export/download?requestId=${existingRequest.requestId}`),
-              expiresAt: existingRequest.expiresAt,
+              completedAt: normalizedRequest.completedAt || normalizedRequest.requestedAt,
+              downloadAccessedAt: normalizedRequest.downloadAccessedAt,
+              downloadUrl: normalizedRequest.downloadUrl,
+              expiresAt: normalizedRequest.expiresAt,
               retentionPolicy: 'Archive expires 6 hours after retrieval (max 48 hours unaccessed).',
               message: 'Your historical data archive (.zip containing GPX traces and JSON metadata) is ready for download.',
             });

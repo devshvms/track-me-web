@@ -4,6 +4,13 @@ import AdmZip from 'adm-zip';
 import { db } from '../../lib/firebase';
 import { assertOwnsUserId, requireUser, sendAuthError } from '../../lib/auth';
 
+function hasValidDownloadToken(data: any, token: unknown): boolean {
+  return typeof token === 'string'
+    && typeof data.downloadToken === 'string'
+    && data.downloadToken.length >= 32
+    && token === data.downloadToken;
+}
+
 export default async function handler(
   request: VercelRequest,
   response: VercelResponse,
@@ -13,8 +20,7 @@ export default async function handler(
   }
 
   try {
-    const decoded = await requireUser(request);
-    const { requestId, userId } = request.query;
+    const { requestId, userId, token } = request.query;
 
     if (!requestId && !userId) {
       return response.status(400).json({ error: 'Missing requestId or userId parameter.' });
@@ -34,7 +40,11 @@ export default async function handler(
     }
 
     const data = JSON.parse(requestDataStr);
-    assertOwnsUserId(decoded, data.userId);
+
+    if (!hasValidDownloadToken(data, token)) {
+      const decoded = await requireUser(request);
+      assertOwnsUserId(decoded, data.userId);
+    }
 
     if (data.status !== 'COMPLETED') {
       return response.status(400).json({
