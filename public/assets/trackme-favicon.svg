@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">TrackMe</title>
+  <circle cx="32" cy="32" r="28" fill="#0b1320" stroke="#63d9e8" stroke-width="4"/>
+  <path d="M22 17h20v8H30v8h10v8H30v14h-8z" fill="#63d9e8"/>
+</svg>
