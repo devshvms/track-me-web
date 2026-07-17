@@ -13,7 +13,7 @@ Track Me Web API is a lightweight, serverless backend designed to power real-tim
 ### 2. Historical Data Export
 - **Archive Generation**: Users can request a complete `.zip` archive of their historical GPX traces and JSON metadata.
 - **Idempotent Requests**: Safeguards against spam by allowing only one active request per user within a specific timeframe.
-- **Asynchronous Processing**: Requests are queued (`QUEUED` state), processed asynchronously (`PROCESSING` to `COMPLETED`), and held securely for download with aggressive expiration policies (e.g., 48-hour unaccessed limit or 6-hour post-download limit).
+- **On-demand Archive Export**: The request creates a completed export record immediately. The ZIP is assembled from the user’s Firestore data only when the tokenized download URL is opened, with a 48-hour unaccessed limit or six-hour post-download limit.
 
 ### 3. Telemetry & Analytics
 - **Event Proxy**: A privacy-friendly proxy for PostHog telemetry to obscure backend API keys and standard tracking domains from ad-blockers.

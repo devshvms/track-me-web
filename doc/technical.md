@@ -52,24 +52,16 @@ vercel dev
 
 ## API Reference
 
-### Track API
-- **`POST /api/track/start`**
-  - **Body**: `{ "durationMinutes": number, "username": string }`
-  - **Description**: Initializes a new live share session.
-  - **Returns**: `{ "sessionId": string, "shareLink": string, "expiresAt": string }`
+The complete, client-ready contract is in [API Contract](api.md). It is the source of truth for authentication, request and response JSON, error handling, export lifecycle, and the Android download flow.
 
-### Export API
-- **`POST /api/export/request`**
-  - **Body**: `{ "userId": string, "userEmail": string, "clientOS": string }`
-  - **Description**: Idempotent endpoint to queue an archive export.
-- **`GET /api/export/status`**
-  - **Query**: `?requestId=abc`
-  - **Description**: Poll the status of an export.
-- **`POST /api/export/process`**
-  - **Description**: Triggers processing of the queued export requests.
-- **`GET /api/export/download`**
-  - **Query**: `?requestId=abc`
-  - **Description**: Download the completed ZIP archive.
+The important export rule is that `/api/export/request` and `/api/export/status` require `Authorization: Bearer <Firebase ID token>`. The completed `downloadUrl` includes a short-lived `token` query parameter so Android `DownloadManager` can download the ZIP, because `DownloadManager` cannot add a bearer header. Do not reconstruct or remove that URL parameter.
+
+### Track API
+
+- **`POST /api/track/start`**: Requires a Firebase bearer token. Body: `{ "durationMinutes": number, "username": string }`. Returns `{ "sessionId": string, "shareLink": string, "expiresAt": string }`.
+- **`GET /api/track/:sessionId/location?viewerId=...`**: Public viewer heartbeat and current session state. Returns `404` after expiry and `429` when the concurrent viewer limit is reached.
+- **`POST /api/track/:sessionId/location`**: Requires the session owner’s Firebase bearer token. Body includes `{ "lat": number, "lon": number, "batteryLevel": number, "speed": number, "heading": number, "timestamp": string }`.
+- **`POST /api/track/:sessionId/stop`**: Requires the session owner’s Firebase bearer token. Optional body: `{ "stopReason": string }`.
 
 ### Telemetry API
 - **`POST /api/telemetry/event`**

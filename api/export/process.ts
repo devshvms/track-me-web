@@ -1,7 +1,14 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import crypto from 'crypto';
 import { absoluteUrl } from '../../lib/http';
 import { getRedisClient, redisMGet } from '../../lib/redis';
 import { requireAdmin, sendAuthError } from '../../lib/auth';
+
+function ensureDownloadToken(data: any): string {
+  return typeof data.downloadToken === 'string' && data.downloadToken.length >= 32
+    ? data.downloadToken
+    : crypto.randomBytes(32).toString('base64url');
+}
 
 export default async function handler(
   request: VercelRequest,
@@ -36,8 +43,12 @@ export default async function handler(
               data.status = 'COMPLETED';
               data.completedAt = completedAt;
               data.expiresAt = expiresAt;
+              data.downloadToken = ensureDownloadToken(data);
               delete data.archiveSizeBytes;
-              data.downloadUrl = absoluteUrl(request, `/api/export/download?requestId=${data.requestId}`);
+              data.downloadUrl = absoluteUrl(request, `/api/export/download?${new URLSearchParams({
+                requestId: data.requestId,
+                token: data.downloadToken,
+              }).toString()}`);
 
               const userKey = keys[i];
               const requestKey = `export:request:${data.requestId}`;
