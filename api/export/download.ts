@@ -1,4 +1,8 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { createReadStream, createWriteStream } from 'fs';
+import { mkdtemp, rm, stat } from 'fs/promises';
+import os from 'os';
+import path from 'path';
 import { getRedisClient } from '../../lib/redis';
 import { auth, db } from '../../lib/firebase';
 import { assertOwnsUserId, requireUser, sendAuthError } from '../../lib/auth';
@@ -133,37 +137,28 @@ export default async function handler(
     }
     metadata.otherCollections = metadataOtherCollections;
 
-    // Set up headers for streaming ZIP download
-    response.setHeader('Content-Type', 'application/zip');
-    response.setHeader('Content-Disposition', `attachment; filename="TrackMe_Archive_${data.userId}.zip"`);
-
-    // Create archiver instance
+    // Stage the ZIP before sending response headers. Vercel's temporary filesystem
+    // keeps the archive out of memory while preserving a structured error path.
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), 'trackme-export-'));
+    const archivePath = path.join(tempDir, `TrackMe_Archive_${data.userId}.zip`);
     const archiver = require('archiver');
     const archive = archiver('zip', {
-      zlib: { level: 6 } // moderate compression to save CPU/memory
+      zlib: { level: 6 },
     });
-
-    archive.on('error', (err: Error) => {
-      console.error('Archiver error:', err);
-      if (!response.headersSent) {
-        response.status(500).json({ error: 'Internal Server Error while assembling archive.' });
-      } else {
-        response.end();
-      }
-    });
-
-    // Pipe archive data directly to VercelResponse (which is a Writable Stream)
-    archive.pipe(response);
-
-    // Append metadata.json
-    archive.append(JSON.stringify(metadata, null, 2), { name: 'metadata.json' });
-
-    // Stream rides and build rides_history.json summary
-    const ridesSummary: any[] = [];
+    const output = createWriteStream(archivePath);
 
     try {
+      const archiveWritten = new Promise<void>((resolve, reject) => {
+        archive.once('error', reject);
+        output.once('error', reject);
+        output.once('close', resolve);
+      });
+
+      archive.pipe(output);
+      archive.append(JSON.stringify(metadata, null, 2), { name: 'metadata.json' });
+
+      const ridesSummary: any[] = [];
       const ridesRef = db.collection('users').doc(data.userId).collection('rides');
-      // Stream documents one by one to prevent loading everything into memory
       const stream = ridesRef.stream();
 
       for await (const doc of stream as any) {
@@ -203,17 +198,42 @@ export default async function handler(
 ${trkpts}    </trkseg>
   </trk>
 </gpx>`;
-        // Append GPX file for each ride
         archive.append(gpxTrace, { name: `traces/ride_${doc.id}.gpx` });
       }
 
-      // Append the summary after iterating all rides
       archive.append(JSON.stringify(ridesSummary, null, 2), { name: 'rides_history.json' });
-
-      // Finalize the archive (closes the stream)
       await archive.finalize();
+      await archiveWritten;
 
-      if (firstDownload) {
+      const archiveStats = await stat(archivePath);
+      response.setHeader('Content-Type', 'application/zip');
+      response.setHeader('Content-Length', archiveStats.size.toString());
+      response.setHeader('Content-Disposition', `attachment; filename="TrackMe_Archive_${data.userId}.zip"`);
+
+      let responseFinished = false;
+      await new Promise<void>((resolve, reject) => {
+        const input = createReadStream(archivePath);
+        let settled = false;
+        const finish = () => {
+          if (!settled) {
+            settled = true;
+            responseFinished = true;
+            resolve();
+          }
+        };
+        const close = () => {
+          if (!settled) {
+            settled = true;
+            resolve();
+          }
+        };
+        input.once('error', reject);
+        response.once('finish', finish);
+        response.once('close', close);
+        input.pipe(response);
+      });
+
+      if (firstDownload && responseFinished) {
         data.downloadAccessedAt = new Date().toISOString();
         data.expiresAt = downloadExpiry;
 
@@ -223,11 +243,16 @@ ${trkpts}    </trkseg>
           data.requestId ? redis.set(`export:request:${data.requestId}`, JSON.stringify(data), { EX: ttlSeconds }) : Promise.resolve(),
         ]);
       }
-
     } catch (err) {
-      console.error('Error streaming rides from Firestore:', err);
-      // Destroy the archive if something failed midway to abort the stream
-      archive.abort();
+      console.error('Error assembling archive before download:', err);
+      if (!response.headersSent) {
+        return response.status(502).json({
+          error: 'Unable to read or assemble archive data from Firestore. Archive export was not generated.',
+        });
+      }
+      response.end();
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
     }
   } catch (error) {
     if (sendAuthError(response, error)) return;
