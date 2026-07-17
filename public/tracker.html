@@ -80,6 +80,51 @@
 
         let marker = null;
         let isFirstLoad = true;
+
+        function buildLocationPopup(lat, lon, username, timestamp) {
+            const container = document.createElement('div');
+            container.style.textAlign = 'center';
+            container.style.padding = '5px';
+
+            const title = document.createElement('p');
+            title.textContent = 'Location Actions';
+            title.style.margin = '0 0 10px 0';
+            title.style.fontWeight = 'bold';
+            container.appendChild(title);
+
+            const shareButton = document.createElement('button');
+            shareButton.type = 'button';
+            shareButton.textContent = 'Share Location';
+            shareButton.style.padding = '8px 12px';
+            shareButton.style.background = '#007bff';
+            shareButton.style.color = 'white';
+            shareButton.style.border = 'none';
+            shareButton.style.borderRadius = '4px';
+            shareButton.style.cursor = 'pointer';
+            shareButton.style.marginBottom = '10px';
+            shareButton.style.width = '100%';
+            shareButton.addEventListener('click', () => window.shareLocation(lat, lon, username, timestamp));
+            container.appendChild(shareButton);
+            container.appendChild(document.createElement('br'));
+
+            const maps = [
+                ['Google Maps', 'https://maps.google.com/?q='],
+                ['Apple Maps', 'https://maps.apple.com/?q=']
+            ];
+            const coordinates = encodeURIComponent(`${lat},${lon}`);
+            maps.forEach(([label, baseUrl], index) => {
+                if (index > 0) container.appendChild(document.createTextNode(' | '));
+                const link = document.createElement('a');
+                link.href = `${baseUrl}${coordinates}`;
+                link.target = '_blank';
+                link.rel = 'noopener noreferrer';
+                link.textContent = label;
+                link.style.fontSize = '0.9em';
+                container.appendChild(link);
+            });
+
+            return container;
+        }
         
         window.shareLocation = function(lat, lon, username, timestamp) {
             fetch('/api/telemetry/event', {
@@ -180,21 +225,13 @@
                     
                     const humanIcon = L.divIcon({
                         className: 'custom-div-icon',
-                        html: `<div class="human-marker">${username}</div>`,
+                        html: `<div class="human-marker"></div>`,
                         iconSize: [null, null],
                         iconAnchor: [0, 0]
                     });
 
-                    const popupContent = `
-                        <div style="text-align: center; padding: 5px;">
-                            <p style="margin: 0 0 10px 0; font-weight: bold;">Location Actions</p>
-                            <button onclick="window.shareLocation(${lat}, ${lon}, '${username}', '${timestamp}')" style="padding: 8px 12px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; margin-bottom: 10px; width: 100%;">Share Location</button>
-                            <br/>
-                            <a href="https://maps.google.com/?q=${lat},${lon}" target="_blank" style="font-size: 0.9em;">Google Maps</a> | 
-                            <a href="https://maps.apple.com/?q=${lat},${lon}" target="_blank" style="font-size: 0.9em;">Apple Maps</a>
-                        </div>
-                    `;
-                    
+                    const popupContent = buildLocationPopup(lat, lon, username, timestamp);
+
                     if (!marker) {
                         marker = L.marker(pos, { icon: humanIcon }).bindPopup(popupContent).addTo(map);
                     } else {
@@ -202,6 +239,9 @@
                         marker.setIcon(humanIcon);
                         marker.setPopupContent(popupContent);
                     }
+
+                    const markerElement = marker.getElement()?.querySelector('.human-marker');
+                    if (markerElement) markerElement.textContent = username;
 
                     if (isFirstLoad) {
                         map.setView(pos, 15);
