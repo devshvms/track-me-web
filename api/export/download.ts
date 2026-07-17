@@ -1,6 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { getRedisClient } from '../../lib/redis';
-import AdmZip from 'adm-zip';
 import { auth, db } from '../../lib/firebase';
 import { assertOwnsUserId, requireUser, sendAuthError } from '../../lib/auth';
 
@@ -68,7 +67,16 @@ export default async function handler(
       });
     }
 
-    const zip = new AdmZip();
+    if (!data.downloadAccessedAt) {
+      data.downloadAccessedAt = new Date().toISOString();
+      data.expiresAt = new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString();
+
+      const ttlSeconds = 6 * 60 * 60;
+      await Promise.all([
+        data.userId ? redis.set(`export:user:${data.userId}`, JSON.stringify(data), { EX: ttlSeconds }) : Promise.resolve(),
+        data.requestId ? redis.set(`export:request:${data.requestId}`, JSON.stringify(data), { EX: ttlSeconds }) : Promise.resolve(),
+      ]);
+    }
 
     let userData: Record<string, unknown>;
     try {
@@ -114,9 +122,7 @@ export default async function handler(
       profile: userData,
     };
 
-    const ridesSummary: any[] = [];
     const metadataOtherCollections: Record<string, any> = {};
-
     try {
       const emergencyConfigSnapshot = await db.collection('users').doc(data.userId).collection('emergency_config').get();
       if (!emergencyConfigSnapshot.empty) {
@@ -125,10 +131,48 @@ export default async function handler(
           metadataOtherCollections['emergency_config'][doc.id] = doc.data();
         }
       }
+    } catch (err) {
+      console.error('Error fetching emergency_config:', err);
+      return response.status(502).json({
+        error: 'Unable to read archive data (emergency_config) from Firestore. Archive export was not generated.',
+      });
+    }
+    metadata.otherCollections = metadataOtherCollections;
 
-      const ridesSnapshot = await db.collection('users').doc(data.userId).collection('rides').get();
+    // Set up headers for streaming ZIP download
+    response.setHeader('Content-Type', 'application/zip');
+    response.setHeader('Content-Disposition', `attachment; filename="TrackMe_Archive_${data.userId}.zip"`);
 
-      for (const doc of ridesSnapshot.docs) {
+    // Create archiver instance
+    const archiver = require('archiver');
+    const archive = archiver('zip', {
+      zlib: { level: 6 } // moderate compression to save CPU/memory
+    });
+
+    archive.on('error', (err: Error) => {
+      console.error('Archiver error:', err);
+      if (!response.headersSent) {
+        response.status(500).json({ error: 'Internal Server Error while assembling archive.' });
+      } else {
+        response.end();
+      }
+    });
+
+    // Pipe archive data directly to VercelResponse (which is a Writable Stream)
+    archive.pipe(response);
+
+    // Append metadata.json
+    archive.append(JSON.stringify(metadata, null, 2), { name: 'metadata.json' });
+
+    // Stream rides and build rides_history.json summary
+    const ridesSummary: any[] = [];
+
+    try {
+      const ridesRef = db.collection('users').doc(data.userId).collection('rides');
+      // Stream documents one by one to prevent loading everything into memory
+      const stream = ridesRef.stream();
+
+      for await (const doc of stream as any) {
         const ride = doc.data();
         ridesSummary.push({
           rideId: doc.id,
@@ -165,41 +209,26 @@ export default async function handler(
 ${trkpts}    </trkseg>
   </trk>
 </gpx>`;
-        zip.addFile(`traces/ride_${doc.id}.gpx`, Buffer.from(gpxTrace, 'utf8'));
+        // Append GPX file for each ride
+        archive.append(gpxTrace, { name: `traces/ride_${doc.id}.gpx` });
       }
+
+      // Append the summary after iterating all rides
+      archive.append(JSON.stringify(ridesSummary, null, 2), { name: 'rides_history.json' });
+
+      // Finalize the archive (closes the stream)
+      await archive.finalize();
+
     } catch (err) {
-      console.error('Error fetching archive collections from Firestore:', err);
-      return response.status(502).json({
-        error: 'Unable to read archive data from Firestore. Archive export was not generated.',
-      });
+      console.error('Error streaming rides from Firestore:', err);
+      // Destroy the archive if something failed midway to abort the stream
+      archive.abort();
     }
-
-    metadata.otherCollections = metadataOtherCollections;
-    zip.addFile('metadata.json', Buffer.from(JSON.stringify(metadata, null, 2), 'utf8'));
-
-    zip.addFile('rides_history.json', Buffer.from(JSON.stringify(ridesSummary, null, 2), 'utf8'));
-
-    const zipBuffer = zip.toBuffer();
-
-    if (!data.downloadAccessedAt) {
-      data.downloadAccessedAt = new Date().toISOString();
-      data.expiresAt = new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString();
-
-      const ttlSeconds = 6 * 60 * 60;
-      await Promise.all([
-        data.userId ? redis.set(`export:user:${data.userId}`, JSON.stringify(data), { EX: ttlSeconds }) : Promise.resolve(),
-        data.requestId ? redis.set(`export:request:${data.requestId}`, JSON.stringify(data), { EX: ttlSeconds }) : Promise.resolve(),
-      ]);
-    }
-
-    response.setHeader('Content-Type', 'application/zip');
-    response.setHeader('Content-Disposition', `attachment; filename="TrackMe_Archive_${data.userId}.zip"`);
-    response.setHeader('Content-Length', zipBuffer.length);
-
-    return response.send(zipBuffer);
   } catch (error) {
     if (sendAuthError(response, error)) return;
     console.error('Error generating archive download:', error);
-    return response.status(500).json({ error: 'Internal Server Error while assembling archive.' });
+    if (!response.headersSent) {
+      return response.status(500).json({ error: 'Internal Server Error while assembling archive.' });
+    }
   }
 }
