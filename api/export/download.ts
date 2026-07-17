@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { getRedisClient } from '../../lib/redis';
 import AdmZip from 'adm-zip';
-import { db } from '../../lib/firebase';
+import { auth, db } from '../../lib/firebase';
 import { assertOwnsUserId, requireUser, sendAuthError } from '../../lib/auth';
 
 function hasValidDownloadToken(data: any, token: unknown): boolean {
@@ -73,12 +73,29 @@ export default async function handler(
     let userData: Record<string, unknown>;
     try {
       const userDoc = await db.collection('users').doc(data.userId).get();
-      if (!userDoc.exists) {
-        return response.status(404).json({
-          error: 'User data was not found in Firestore. Archive export cannot be generated.',
-        });
+      userData = userDoc.exists ? userDoc.data() || {} : {};
+
+      if (!userDoc.exists && auth) {
+        try {
+          const authUser = await auth.getUser(data.userId);
+          userData = {
+            uid: authUser.uid,
+            email: authUser.email || data.userEmail || null,
+            displayName: authUser.displayName || null,
+            photoURL: authUser.photoURL || null,
+            phoneNumber: authUser.phoneNumber || null,
+            createdAt: authUser.metadata.creationTime || null,
+            lastLoginAt: authUser.metadata.lastSignInTime || null,
+            profileSource: 'firebase_auth',
+          };
+        } catch {
+          userData = {
+            uid: data.userId,
+            email: data.userEmail || null,
+            profileSource: 'export_request',
+          };
+        }
       }
-      userData = userDoc.data() || {};
     } catch (err) {
       console.error('Error fetching user from Firestore:', err);
       return response.status(502).json({
