@@ -31,6 +31,8 @@ The server reads the user’s data only when the download URL is opened. It read
 
 Each ride becomes one `traces/ride_{rideId}.gpx` entry. The ZIP also contains `metadata.json` and `rides_history.json`. The server expects synchronized point fields `lat`, `lng`, `altitude`, `accuracy`, `speed`, `timestamp`, and `isPaused`.
 
+**Current streaming failure behavior:** Web HEAD `eda6b1b` streams directly to avoid a temporary-disk ceiling. If Firestore ride iteration fails after response headers, the ZIP contains `EXPORT_FAILED.txt`, the six-hour retention marker is skipped, and the HTTP response remains `200`. Clients must inspect the archive for this marker before treating the export as complete; this behavior remains runtime-gated and is not equivalent to the JSON `502` contract for preflight failures.
+
 ### 1. Request an export
 
 ```http
