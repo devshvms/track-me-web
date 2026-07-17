@@ -32,7 +32,11 @@ export async function requireUser(request: VercelRequest): Promise<DecodedIdToke
 
   try {
     return await auth.verifyIdToken(getBearerToken(request));
-  } catch {
+  } catch (error) {
+    if (error instanceof AuthError) {
+      throw error;
+    }
+    console.error('Firebase token verification failed:', error);
     throw new AuthError(401, 'Invalid or expired token.');
   }
 }

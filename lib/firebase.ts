@@ -2,6 +2,8 @@ import { getApps, initializeApp, cert } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
 
+const fallbackProjectId = 'trackme-android-1234';
+
 if (!getApps().length) {
   try {
     const serviceAccount = process.env.FIREBASE_SERVICE_ACCOUNT;
@@ -16,7 +18,9 @@ if (!getApps().length) {
         }),
       });
     } else {
-      initializeApp();
+      initializeApp({
+        projectId: process.env.FIREBASE_PROJECT_ID || fallbackProjectId,
+      });
     }
   } catch (error) {
     console.error('Firebase admin initialization error', error);
