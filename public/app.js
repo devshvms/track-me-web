@@ -1,6 +1,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
 import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged, deleteUser } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-import { getFirestore, collection, getDocs, deleteDoc, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import { getFirestore, collection, getDocs, deleteDoc, addDoc, query, where, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
 // Actual Firebase configuration from Firebase Console
 const firebaseConfig = {
@@ -98,7 +98,7 @@ deleteBtn.addEventListener("click", async () => {
         // 2. Delete all rides and their points
         const ridesRef = collection(db, "users", uid, "rides");
         const ridesSnapshot = await getDocs(ridesRef);
-        
+
         for (const rideDoc of ridesSnapshot.docs) {
             const pointsRef = collection(rideDoc.ref, "points");
             const pointsSnapshot = await getDocs(pointsRef);
@@ -108,7 +108,22 @@ deleteBtn.addEventListener("click", async () => {
             await deleteDoc(rideDoc.ref);
         }
 
-        // 3. Delete auth user
+        // 3. Delete emergency configuration, emergency delivery logs, and authored feedback.
+        for (const collectionName of ["emergency_config", "emergency_logs"]) {
+            const records = await getDocs(collection(db, "users", uid, collectionName));
+            for (const record of records.docs) {
+                await deleteDoc(record.ref);
+            }
+        }
+
+        const feedbackRecords = await getDocs(
+            query(collection(db, "feedbacks"), where("uid", "==", uid))
+        );
+        for (const feedbackRecord of feedbackRecords.docs) {
+            await deleteDoc(feedbackRecord.ref);
+        }
+
+        // 4. Delete auth user
         await deleteUser(currentUser);
         
         messageEl.textContent = "Account successfully deleted.";
