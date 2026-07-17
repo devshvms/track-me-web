@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-labelledby="title desc">
+  <title id="title">TrackMe private outdoor tracking</title>
+  <desc id="desc">A cyan route line on a dark map with the TrackMe name.</desc>
+  <rect width="1200" height="630" fill="#0b1320"/>
+  <g opacity=".2" stroke="#aebfc7" stroke-width="2">
+    <path d="M0 150h1200M0 315h1200M0 480h1200M160 0v630M420 0v630M680 0v630M940 0v630"/>
+  </g>
+  <path d="M170 430 C300 190 450 210 570 360 S820 490 1015 205" fill="none" stroke="#63d9e8" stroke-width="16" stroke-linecap="round"/>
+  <circle cx="170" cy="430" r="24" fill="#63d9e8" stroke="#0b1320" stroke-width="10"/>
+  <circle cx="570" cy="360" r="24" fill="#8ce2b4" stroke="#0b1320" stroke-width="10"/>
+  <circle cx="1015" cy="205" r="24" fill="#63d9e8" stroke="#0b1320" stroke-width="10"/>
+  <text x="90" y="110" fill="#63d9e8" font-family="Arial, sans-serif" font-size="30" font-weight="700" letter-spacing="6">PRIVATE OUTDOOR TRACKING</text>
+  <text x="90" y="565" fill="#eef4f7" font-family="Arial, sans-serif" font-size="72" font-weight="800">TrackMe</text>
+  <text x="460" y="560" fill="#aebfc7" font-family="Arial, sans-serif" font-size="30">Your route. Your data.</text>
+</svg>

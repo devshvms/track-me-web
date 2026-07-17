@@ -132,13 +132,22 @@ const tabContents = document.querySelectorAll('.tab-content');
 tabBtns.forEach(btn => {
     btn.addEventListener('click', () => {
         // Remove active class from all
-        tabBtns.forEach(b => b.classList.remove('active'));
-        tabContents.forEach(c => c.classList.remove('active'));
+        tabBtns.forEach(b => {
+            b.classList.remove('active');
+            b.setAttribute('aria-selected', 'false');
+        });
+        tabContents.forEach(c => {
+            c.classList.remove('active');
+            c.hidden = true;
+        });
         
         // Add active class to clicked button and target content
         btn.classList.add('active');
+        btn.setAttribute('aria-selected', 'true');
         const targetId = btn.getAttribute('data-target');
-        document.getElementById(targetId).classList.add('active');
+        const target = document.getElementById(targetId);
+        target.classList.add('active');
+        target.hidden = false;
     });
 });
 
@@ -152,11 +161,14 @@ releaseHeaders.forEach(header => {
         // Collapse all release cards ("expand only 1 at a time")
         document.querySelectorAll('.release-card').forEach(card => {
             card.classList.remove('active');
+            const cardHeader = card.querySelector('.release-header');
+            if (cardHeader) cardHeader.setAttribute('aria-expanded', 'false');
         });
 
         // If clicked card wasn't already open, open it now
         if (!wasActive) {
             currentCard.classList.add('active');
+            header.setAttribute('aria-expanded', 'true');
         }
     });
 });
@@ -174,21 +186,26 @@ function displayExportStatus(data) {
 
     if (!container) return;
     container.style.display = 'block';
+    container.hidden = false;
 
     if (data.status === 'COMPLETED') {
         if (requestBtn) requestBtn.style.display = 'none'; // Hide duplicate blue button
+        if (requestBtn) requestBtn.hidden = true;
         iconEl.textContent = '✅';
         titleEl.textContent = 'Archive Ready for Download';
-        messageEl.textContent = 'Your historical data archive has been assembled. Please download it below. Note: Completed archives expire 6 hours after retrieval (max 48 hours unaccessed).';
+        messageEl.textContent = 'Your archive is ready. The ZIP is assembled from your own data when you download it and expires after the retention window.';
         downloadAction.style.display = 'block';
+        downloadAction.hidden = false;
         downloadLink.href = data.downloadUrl || '#';
     } else {
         if (requestBtn) requestBtn.textContent = 'Data Requested...';
         if (requestBtn) requestBtn.disabled = true;
+        if (requestBtn) requestBtn.hidden = false;
         iconEl.textContent = '⏳';
-        titleEl.textContent = 'Export Request Queued';
-        messageEl.textContent = 'We are assembling your historical trace files and profile data into a compressed archive. You can safely close this page. The download will become available here automatically once completed.';
+        titleEl.textContent = 'Export request is processing';
+        messageEl.textContent = 'The export metadata is being prepared. Refresh this section shortly to get the tokenized download link.';
         downloadAction.style.display = 'none';
+        downloadAction.hidden = true;
     }
 }
 
