@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TrackMe - Your Ultimate Ride Tracker</title>
+    <link rel="stylesheet" href="style.css?v=2">
+    
+    <!-- Firebase SDKs -->
+    <script type="module" src="app.js"></script>
+</head>
+<body>
+    <header class="header">
+        <div class="logo">TrackMe</div>
+        <nav class="nav">
+            <a href="#features">Features</a>
+            <a href="#releases">Releases</a>
+            <a href="#account" id="account-link">Account</a>
+            <button id="auth-button" class="btn">Sign In</button>
+        </nav>
+    </header>
+
+    <main>
+        <section id="hero" class="hero">
+            <h1>Track Your Rides, Analyze Your Performance</h1>
+            <p>The ultimate open-source Android app for logging your cycling, walking, and running activities with precision.</p>
+            <a href="#releases" class="btn btn-large">Download Now</a>
+        </section>
+
+        <section id="features" class="section">
+            <h2>Key Features</h2>
+            <div class="grid">
+                <div class="card">
+                    <h3>Accurate Tracking</h3>
+                    <p>Logs your GPS points with high frequency to give you detailed speed and altitude graphs.</p>
+                </div>
+                <div class="card">
+                    <h3>Cloud Sync</h3>
+                    <p>Safely back up your rides to the cloud using your Google account.</p>
+                </div>
+                <div class="card">
+                    <h3>Emergency Broadcast</h3>
+                    <p>Stay safe with automated emergency tracking and SMS alerts when you need help.</p>
+                </div>
+            </div>
+
+            <!-- Live Share Telemetry & Pulse Card -->
+            <div class="telemetry-card">
+                <div class="telemetry-header">
+                    <div class="telemetry-title">
+                        <span>📊 Live Share Community Pulse & Metrics</span>
+                    </div>
+                    <div class="telemetry-badge" title="Automatically refreshes every 6 hours from edge cache">
+                        <span class="live-pulse"></span>
+                        <span>Dynamic Live Stats (6h Edge Sync)</span>
+                    </div>
+                </div>
+                <div class="telemetry-grid">
+                    <div class="telemetry-stat">
+                        <div class="stat-label">Live Links (Last 24h)</div>
+                        <div class="stat-value"><span id="stat-shares-24h">...</span> <span style="font-size: 1rem; color: #94a3b8; font-weight: 500;">links</span></div>
+                        <div class="stat-desc">New live tracking links generated recently</div>
+                    </div>
+                    <div class="telemetry-stat">
+                        <div class="stat-label">Total Live Shares</div>
+                        <div class="stat-value"><span id="stat-total-shares">...</span> <span style="font-size: 1rem; color: #94a3b8; font-weight: 500;">sessions</span></div>
+                        <div class="stat-desc">All-time location sharing sessions created</div>
+                    </div>
+                    <div class="telemetry-stat">
+                        <div class="stat-label">Total Ride Hours Shared</div>
+                        <div class="stat-value"><span id="stat-total-hours">...</span> <span style="font-size: 1rem; color: #94a3b8; font-weight: 500;">hrs</span></div>
+                        <div class="stat-desc">Cumulative ride time shared across all users</div>
+                    </div>
+                    <div class="telemetry-stat">
+                        <div class="stat-label">Viewer Sessions (Last 24h)</div>
+                        <div class="stat-value"><span id="stat-viewers-24h">...</span> <span style="font-size: 1rem; color: #34d399; font-weight: 500;">viewers</span></div>
+                        <div class="stat-desc">Unique live share viewer sessions in last 24 hrs</div>
+                    </div>
+                </div>
+                <div style="margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid rgba(255, 255, 255, 0.1); display: flex; justify-content: space-between; align-items: center; font-size: 0.82rem; color: #94a3b8; flex-wrap: wrap; gap: 0.5rem;">
+                    <span>⏳ <strong style="color: #cbd5e1;">Last Updated:</strong> <span id="stat-updated-at">Just now</span></span>
+                    <span>🔄 <strong style="color: #cbd5e1;">Valid Until:</strong> <span id="stat-valid-until">Next 6h cycle</span></span>
+                </div>
+            </div>
+        </section>
+
+        <section id="releases" class="section bg-light">
+            <h2>Releases</h2>
+            
+            <div class="tabs">
+                <button class="tab-btn active" data-target="android-releases">Android</button>
+                <button class="tab-btn" data-target="ios-releases">iOS</button>
+            </div>
+
+            <div id="android-releases" class="tab-content active">
+                <div class="card" style="margin-bottom: 20px;">
+                    <h3>Join Alpha Testing (Android)</h3>
+                    <p style="margin-bottom: 10px;">TrackMe is currently in closed Alpha Testing. To download and try the app, please complete the following steps:</p>
+                    <ol style="margin-left: 20px; line-height: 1.8;">
+                        <li><strong>Join the Testing Group:</strong> <a href="https://groups.google.com/g/trackride-alpha-testing-track" target="_blank">trackride-alpha-testing-track</a></li>
+                        <li><strong>Become a Tester:</strong> Opt-in via our <a href="https://play.google.com/apps/testing/in.shvms.trackme" target="_blank">Web Testing Link</a></li>
+                        <li><strong>Download on Google Play:</strong> Download the app using the same Google account: <a href="https://play.google.com/store/apps/details?id=in.shvms.trackme" target="_blank">Google Play Store</a></li>
+                    </ol>
+                </div>
+
+                <div class="releases-scroll-container">
+                    <div class="card release-card" data-version="1.5.4">
+                        <div class="release-header">
+                            <h3>
+                                <span class="release-version-badge">Version 1.5.4</span>
+                                <span class="release-name">— "Zenith Hotfix 4"</span>
+                                <span class="release-date">(July 15, 2026)</span>
+                            </h3>
+                            <span class="release-toggle-icon">▼</span>
+                        </div>
+                        <div class="release-body">
+                            <p style="margin-top: 10px; color: var(--text-muted);"><strong>Release Notes:</strong></p>
+                            <ul style="margin-left: 20px; margin-top: 8px;">
+                                <li><strong>UI & Styling Refinements:</strong> Cumulative update incorporating visual contrast improvements on the web portal.</li>
+                                <li><strong>Data Export Polish:</strong> Finalized stability fixes for background archive downloads.</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div class="card release-card" data-version="1.5.3">
+                        <div class="release-header">
+                            <h3>
+                                <span class="release-version-badge">Version 1.5.3</span>
+                                <span class="release-name">— "Zenith Hotfix 3"</span>
+                                <span class="release-date">(July 15, 2026)</span>
+                            </h3>
+                            <span class="release-toggle-icon">▼</span>
+                        </div>
+                        <div class="release-body">
+                            <p style="margin-top: 10px; color: var(--text-muted);"><strong>Release Notes:</strong></p>
+                            <ul style="margin-left: 20px; margin-top: 8px;">
+                                <li><strong>Data Export Silent Failure Fix:</strong> Fixed a critical bug where data exports would queue in DownloadManager but silently fail to download. The app now correctly resolves the relative path returned by the server into a fully-qualified domain URL, enabling stable `.zip` downloads.</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div class="card release-card" data-version="1.5.2">
+                        <div class="release-header">
+                            <h3>
+                                <span class="release-version-badge">Version 1.5.2</span>
+                                <span class="release-name">— "Zenith Hotfix 2"</span>
+                                <span class="release-date">(July 15, 2026)</span>
+                            </h3>
+                            <span class="release-toggle-icon">▼</span>
+                        </div>
+                        <div class="release-body">
+                            <p style="margin-top: 10px; color: var(--text-muted);"><strong>Release Notes:</strong></p>
+                            <ul style="margin-left: 20px; margin-top: 8px;">
+                                <li><strong>Data Export Download Fix:</strong> Replaced the legacy external browser intent with native Android `DownloadManager`. The `.zip` archive now downloads securely and directly into the device's Downloads folder without crashing on devices lacking default browser configurations.</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div class="card release-card" data-version="1.5.1">
+                        <div class="release-header">
+                            <h3>
+                                <span class="release-version-badge">Version 1.5.1</span>
+                                <span class="release-name">— "Zenith Hotfix"</span>
+                                <span class="release-date">(July 15, 2026)</span>
+                            </h3>
+                            <span class="release-toggle-icon">▼</span>
+                        </div>
+                        <div class="release-body">
+                            <p style="margin-top: 10px; color: var(--text-muted);"><strong>Release Notes:</strong></p>
+                            <ul style="margin-left: 20px; margin-top: 8px;">
+                                <li><strong>Immediate Startup Crash Resolution:</strong> Reverted R8 code minification (`isMinifyEnabled`) and resource shrinking to restore 100% reflection and bytecode compatibility (`v1.4.0` standard), ensuring clean launch and stability.</li>
+                                <li><strong>Version & Signature Conflict Fix:</strong> Bumped version to `1.5.1` (version code `12`) to resolve Google Play package installer conflicts and ensure smooth upgrades over all prior builds.</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div class="card release-card" data-version="1.5.0">
+                        <div class="release-header">
+                            <h3>
+                                <span class="release-version-badge">Version 1.5.0</span>
+                                <span class="release-name">— "Zenith"</span>
+                                <span class="release-date">(July 15, 2026)</span>
+                            </h3>
+                            <span class="release-toggle-icon">▼</span>
+                        </div>
+                        <div class="release-body">
+                            <p style="margin-top: 10px; color: var(--text-muted);"><strong>Release Notes:</strong></p>
+                            <ul style="margin-left: 20px; margin-top: 8px;">
+                                <li><strong>Production Firestore Security Lockdown:</strong> Enforces strict user-isolated access control (`firestore.rules`) safeguarding ride histories, emergency contacts, and feedback against unauthorized access.</li>
+                                <li><strong>PostHog Product Telemetry & Remote Kill-Switch:</strong> Privacy-aware event tracking across authentication, ride lifecycle, and SOS beacons, dynamically controlled via Firebase Remote Config.</li>
+                                <li><strong>Centralized UI Theming & Chart Polish:</strong> Standardized color design tokens across core screens and improved edge avoidance and padding on scrubbable telemetry charts.</li>
+                                <li><strong>Build & ProGuard Optimization:</strong> Minified and resource-shrunk release bundle configuration for peak runtime performance and security.</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div class="card release-card" data-version="1.4.0">
+                        <div class="release-header">
+                            <h3>
+                                <span class="release-version-badge">Version 1.4.0</span>
+                                <span class="release-name">— "Summit"</span>
+                                <span class="release-date">(July 12, 2026)</span>
+                            </h3>
+                            <span class="release-toggle-icon">▼</span>
+                        </div>
+                        <div class="release-body">
+                            <p style="margin-top: 10px; color: var(--text-muted);"><strong>Release Notes:</strong></p>
+                            <ul style="margin-left: 20px; margin-top: 8px;">
+                                <li><strong>Complete Data Ownership & Cloud Export:</strong> Download your entire tracking history from the cloud in a secure, streamlined asynchronous flow to prevent vendor lock-in.</li>
+                                <li><strong>Live Ride Sharing with Notifications:</strong> Share your real-time ride progress with friends or family via a secure live-tracking link, complete with interactive red-dot UI notifications and personalized SMS templates.</li>
+                                <li><strong>Emergency SOS Refactor:</strong> Streamlined emergency beacon trigger to an intuitive push-button action with smooth visual feedback.</li>
+                                <li><strong>Smart Graph Edge Avoidance:</strong> Telemetry graphs intelligently flip labels to prevent any data from being clipped at the screen edges during interaction.</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div class="card release-card" data-version="1.3.0">
+                        <div class="release-header">
+                            <h3>
+                                <span class="release-version-badge">Version 1.3.0</span>
+                                <span class="release-name">— "Vanguard"</span>
+                                <span class="release-date">(July 12, 2026)</span>
+                            </h3>
+                            <span class="release-toggle-icon">▼</span>
+                        </div>
+                        <div class="release-body">
+                            <p style="margin-top: 10px; color: var(--text-muted);"><strong>Release Notes:</strong></p>
+                            <ul style="margin-left: 20px; margin-top: 8px;">
+                                <li><strong>Interactive Live Share Pill Drawer:</strong> Sleek upward glassmorphism drawer (90% transparency) with dynamic state animations, clean symbology, one-click X transform, and crisp haptics.</li>
+                                <li><strong>Orphaned Ride Auto-Recovery:</strong> Intelligent trajectory recovery that automatically reconstructs complete ride stats (distance, speed, duration) from persisted SQLite GPS points if the device powers off or app force-closes mid-ride.</li>
+                                <li><strong>Completed Rides Isolation & Delete Guard:</strong> History screen strictly lists completed sessions while safeguarding active rides against accidental deletion.</li>
+                                <li><strong>LTTB Graph Downsampling:</strong> High-fidelity telemetry chart rendering that preserves visual peaks and uniform spacing for any duration without spikiness.</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div class="card release-card" data-version="1.2.1">
+                        <div class="release-header">
+                            <h3>
+                                <span class="release-version-badge">Version 1.2.1</span>
+                                <span class="release-name">— "Ascent"</span>
+                                <span class="release-date">(July 9, 2026)</span>
+                            </h3>
+                            <span class="release-toggle-icon">▼</span>
+                        </div>
+                        <div class="release-body">
+                            <p style="margin-top: 10px; color: var(--text-muted);"><strong>Release Notes:</strong></p>
+                            <ul style="margin-left: 20px; margin-top: 8px;">
+                                <li><strong>In-App Auto-Update Notifications:</strong> Asynchronously checks for new updates via cloud configuration on launch and presents an interactive release notes dialog with one-click store updating.</li>
+                                <li><strong>Manual Update Check:</strong> Added a dedicated "Check for Updates" button on the Settings screen.</li>
+                                <li><strong>CI/CD & Security Hardening:</strong> Automated JSON schema resilience and API key configuration hardening.</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div class="card release-card" data-version="1.2.0">
+                        <div class="release-header">
+                            <h3>
+                                <span class="release-version-badge">Version 1.2.0</span>
+                                <span class="release-name">— "Horizon"</span>
+                                <span class="release-date">(July 9, 2026)</span>
+                            </h3>
+                            <span class="release-toggle-icon">▼</span>
+                        </div>
+                        <div class="release-body">
+                            <p style="margin-top: 10px; color: var(--text-muted);"><strong>Release Notes:</strong></p>
+                            <ul style="margin-left: 20px; margin-top: 8px;">
+                                <li><strong>Ride History UX Overhaul:</strong> Compact high-density cards with native date sticky headers and vector route thumbnails.</li>
+                                <li><strong>Smart Background Cloud Sync:</strong> Automated daily background synchronization with WorkManager and lazy list loading.</li>
+                                <li><strong>Global Multi-Language Localization:</strong> Full translation support across 7 languages (English, Spanish, French, German, Hindi, Japanese, Chinese).</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div class="card release-card" data-version="1.1.0-rc.5">
+                        <div class="release-header">
+                            <h3>
+                                <span class="release-version-badge">Version 1.1.0-rc.5</span>
+                                <span class="release-date">(June 27, 2026)</span>
+                            </h3>
+                            <span class="release-toggle-icon">▼</span>
+                        </div>
+                        <div class="release-body">
+                            <p style="margin-top: 10px; color: var(--text-muted);"><strong>Release Notes:</strong></p>
+                            <ul style="margin-left: 20px; margin-top: 8px;">
+                                <li><strong>Settings & Account Management Redesign:</strong> Split the settings into a cleaner interface with a dedicated Account Management screen for privacy controls.</li>
+                                <li><strong>Enhanced Account Deletion Security:</strong> Added explicit typing confirmation before permanently deleting accounts to prevent accidental data loss.</li>
+                                <li><strong>Improved Export Preview:</strong> Refined the visual layout of the Image Export screen and added a new "Save to Gallery" button.</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div class="card release-card" data-version="1.1.0-rc.4">
+                        <div class="release-header">
+                            <h3>
+                                <span class="release-version-badge">Version 1.1.0-rc.4</span>
+                                <span class="release-date">(June 26, 2026)</span>
+                            </h3>
+                            <span class="release-toggle-icon">▼</span>
+                        </div>
+                        <div class="release-body">
+                            <p style="margin-top: 10px; color: var(--text-muted);"><strong>Release Notes:</strong></p>
+                            <ul style="margin-left: 20px; margin-top: 8px;">
+                                <li><strong>Live GPS Status:</strong> Added a visual warning banner when GPS signal is lost during an active ride.</li>
+                                <li><strong>Smart Ride Discarding:</strong> Rides that fail to capture any GPS points are now automatically discarded to keep your history clean.</li>
+                                <li><strong>Enhanced GPX Import:</strong> The "Import GPX" button is now clearer and includes validation to ensure only valid .gpx files are imported.</li>
+                                <li><strong>Bug Fixes:</strong> Resolved layout issues and crashes on the Ride History and Detail screens.</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="ios-releases" class="tab-content">
+                <div class="card">
+                    <p style="text-align: center; color: var(--text-light); font-style: italic;">No release for iOS yet. We are working hard to bring TrackMe to the App Store soon. Stay tuned!</p>
+                </div>
+            </div>
+        </section>
+
+        <section id="account" class="section hidden">
+            <h2>Manage Account</h2>
+
+            <!-- Data Portability & Archive Export Card -->
+            <div class="card" id="export-card" style="margin-bottom: 24px; border-left: 4px solid #3b82f6; background: rgba(30, 41, 59, 0.75);">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 16px;">
+                    <div style="flex: 1; min-width: 260px;">
+                        <h3 style="margin-bottom: 8px; color: #fff; display: flex; align-items: center; gap: 8px;">
+                            <span>📦</span> Download All My Data
+                        </h3>
+                        <p style="color: #cbd5e1; font-size: 0.95rem; line-height: 1.5; margin-bottom: 4px;">
+                            Request a complete archive of your historical cloud data (.gpx trace files and JSON profile metadata).
+                        </p>
+                    </div>
+                    <div>
+                        <button id="export-request-btn" class="btn" style="background: #3b82f6; color: #fff; border: none; padding: 10px 20px; font-weight: 600; border-radius: 8px; cursor: pointer;">
+                            Download My Data (.zip)
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Dynamic Status Box -->
+                <div id="export-status-container" style="display: none; margin-top: 18px; padding: 14px 18px; border-radius: 8px; background: rgba(59, 130, 246, 0.12); border: 1px solid rgba(59, 130, 246, 0.35);">
+                    <div style="display: flex; align-items: flex-start; gap: 12px;">
+                        <span id="export-status-icon" style="font-size: 1.4rem; line-height: 1.2;">⏳</span>
+                        <div>
+                            <strong id="export-status-title" style="color: #fff; display: block; font-size: 1.05rem;">Export Request Queued</strong>
+                            <p id="export-status-message" style="color: #cbd5e1; font-size: 0.92rem; margin: 6px 0 0 0; line-height: 1.45;"></p>
+                        </div>
+                    </div>
+                    <div id="export-download-action" style="display: none; margin-top: 14px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.1);">
+                        <a id="export-download-link" href="#" target="_blank" class="btn" style="background: #10b981; color: #fff; text-decoration: none; padding: 9px 18px; border-radius: 6px; display: inline-block; font-weight: 600;">
+                            ⬇️ Download TrackMe_Archive.zip
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card danger-zone">
+                <h3 class="danger-text">Danger Zone</h3>
+                <p>Welcome, <span id="user-name"></span> (<span id="user-email"></span>).</p>
+                <p>If you wish to permanently delete your account and all associated cloud data (rides, GPS points, emergency configs), you can do so below.</p>
+                
+                <div class="form-group">
+                    <label for="feedback">Why are you leaving? (Optional)</label>
+                    <textarea id="feedback" rows="3" placeholder="Let us know how we can improve..."></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label for="confirm-delete">To confirm, type <span class="danger-text">DELETE</span> below:</label>
+                    <input type="text" id="confirm-delete" placeholder="DELETE">
+                </div>
+
+                <button id="delete-account-btn" class="btn btn-danger" disabled>Delete Account Permanently</button>
+                <p id="delete-message"></p>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <p>&copy; 2026 TrackMe. All rights reserved.</p>
+        <p style="margin-top: 10px;"><a href="privacy.html" style="color: #ccc; text-decoration: none;">Privacy Policy</a></p>
+    </footer>
+
+    <!-- Secure Proxy Telemetry Tracker -->
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            function trackEvent(event, properties = {}) {
+                fetch('/api/telemetry/event', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ event, properties: { ...properties, page: 'home' } })
+                }).catch(() => {});
+            }
+
+            trackEvent('landing_page_viewed', { url: window.location.href });
+
+            // Track section dwell times
+            const sections = document.querySelectorAll('section[id]');
+            const sectionTimers = {};
+
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach((entry) => {
+                    const id = entry.target.id;
+                    if (entry.isIntersecting) {
+                        sectionTimers[id] = Date.now();
+                    } else if (sectionTimers[id]) {
+                        const dwellSeconds = Math.round((Date.now() - sectionTimers[id]) / 1000);
+                        if (dwellSeconds >= 2) {
+                            trackEvent('section_viewed', {
+                                section_id: id,
+                                dwell_time_seconds: dwellSeconds
+                            });
+                        }
+                        delete sectionTimers[id];
+                    }
+                });
+            }, { threshold: 0.4 });
+
+            sections.forEach((s) => observer.observe(s));
+
+            // Track button clicks
+            document.querySelectorAll('a.btn, button.btn').forEach((btn) => {
+                btn.addEventListener('click', () => {
+                    trackEvent('cta_clicked', {
+                        text: btn.innerText.trim(),
+                        target: btn.getAttribute('href') || btn.id || 'unknown'
+                    });
+                });
+            });
+
+            // Fetch dynamic 6h edge-cached live metrics
+            fetch('/api/telemetry/stats')
+                .then(res => res.json())
+                .then(data => {
+                    if (document.getElementById('stat-shares-24h')) {
+                        document.getElementById('stat-shares-24h').textContent = data.shares24h ?? 0;
+                        document.getElementById('stat-total-shares').textContent = data.totalShares ?? 0;
+                        document.getElementById('stat-total-hours').textContent = data.totalHoursShared ?? 0;
+                        if (document.getElementById('stat-viewers-24h')) {
+                            document.getElementById('stat-viewers-24h').textContent = data.viewers24h ?? 0;
+                        }
+                        if (data.updatedAt && document.getElementById('stat-updated-at')) {
+                            document.getElementById('stat-updated-at').textContent = new Date(data.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                        }
+                        if (data.validUntil && document.getElementById('stat-valid-until')) {
+                            document.getElementById('stat-valid-until').textContent = new Date(data.validUntil).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                        }
+                    }
+                })
+                .catch(err => console.error('Error loading pulse stats:', err));
+        });
+    </script>
+</body>
+</html>

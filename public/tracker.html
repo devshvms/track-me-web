@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Location Tracker</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+        #map { height: 100vh; width: 100vw; }
+        #overlay {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: white;
+            padding: 10px 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            z-index: 1000;
+            text-align: center;
+        }
+        .status { font-weight: bold; }
+        .active { color: green; }
+        .offline { color: red; }
+        .user-name { font-size: 1.1em; font-weight: bold; margin-top: 5px; color: #333; }
+        .details { font-size: 0.9em; color: #666; margin-top: 5px; }
+        .human-marker {
+            background-color: white;
+            border: 2px solid #007bff;
+            border-radius: 20px;
+            padding: 4px 10px;
+            font-weight: bold;
+            font-size: 14px;
+            color: #007bff;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            white-space: nowrap;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .human-marker::before {
+            content: "👤";
+            margin-right: 6px;
+            font-size: 16px;
+        }
+    </style>
+</head>
+<body>
+    <div id="overlay">
+        <div class="status" id="statusText">Connecting...</div>
+        <div class="user-name" id="userNameText"></div>
+        <div class="details" id="detailsText">Waiting for location data</div>
+    </div>
+    <div id="map"></div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        // Extract sessionId from URL (e.g., /live/abc-123)
+        const pathParts = window.location.pathname.split('/');
+        const sessionId = pathParts[pathParts.length - 1];
+
+        if (!sessionId || sessionId === 'live') {
+            document.getElementById('statusText').innerText = 'Error';
+            document.getElementById('detailsText').innerText = 'No session ID provided in URL';
+            throw new Error('No session ID');
+        }
+
+        // Generate a random viewer ID to track concurrent users
+        let viewerId = sessionStorage.getItem('viewerId');
+        if (!viewerId) {
+            viewerId = Math.random().toString(36).substring(2, 15);
+            sessionStorage.setItem('viewerId', viewerId);
+        }
+
+        const map = L.map('map').setView([0, 0], 2);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+
+        let marker = null;
+        let isFirstLoad = true;
+        
+        window.shareLocation = function(lat, lon, username, timestamp) {
+            fetch('/api/telemetry/event', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ event: 'share_location_clicked', distinctId: viewerId, properties: { sessionId, username } })
+            }).catch(() => {});
+            const googleMapsLink = `https://maps.google.com/?q=${lat},${lon}`;
+            const appleMapsLink = `https://maps.apple.com/?q=${lat},${lon}`;
+            const timeString = new Date(timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+            const text = `${username}'s last location was fetched here at ${timeString}:\nGoogle Maps: ${googleMapsLink}\nApple Maps: ${appleMapsLink}`;
+            
+            if (navigator.share) {
+                navigator.share({ title: `${username}'s Location`, text: text }).catch(console.error);
+            } else {
+                navigator.clipboard.writeText(text).then(() => alert('Copied to clipboard!'));
+            }
+        };
+
+        let pollingInterval = null;
+
+        async function fetchLocation() {
+            try {
+                const response = await fetch(`/api/track/${sessionId}/location?viewerId=${viewerId}`);
+                if (!response.ok) {
+                    if (response.status === 404) {
+                        document.getElementById('statusText').innerText = 'Session Expired';
+                        document.getElementById('statusText').className = 'status offline';
+                        const timeStr = window.lastKnownDuration ? `Location was shared for ${window.lastKnownDuration} minutes and time elapsed.` : 'Location sharing time elapsed or session ended.';
+                        document.getElementById('detailsText').innerText = timeStr;
+                        if (pollingInterval) clearInterval(pollingInterval);
+                        return;
+                    }
+                    if (response.status === 429) {
+                        document.getElementById('statusText').innerText = 'Session Full';
+                        document.getElementById('statusText').className = 'status offline';
+                        document.getElementById('detailsText').innerText = 'Maximum number of viewers reached. Try again later.';
+                        if (pollingInterval) clearInterval(pollingInterval);
+                        return;
+                    }
+                    throw new Error('Failed to fetch');
+                }
+
+                const data = await response.json();
+                
+                if (data.initialDuration) {
+                    window.lastKnownDuration = data.initialDuration;
+                }
+                
+                if (data.status === 'stopped') {
+                    document.getElementById('statusText').innerText = 'Sharing Stopped';
+                    document.getElementById('statusText').className = 'status offline';
+                    document.getElementById('detailsText').innerText = data.stopReason || 'The rider has ended this trip.';
+                    if (pollingInterval) clearInterval(pollingInterval);
+                    return;
+                }
+                
+                if (data.lastLocation) {
+                    const { lat, lon, batteryLevel, speed, timestamp } = data.lastLocation;
+                    const pos = [lat, lon];
+                    const username = data.username || 'Anonymous';
+                    
+                    const humanIcon = L.divIcon({
+                        className: 'custom-div-icon',
+                        html: `<div class="human-marker">${username}</div>`,
+                        iconSize: [null, null],
+                        iconAnchor: [0, 0]
+                    });
+
+                    const popupContent = `
+                        <div style="text-align: center; padding: 5px;">
+                            <p style="margin: 0 0 10px 0; font-weight: bold;">Location Actions</p>
+                            <button onclick="window.shareLocation(${lat}, ${lon}, '${username}', '${timestamp}')" style="padding: 8px 12px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; margin-bottom: 10px; width: 100%;">Share Location</button>
+                            <br/>
+                            <a href="https://maps.google.com/?q=${lat},${lon}" target="_blank" style="font-size: 0.9em;">Google Maps</a> | 
+                            <a href="https://maps.apple.com/?q=${lat},${lon}" target="_blank" style="font-size: 0.9em;">Apple Maps</a>
+                        </div>
+                    `;
+                    
+                    if (!marker) {
+                        marker = L.marker(pos, { icon: humanIcon }).bindPopup(popupContent).addTo(map);
+                    } else {
+                        marker.setLatLng(pos);
+                        marker.setIcon(humanIcon);
+                        marker.setPopupContent(popupContent);
+                    }
+
+                    if (isFirstLoad) {
+                        map.setView(pos, 15);
+                        isFirstLoad = false;
+                        fetch('/api/telemetry/event', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ event: 'live_share_viewed', distinctId: viewerId, properties: { sessionId, username, viewerId } })
+                        }).catch(() => {});
+                    }
+
+                    const timeAgo = Math.round((new Date() - new Date(timestamp)) / 1000);
+                    const timeAgoStr = timeAgo < 60 ? `${timeAgo}s ago` : `${Math.round(timeAgo/60)}m ago`;
+
+                    document.getElementById('statusText').innerText = 'Live';
+                    document.getElementById('statusText').className = 'status active';
+                    document.getElementById('userNameText').innerText = `${data.username || 'Anonymous'}'s Live Location`;
+                    document.getElementById('detailsText').innerText = 
+                        `Updated: ${timeAgoStr} | Battery: ${batteryLevel ? batteryLevel + '%' : 'N/A'} | Speed: ${speed ? Math.round(speed) + ' km/h' : 'N/A'}`;
+                } else {
+                    document.getElementById('statusText').innerText = 'Waiting...';
+                    document.getElementById('statusText').className = 'status offline';
+                    document.getElementById('userNameText').innerText = `${data.username || 'Anonymous'}'s Live Location`;
+                    document.getElementById('detailsText').innerText = 'Session active, waiting for first location ping from rider.';
+                }
+            } catch (err) {
+                console.error(err);
+                document.getElementById('statusText').innerText = 'Connection Error';
+                document.getElementById('statusText').className = 'status offline';
+            }
+        }
+
+        // Fetch immediately, then poll every 5 seconds
+        fetchLocation();
+        pollingInterval = setInterval(fetchLocation, 5000);
+    </script>
+</body>
+</html>

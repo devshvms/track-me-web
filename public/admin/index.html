@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TrackMe - Admin Command Center</title>
+    <link rel="stylesheet" href="/admin/admin.css">
+    <script type="module" src="/admin/admin.js"></script>
+</head>
+<body>
+    <div id="auth-overlay" class="overlay active">
+        <div class="auth-card">
+            <h2>Admin Login</h2>
+            <p>Verifying your credentials...</p>
+            <div class="spinner"></div>
+            <p id="auth-error" class="error-msg hidden"></p>
+            <button id="admin-login-btn" class="btn btn-primary hidden" style="margin-bottom: 10px; width: 100%;">Sign in with Google</button>
+            <button id="return-home-btn" class="btn hidden" onclick="window.location.href='/'" style="width: 100%;">Return to Home</button>
+        </div>
+    </div>
+
+    <div id="admin-dashboard" class="dashboard-layout hidden">
+        <aside class="sidebar">
+            <div class="logo">TrackMe Admin</div>
+            <nav class="sidebar-nav">
+                <a href="#" class="nav-item active" data-target="tab-overview">Overview & Metrics</a>
+                <a href="#" class="nav-item" data-target="tab-config">Remote Config</a>
+                <a href="#" class="nav-item" data-target="tab-telemetry">PostHog Telemetry</a>
+                <a href="#" class="nav-item" data-target="tab-users">User Support</a>
+            </nav>
+            <div class="sidebar-footer">
+                <span id="admin-email"></span>
+                <button id="sign-out-btn" class="btn btn-outline">Sign Out</button>
+            </div>
+        </aside>
+
+        <main class="main-content">
+            <!-- OVERVIEW TAB -->
+            <section id="tab-overview" class="tab-pane active">
+                <header class="tab-header">
+                    <h1>Operational Health</h1>
+                    <button id="refresh-metrics-btn" class="btn btn-primary">Refresh Data</button>
+                </header>
+                
+                <div class="metrics-grid">
+                    <div class="metric-card">
+                        <h3>Registered Users</h3>
+                        <div class="value" id="metric-users">--</div>
+                    </div>
+                    <div class="metric-card">
+                        <h3>Active Live Sessions</h3>
+                        <div class="value" id="metric-live">--</div>
+                    </div>
+                </div>
+
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 2rem; margin-bottom: 1rem;">
+                    <h2 style="margin: 0;">Export Jobs Queue</h2>
+                    <button id="process-export-queue-btn" class="btn btn-primary" style="padding: 0.5rem 1rem; font-size: 0.9rem;">⚡ Process Export Queue Now</button>
+                </div>
+                <div class="metrics-grid">
+                    <div class="metric-card">
+                        <h3>Queued</h3>
+                        <div class="value text-warning" id="metric-export-queued">--</div>
+                    </div>
+                    <div class="metric-card">
+                        <h3>Processing</h3>
+                        <div class="value text-primary" id="metric-export-processing">--</div>
+                    </div>
+                    <div class="metric-card">
+                        <h3>Completed (24h)</h3>
+                        <div class="value text-success" id="metric-export-completed">--</div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- CONFIG TAB -->
+            <section id="tab-config" class="tab-pane">
+                <header class="tab-header">
+                    <h1>Remote Configuration</h1>
+                    <button id="save-config-btn" class="btn btn-primary">Save Changes</button>
+                </header>
+                
+                <div class="config-panel">
+                    <div class="config-item">
+                        <div class="config-info">
+                            <h3>Maintenance Mode</h3>
+                            <p>Enable to show a "Down for Maintenance" screen to all users.</p>
+                        </div>
+                        <label class="switch">
+                            <input type="checkbox" id="cfg-maintenance">
+                            <span class="slider round"></span>
+                        </label>
+                    </div>
+
+                    <div class="config-item">
+                        <div class="config-info">
+                            <h3>Live Sharing</h3>
+                            <p>Kill switch to disable Live Share feature if servers are overloaded.</p>
+                        </div>
+                        <label class="switch">
+                            <input type="checkbox" id="cfg-live-share" checked>
+                            <span class="slider round"></span>
+                        </label>
+                    </div>
+
+                    <div class="config-item">
+                        <div class="config-info">
+                            <h3>Archive Exports</h3>
+                            <p>Toggle the Asynchronous Data Export feature.</p>
+                        </div>
+                        <label class="switch">
+                            <input type="checkbox" id="cfg-exports" checked>
+                            <span class="slider round"></span>
+                        </label>
+                    </div>
+
+                    <div class="config-item vertical">
+                        <div class="config-info">
+                            <h3>System Announcement</h3>
+                            <p>Global banner message displayed at the top of the mobile app.</p>
+                        </div>
+                        <input type="text" id="cfg-announcement" placeholder="e.g. Welcome to TrackMe 1.4.0!" class="form-input">
+                    </div>
+                    
+                    <div class="config-item vertical">
+                        <div class="config-info">
+                            <h3>Minimum App Version (Android)</h3>
+                            <p>Force users below this version to update.</p>
+                        </div>
+                        <input type="text" id="cfg-min-android" placeholder="1.0.0" class="form-input">
+                    </div>
+                </div>
+            </section>
+
+            <!-- TELEMETRY TAB -->
+            <section id="tab-telemetry" class="tab-pane">
+                <header class="tab-header">
+                    <h1>PostHog Telemetry</h1>
+                    <button id="refresh-telemetry-btn" class="btn btn-primary">Refresh Stats</button>
+                </header>
+                <div class="telemetry-container">
+                    <div class="metrics-grid" style="margin-bottom: 24px;">
+                        <div class="metric-card">
+                            <h3>Live Shares (24h)</h3>
+                            <div class="value text-primary" id="telem-shares-24h">--</div>
+                        </div>
+                        <div class="metric-card">
+                            <h3>Unique Viewers (24h)</h3>
+                            <div class="value text-primary" id="telem-viewers-24h">--</div>
+                        </div>
+                        <div class="metric-card">
+                            <h3>Total Shares (All Time)</h3>
+                            <div class="value" id="telem-total-shares">--</div>
+                        </div>
+                        <div class="metric-card">
+                            <h3>Total Viewers (All Time)</h3>
+                            <div class="value" id="telem-total-viewers">--</div>
+                        </div>
+                        <div class="metric-card">
+                            <h3>Total Hours Shared</h3>
+                            <div class="value text-success" id="telem-total-hours">--</div>
+                        </div>
+                    </div>
+                    <p class="helper-text" style="color: #888; font-size: 0.85rem; margin-top: 8px;">
+                        Data sourced from <code>/api/telemetry/stats</code> (cached 6h at edge). Last updated: <span id="telem-updated-at">--</span>
+                    </p>
+                    <div style="margin-top: 24px; border: 1px solid #ddd; border-radius: 8px; padding: 20px; background: #fafafa;">
+                        <h3 style="color: #444; margin-bottom: 8px;">PostHog Dashboard (External)</h3>
+                        <p style="color: #666; margin-bottom: 12px; font-size: 0.9rem;">
+                            To embed your PostHog shared dashboard, set the <code>POSTHOG_DASHBOARD_URL</code> environment variable in Vercel or update the iframe src below.
+                        </p>
+                        <iframe id="posthog-iframe" src="about:blank" style="width: 100%; height: 400px; border: none; border-radius: 4px; background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,0.05);" title="PostHog Dashboard"></iframe>
+                    </div>
+                </div>
+            </section>
+
+            <!-- USERS TAB -->
+            <section id="tab-users" class="tab-pane">
+                <header class="tab-header">
+                    <h1>User Support</h1>
+                </header>
+                
+                <div class="search-bar">
+                    <input type="email" id="search-user-input" placeholder="Search user by email address..." class="form-input">
+                    <button id="search-user-btn" class="btn btn-primary">Search</button>
+                </div>
+
+                <div id="user-result" class="user-card hidden">
+                    <h3 id="res-email">user@example.com</h3>
+                    <div class="user-meta">
+                        <p><strong>UID:</strong> <span id="res-uid"></span></p>
+                        <p><strong>OS:</strong> <span id="res-os"></span></p>
+                        <p><strong>App Version:</strong> <span id="res-version"></span></p>
+                        <p><strong>Created:</strong> <span id="res-created"></span></p>
+                        <p><strong>Last Login:</strong> <span id="res-login"></span></p>
+                    </div>
+                    <div class="user-actions">
+                        <button class="btn btn-danger" id="suspend-user-btn">Suspend Account</button>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+</body>
+</html>

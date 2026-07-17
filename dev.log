@@ -1,0 +1,43 @@
+Vercel CLI 54.18.3 (Node.js 25.2.1)
+Retrieving project…
+> Ready! Available at http://localhost:3000
+/Users/shvms/anti-gravity/live-share/api/track/[sessionId]/location.ts:16
+  await connectRedis();
+        ^
+
+TypeError: (0 , import_redis.connectRedis) is not a function
+    at handler (/Users/shvms/anti-gravity/live-share/api/track/[sessionId]/location.ts:16:9)
+    at Server.serverFound (/opt/homebrew/lib/node_modules/vercel/node_modules/@vercel/node/dist/dev-server.mjs:1175:14)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+
+Node.js v25.2.1
+/Users/shvms/anti-gravity/live-share/api/track/[sessionId]/location.ts:16
+  await connectRedis();
+        ^
+
+TypeError: (0 , import_redis.connectRedis) is not a function
+    at handler (/Users/shvms/anti-gravity/live-share/api/track/[sessionId]/location.ts:16:9)
+    at Server.serverFound (/opt/homebrew/lib/node_modules/vercel/node_modules/@vercel/node/dist/dev-server.mjs:1175:14)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+
+Node.js v25.2.1
+/Users/shvms/anti-gravity/live-share/api/track/[sessionId]/location.ts:16
+  await connectRedis();
+        ^
+
+TypeError: (0 , import_redis.connectRedis) is not a function
+    at handler (/Users/shvms/anti-gravity/live-share/api/track/[sessionId]/location.ts:16:9)
+    at Server.serverFound (/opt/homebrew/lib/node_modules/vercel/node_modules/@vercel/node/dist/dev-server.mjs:1175:14)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+
+Node.js v25.2.1
+/Users/shvms/anti-gravity/live-share/api/track/[sessionId]/location.ts:16
+  await connectRedis();
+        ^
+
+TypeError: (0 , import_redis.connectRedis) is not a function
+    at handler (/Users/shvms/anti-gravity/live-share/api/track/[sessionId]/location.ts:16:9)
+    at Server.serverFound (/opt/homebrew/lib/node_modules/vercel/node_modules/@vercel/node/dist/dev-server.mjs:1175:14)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+
+Node.js v25.2.1

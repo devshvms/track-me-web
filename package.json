@@ -1,0 +1,29 @@
+{
+  "name": "track-me-web",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "adm-zip": "^0.6.0",
+    "dotenv": "^17.4.2",
+    "firebase-admin": "^14.1.0",
+    "posthog-node": "^5.41.0",
+    "redis": "^6.0.1",
+    "uuid": "^14.0.1"
+  },
+  "devDependencies": {
+    "@types/adm-zip": "^0.5.8",
+    "@types/node": "^26.0.1",
+    "@types/uuid": "^10.0.0",
+    "@vercel/node": "^5.8.22",
+    "ts-node": "^10.9.2",
+    "typescript": "^6.0.3"
+  }
+}

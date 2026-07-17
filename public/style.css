@@ -1,0 +1,399 @@
+:root {
+    --primary: #1976d2;
+    --primary-dark: #115293;
+    --danger: #d32f2f;
+    --danger-dark: #9a0007;
+    --bg: #ffffff;
+    --bg-light: #f5f5f5;
+    --text: #333333;
+    --text-light: #666666;
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: var(--text);
+    line-height: 1.6;
+}
+
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem 2rem;
+    background-color: var(--bg);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+.logo {
+    font-size: 1.5rem;
+    font-weight: bold;
+    color: var(--primary);
+}
+
+.nav a {
+    margin-right: 1.5rem;
+    text-decoration: none;
+    color: var(--text);
+    font-weight: 500;
+}
+
+.nav a:hover {
+    color: var(--primary);
+}
+
+.btn {
+    display: inline-block;
+    padding: 0.5rem 1rem;
+    background-color: var(--primary);
+    color: white;
+    text-decoration: none;
+    border-radius: 4px;
+    border: none;
+    cursor: pointer;
+    font-size: 1rem;
+    font-weight: bold;
+}
+
+.btn:hover {
+    background-color: var(--primary-dark);
+}
+
+.btn-large {
+    padding: 0.75rem 1.5rem;
+    font-size: 1.1rem;
+}
+
+.btn-danger {
+    background-color: var(--danger);
+}
+
+.btn-danger:hover {
+    background-color: var(--danger-dark);
+}
+
+.btn-danger:disabled {
+    background-color: #e0e0e0;
+    color: #9e9e9e;
+    cursor: not-allowed;
+}
+
+.hero {
+    text-align: center;
+    padding: 4rem 2rem;
+    background-color: var(--bg-light);
+}
+
+.hero h1 {
+    font-size: 2.5rem;
+    margin-bottom: 1rem;
+}
+
+.hero p {
+    font-size: 1.2rem;
+    color: var(--text-light);
+    margin-bottom: 2rem;
+    max-width: 600px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.section {
+    padding: 4rem 2rem;
+    max-width: 1000px;
+    margin: 0 auto;
+}
+
+.section h2 {
+    text-align: center;
+    margin-bottom: 2rem;
+    font-size: 2rem;
+}
+
+.bg-light {
+    background-color: var(--bg-light);
+}
+
+.grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 2rem;
+}
+
+.card {
+    background: white;
+    padding: 2rem;
+    border-radius: 8px;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+}
+
+.card h3 {
+    margin-bottom: 1rem;
+    color: var(--primary);
+}
+
+/* Tabs */
+.tabs {
+    display: flex;
+    border-bottom: 2px solid #ccc;
+    margin-bottom: 1.5rem;
+}
+.tab-btn {
+    background: none;
+    border: none;
+    padding: 0.75rem 1.5rem;
+    font-size: 1.1rem;
+    cursor: pointer;
+    color: var(--text-light);
+    font-weight: bold;
+}
+.tab-btn.active {
+    color: var(--primary);
+    border-bottom: 3px solid var(--primary);
+    margin-bottom: -2px;
+}
+.tab-content {
+    display: none;
+}
+.tab-content.active {
+    display: block;
+}
+
+/* Scrollable Releases Container — Shows first 3 releases, scrolls for the rest */
+.releases-scroll-container {
+    max-height: 560px;
+    overflow-y: auto;
+    padding-right: 10px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--primary) #f0f0f0;
+}
+.releases-scroll-container::-webkit-scrollbar {
+    width: 6px;
+}
+.releases-scroll-container::-webkit-scrollbar-track {
+    background: #f0f0f0;
+    border-radius: 4px;
+}
+.releases-scroll-container::-webkit-scrollbar-thumb {
+    background-color: var(--primary);
+    border-radius: 4px;
+}
+
+/* Release Cards Accordion */
+.release-card {
+    padding: 0 !important;
+    overflow: hidden;
+    transition: box-shadow 0.2s ease, border-color 0.2s ease;
+    border: 1px solid #e2e8f0;
+    margin-bottom: 14px;
+}
+.release-header {
+    padding: 1.25rem 1.5rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+    user-select: none;
+    background-color: #ffffff;
+    transition: background-color 0.2s ease;
+}
+.release-header:hover {
+    background-color: #f8fafc;
+}
+.release-header h3 {
+    margin-bottom: 0 !important;
+    font-size: 1.1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+    color: var(--text-main);
+}
+.release-version-badge {
+    background: var(--primary);
+    color: white;
+    padding: 0.25rem 0.65rem;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+}
+.release-name {
+    font-weight: 600;
+    color: var(--primary);
+}
+.release-date {
+    font-size: 0.88rem;
+    color: #64748b;
+    font-weight: normal;
+}
+.release-toggle-icon {
+    font-size: 0.95rem;
+    color: #64748b;
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    display: inline-block;
+    flex-shrink: 0;
+    margin-left: 1rem;
+}
+.release-card.active .release-toggle-icon {
+    transform: rotate(180deg);
+    color: var(--primary);
+}
+.release-card.active {
+    border-color: var(--primary);
+    box-shadow: 0 4px 12px rgba(79, 70, 229, 0.08);
+}
+.release-body {
+    max-height: 0;
+    overflow: hidden;
+    padding: 0 1.5rem;
+    background-color: #fcfcfd;
+    border-top: 1px solid transparent;
+    transition: max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1), padding 0.35s ease, border-color 0.35s ease;
+}
+.release-card.active .release-body {
+    max-height: 800px;
+    padding: 1.25rem 1.5rem;
+    border-top-color: #f1f5f9;
+}
+
+
+.danger-zone {
+    border: 1px solid var(--danger);
+    background-color: #fffafa;
+}
+
+.danger-text {
+    color: var(--danger);
+}
+
+.hidden {
+    display: none !important;
+}
+
+.form-group {
+    margin-top: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: bold;
+}
+
+.form-group input, .form-group textarea {
+    width: 100%;
+    padding: 0.5rem;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-family: inherit;
+}
+
+#delete-message {
+    margin-top: 1rem;
+    font-weight: bold;
+}
+
+/* Telemetry Pulse Card */
+.telemetry-card {
+    background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+    color: #f8fafc;
+    border-radius: 16px;
+    padding: 2.2rem;
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.25);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    margin: 2.5rem 0;
+}
+.telemetry-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 1rem;
+    margin-bottom: 1.8rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+    padding-bottom: 1.2rem;
+}
+.telemetry-title {
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: #ffffff;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+}
+.telemetry-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: rgba(16, 185, 129, 0.15);
+    color: #34d399;
+    padding: 0.35rem 0.85rem;
+    border-radius: 9999px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    border: 1px solid rgba(16, 185, 129, 0.3);
+}
+.live-pulse {
+    width: 8px;
+    height: 8px;
+    background-color: #10b981;
+    border-radius: 50%;
+    box-shadow: 0 0 8px #10b981;
+    animation: pulse-ring 1.5s infinite;
+}
+@keyframes pulse-ring {
+    0% { transform: scale(0.95); opacity: 1; }
+    50% { transform: scale(1.3); opacity: 0.6; }
+    100% { transform: scale(0.95); opacity: 1; }
+}
+.telemetry-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1.2rem;
+}
+.telemetry-stat {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    padding: 1.2rem;
+    transition: transform 0.2s ease, background 0.2s ease;
+}
+.telemetry-stat:hover {
+    transform: translateY(-2px);
+    background: rgba(255, 255, 255, 0.08);
+}
+.stat-label {
+    font-size: 0.82rem;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-weight: 600;
+    margin-bottom: 0.4rem;
+}
+.stat-value {
+    font-size: 1.75rem;
+    font-weight: 800;
+    color: #38bdf8;
+}
+.stat-desc {
+    font-size: 0.8rem;
+    color: #cbd5e1;
+    margin-top: 0.3rem;
+}
+
+footer {
+    text-align: center;
+    padding: 2rem;
+    background-color: var(--text);
+    color: white;
+}
