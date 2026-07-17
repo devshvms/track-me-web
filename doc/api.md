@@ -31,8 +31,6 @@ The server reads the user’s data only when the download URL is opened. It read
 
 Each ride becomes one `traces/ride_{rideId}.gpx` entry. The ZIP also contains `metadata.json` and `rides_history.json`. The server expects synchronized point fields `lat`, `lng`, `altitude`, `accuracy`, `speed`, `timestamp`, and `isPaused`.
 
-The server stages the ZIP in Vercel's ephemeral `/tmp` filesystem before sending response headers. This keeps archive bytes out of process memory and ensures Firestore, GPX, and archive-generation failures can still return the JSON `502` contract instead of a partial ZIP. The completed temporary file is then streamed to the client and removed after the response closes. A client disconnect before the response finishes does not start the six-hour retention window.
-
 ### 1. Request an export
 
 ```http

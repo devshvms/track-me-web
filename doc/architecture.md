@@ -7,7 +7,7 @@ The system is built on a serverless architecture designed to run on Vercel. It l
 - **Compute**: Vercel Serverless Functions (Node.js/TypeScript)
 - **Primary Data Store**: Redis (Upstash or standard Redis instance). Includes a local in-memory fallback for development.
 - **Analytics Engine**: PostHog Node SDK.
-- **Archive Processing**: `archiver` stages ZIP output in Vercel's ephemeral filesystem, then streams the completed file to the client without holding the archive in process memory.
+- **Archive Processing**: `adm-zip` for in-memory zip creation.
 - **Persistent Storage / Auth**: Firebase Admin SDK (Firestore, Auth).
 
 ## Component Architecture
@@ -28,7 +28,7 @@ Redis is strictly used as a fast, TTL-based KV store for:
 ### 3. Export Lifecycle
 1. **Request (`/api/export/request`)**: Client authenticates with a Firebase ID token. Redis stores a completed export record and a random download capability token. The operation is intentionally synchronous at the metadata level.
 2. **Status (`/api/export/status`)**: Client may retrieve the completed record with a Firebase ID token. Repeated requests are idempotent for the same user while the record is retained.
-3. **Download (`/api/export/download`)**: Client uses the exact tokenized `downloadUrl` returned by request/status. The server reads the requesting user’s Firestore profile, emergency configuration, and rides before sending headers, stages the generated ZIP in Vercel's ephemeral filesystem, and then streams the completed file. Firestore/GPX/archive failures return structured `502` JSON before a ZIP response begins. The six-hour retention marker is persisted only after the response finishes; an untouched or interrupted record remains available until its existing expiry window.
+3. **Download (`/api/export/download`)**: Client uses the exact tokenized `downloadUrl` returned by request/status. The server reads the requesting user’s Firestore profile and emergency configuration before sending headers, then streams ride documents and GPX entries through `archiver` into the ZIP response. The six-hour retention marker is persisted only after archive finalization succeeds; an untouched record expires after 48 hours. Mid-stream Firestore/GPX failures still require runtime-tested failure semantics before this extension is production-approved.
 
 ## Security & Privacy Considerations
 - **No Long-Term Session State**: All live-share sessions auto-expire via Redis TTLs, preventing "zombie" share links.
