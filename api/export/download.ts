@@ -67,16 +67,10 @@ export default async function handler(
       });
     }
 
-    if (!data.downloadAccessedAt) {
-      data.downloadAccessedAt = new Date().toISOString();
-      data.expiresAt = new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString();
-
-      const ttlSeconds = 6 * 60 * 60;
-      await Promise.all([
-        data.userId ? redis.set(`export:user:${data.userId}`, JSON.stringify(data), { EX: ttlSeconds }) : Promise.resolve(),
-        data.requestId ? redis.set(`export:request:${data.requestId}`, JSON.stringify(data), { EX: ttlSeconds }) : Promise.resolve(),
-      ]);
-    }
+    const firstDownload = !data.downloadAccessedAt;
+    const downloadExpiry = firstDownload
+      ? new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString()
+      : data.expiresAt;
 
     let userData: Record<string, unknown>;
     try {
@@ -116,7 +110,7 @@ export default async function handler(
       userEmail: (userData as any).email || data.userEmail || `${data.userId}@trackme.user`,
       userId: data.userId,
       generatedAt: data.completedAt || new Date().toISOString(),
-      expiresAt: data.expiresAt,
+      expiresAt: downloadExpiry,
       retentionPolicy: 'Archive files expire 6 hours after retrieval (or max 48 hours unaccessed).',
       platformVersion: 'TrackMe Mobile & Web v1.5.0',
       profile: userData,
@@ -218,6 +212,17 @@ ${trkpts}    </trkseg>
 
       // Finalize the archive (closes the stream)
       await archive.finalize();
+
+      if (firstDownload) {
+        data.downloadAccessedAt = new Date().toISOString();
+        data.expiresAt = downloadExpiry;
+
+        const ttlSeconds = 6 * 60 * 60;
+        await Promise.all([
+          data.userId ? redis.set(`export:user:${data.userId}`, JSON.stringify(data), { EX: ttlSeconds }) : Promise.resolve(),
+          data.requestId ? redis.set(`export:request:${data.requestId}`, JSON.stringify(data), { EX: ttlSeconds }) : Promise.resolve(),
+        ]);
+      }
 
     } catch (err) {
       console.error('Error streaming rides from Firestore:', err);
