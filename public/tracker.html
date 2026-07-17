@@ -100,10 +100,16 @@
         };
 
         let pollingInterval = null;
+        let pingInterval = null;
 
-        async function fetchLocation() {
+        async function pingPresence() {
             try {
-                const response = await fetch(`/api/track/${sessionId}/location?viewerId=${viewerId}`);
+                const response = await fetch(`/api/track/${sessionId}/ping`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ viewerId })
+                });
+                
                 if (!response.ok) {
                     if (response.status === 404) {
                         document.getElementById('statusText').innerText = 'Session Expired';
@@ -111,6 +117,7 @@
                         const timeStr = window.lastKnownDuration ? `Location was shared for ${window.lastKnownDuration} minutes and time elapsed.` : 'Location sharing time elapsed or session ended.';
                         document.getElementById('detailsText').innerText = timeStr;
                         if (pollingInterval) clearInterval(pollingInterval);
+                        if (pingInterval) clearInterval(pingInterval);
                         return;
                     }
                     if (response.status === 429) {
@@ -118,6 +125,34 @@
                         document.getElementById('statusText').className = 'status offline';
                         document.getElementById('detailsText').innerText = 'Maximum number of viewers reached. Try again later.';
                         if (pollingInterval) clearInterval(pollingInterval);
+                        if (pingInterval) clearInterval(pingInterval);
+                        return;
+                    }
+                }
+            } catch (err) {
+                console.error('Ping failed:', err);
+            }
+        }
+
+        async function fetchLocation() {
+            try {
+                const response = await fetch(`/api/track/${sessionId}/location`);
+                if (!response.ok) {
+                    if (response.status === 404) {
+                        document.getElementById('statusText').innerText = 'Session Expired';
+                        document.getElementById('statusText').className = 'status offline';
+                        const timeStr = window.lastKnownDuration ? `Location was shared for ${window.lastKnownDuration} minutes and time elapsed.` : 'Location sharing time elapsed or session ended.';
+                        document.getElementById('detailsText').innerText = timeStr;
+                        if (pollingInterval) clearInterval(pollingInterval);
+                        if (pingInterval) clearInterval(pingInterval);
+                        return;
+                    }
+                    if (response.status === 429) {
+                        document.getElementById('statusText').innerText = 'Session Full';
+                        document.getElementById('statusText').className = 'status offline';
+                        document.getElementById('detailsText').innerText = 'Maximum number of viewers reached. Try again later.';
+                        if (pollingInterval) clearInterval(pollingInterval);
+                        if (pingInterval) clearInterval(pingInterval);
                         return;
                     }
                     throw new Error('Failed to fetch');
@@ -134,6 +169,7 @@
                     document.getElementById('statusText').className = 'status offline';
                     document.getElementById('detailsText').innerText = data.stopReason || 'The rider has ended this trip.';
                     if (pollingInterval) clearInterval(pollingInterval);
+                    if (pingInterval) clearInterval(pingInterval);
                     return;
                 }
                 
@@ -200,7 +236,9 @@
 
         // Fetch immediately, then poll every 5 seconds
         fetchLocation();
+        pingPresence();
         pollingInterval = setInterval(fetchLocation, 5000);
+        pingInterval = setInterval(pingPresence, 15000);
     </script>
 </body>
 </html>

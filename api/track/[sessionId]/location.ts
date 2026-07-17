@@ -2,7 +2,6 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { getRedisClient } from '../../../lib/redis';
 import { AuthError, requireUser, sendAuthError } from '../../../lib/auth';
 
-const MAX_CONCURRENT_VIEWERS = parseInt(process.env.MAX_CONCURRENT_VIEWERS || '10', 10);
 
 export default async function handler(
   request: VercelRequest,
@@ -25,31 +24,9 @@ export default async function handler(
     const sessionData = JSON.parse(sessionDataStr);
 
     if (request.method === 'GET') {
-      if (typeof viewerId !== 'string' || !viewerId) {
-         return response.status(400).json({ error: 'Missing viewerId' });
-      }
-
-      const viewersKey = `session:${sessionId}:viewers`;
-      const now = Date.now();
-      
-      // Remove viewers who haven't pinged in the last 15 seconds (polling is every 5s)
-      await redis.zRemRangeByScore(viewersKey, 0, now - 15000);
-      
-      const isExistingViewer = await redis.zScore(viewersKey, viewerId);
-      const currentViewerCount = await redis.zCard(viewersKey);
-
-      if (isExistingViewer === null && currentViewerCount >= MAX_CONCURRENT_VIEWERS) {
-         return response.status(429).json({ error: 'Maximum concurrent viewers reached for this session.' });
-      }
-
-      // Add or update the viewer's last ping timestamp
-      await redis.zAdd(viewersKey, { score: now, value: viewerId });
-      
-      // Ensure the viewers list expires when the session expires
-      const ttl = await redis.ttl(`session:${sessionId}`);
-      if (ttl > 0) {
-        await redis.expire(viewersKey, ttl);
-      }
+      // Allow Vercel Edge to cache this response across all viewers for 2 seconds.
+      // If 10k users poll every 5s, the edge cache absorbs 99.9% of the traffic.
+      response.setHeader('Cache-Control', 's-maxage=2, stale-while-revalidate');
 
       return response.status(200).json(sessionData);
     } 
