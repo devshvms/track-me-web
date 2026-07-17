@@ -2,6 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { getRedisClient } from '../../lib/redis';
 import { auth, db } from '../../lib/firebase';
 import { assertOwnsUserId, requireUser, sendAuthError } from '../../lib/auth';
+import { escapeXml, finiteCoordinate, isoTimestamp } from '../../lib/exportXml';
 
 function hasValidDownloadToken(data: any, token: unknown): boolean {
   return typeof token === 'string'
@@ -184,24 +185,28 @@ export default async function handler(
         let trkpts = '';
         if (Array.isArray(ride.points)) {
           for (const loc of ride.points) {
-            const ele = loc.altitude !== undefined ? `\n        <ele>${loc.altitude}</ele>` : '';
-            const time = loc.timestamp ? `\n        <time>${new Date(loc.timestamp).toISOString()}</time>` : '';
-            const speed = loc.speed !== undefined ? `\n        <speed>${loc.speed}</speed>` : '';
-            trkpts += `      <trkpt lat="${loc.lat || 0}" lon="${loc.lng || 0}">${ele}${time}${speed}\n      </trkpt>\n`;
+            const ele = loc.altitude !== undefined ? `\n        <ele>${finiteCoordinate(loc.altitude)}</ele>` : '';
+            const timestamp = isoTimestamp(loc.timestamp);
+            const time = timestamp ? `\n        <time>${timestamp}</time>` : '';
+            const speed = loc.speed !== undefined ? `\n        <speed>${finiteCoordinate(loc.speed)}</speed>` : '';
+            trkpts += `      <trkpt lat="${finiteCoordinate(loc.lat)}" lon="${finiteCoordinate(loc.lng)}">${ele}${time}${speed}\n      </trkpt>\n`;
           }
         }
 
+        const title = escapeXml(ride.title || `Ride Trace Archive - ${doc.id}`);
+        const summaryTitle = escapeXml(ride.title || `Ride ${doc.id}`);
+        const startTimestamp = isoTimestamp(ride.startTime) || new Date().toISOString();
         const gpxTrace = `<?xml version="1.0" encoding="UTF-8"?>
 <gpx version="1.1" creator="TrackMe v1.5.0">
   <metadata>
-    <name>${ride.title || `Ride Trace Archive - ${doc.id}`}</name>
-    <time>${ride.startTime ? new Date(ride.startTime).toISOString() : new Date().toISOString()}</time>
+    <name>${title}</name>
+    <time>${startTimestamp}</time>
   </metadata>
   <trk>
-    <name>${ride.title || `Ride ${doc.id}`}</name>
+    <name>${summaryTitle}</name>
     <trkseg>
 ${trkpts}    </trkseg>
-  </trk>
+</trk>
 </gpx>`;
         // Append GPX file for each ride
         archive.append(gpxTrace, { name: `traces/ride_${doc.id}.gpx` });
