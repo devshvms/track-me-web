@@ -219,7 +219,10 @@
                 }
                 
                 if (data.lastLocation) {
-                    const { lat, lon, batteryLevel, speed, timestamp } = data.lastLocation;
+                    const { lat, batteryLevel, speed, timestamp } = data.lastLocation;
+                    // Canonical field is `lng`; fall back to legacy `lon` for sessions
+                    // written before the schema migration.
+                    const lon = data.lastLocation.lng !== undefined ? data.lastLocation.lng : data.lastLocation.lon;
                     const pos = [lat, lon];
                     const username = data.username || 'Anonymous';
                     

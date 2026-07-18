@@ -37,15 +37,19 @@ export default async function handler(
         throw new AuthError(403, 'Forbidden. You do not own this live share session.');
       }
 
-      const { lat, lon, batteryLevel, speed, heading, timestamp } = request.body || {};
-      
-      if (lat === undefined || lon === undefined) {
-        return response.status(400).json({ error: 'Missing lat or lon in body' });
+      const { lat, lng, lon, batteryLevel, speed, heading, timestamp } = request.body || {};
+      // Canonical field is `lng`; `lon` is accepted for backward compatibility with
+      // mobile clients (<= v1.5.7) that still send it. Do not drop `lon` support
+      // until both stores' installed bases have migrated.
+      const longitude = lng !== undefined ? lng : lon;
+
+      if (lat === undefined || longitude === undefined) {
+        return response.status(400).json({ error: 'Missing lat or lng in body' });
       }
 
       sessionData.lastLocation = {
         lat,
-        lon,
+        lng: longitude,
         batteryLevel,
         speed,
         heading,
