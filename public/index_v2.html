@@ -20,7 +20,7 @@
     <script src="/firebase-config.js"></script>
     <script type="module" src="app.js"></script>
 </head>
-<body>
+<body data-landing-variant="v2">
     <a class="skip-link" href="#main-content">Skip to content</a>
     <header class="site-header">
         <div class="site-header-inner">
@@ -184,15 +184,25 @@
             </div>
         </section>
 
-        <section id="account" class="section-shell section-block account-section hidden" aria-labelledby="account-title">
-            <div class="section-heading"><p class="eyebrow">Your account</p><h2 id="account-title">Manage your data.</h2><p>Welcome, <span id="user-name">Explorer</span> (<span id="user-email"></span>).</p></div>
-            <div class="account-grid">
-                <div class="account-panel" id="export-card">
-                    <span class="panel-kicker">Data portability</span><h3>Download all my data</h3><p>Request your profile, ride history, and GPX traces as a tokenized ZIP assembled from your own Firestore data.</p>
-                    <button id="export-request-btn" class="btn btn-primary" type="button">Request data ZIP</button>
-                    <div id="export-status-container" class="export-status" hidden><span id="export-status-icon" aria-hidden="true">&middot;</span><div><strong id="export-status-title">Export status</strong><p id="export-status-message"></p></div><div id="export-download-action" hidden><a id="export-download-link" class="btn btn-secondary" href="#" target="_blank" rel="noreferrer">Download ZIP</a></div></div>
+        <section id="account" class="section-shell section-block account-section" aria-labelledby="account-title" data-auth-state="signed-out">
+            <div id="account-signed-out" class="account-signed-out">
+                <div class="section-heading">
+                    <p class="eyebrow">Your account</p>
+                    <h2 id="account-title">Keep your data within reach.</h2>
+                    <p>Sign in to request your archive, manage your account, or send account-specific feedback.</p>
                 </div>
-                <div class="account-panel danger-zone"><span class="panel-kicker">Permanent action</span><h3>Delete account</h3><p>Delete your account and associated cloud data. This cannot be undone.</p><div class="form-group"><label for="feedback">Optional feedback</label><textarea id="feedback" rows="3" placeholder="What could we improve?"></textarea></div><div class="form-group"><label for="confirm-delete">Type <strong>DELETE</strong> to confirm</label><input type="text" id="confirm-delete" placeholder="DELETE" autocomplete="off"></div><button id="delete-account-btn" class="btn btn-danger" type="button" disabled>Delete account</button><p id="delete-message" role="status"></p></div>
+                <button id="account-sign-in" class="btn btn-primary btn-large" type="button">Sign in to manage data</button>
+            </div>
+            <div id="account-signed-in" hidden>
+                <div class="section-heading"><p class="eyebrow">Your account</p><h2>Manage your data.</h2><p>Welcome, <span id="user-name">Explorer</span> (<span id="user-email"></span>).</p></div>
+                <div class="account-grid">
+                    <div class="account-panel" id="export-card">
+                        <span class="panel-kicker">Data portability</span><h3>Download all my data</h3><p>Request your profile, ride history, and GPX traces as a tokenized ZIP assembled from your own Firestore data.</p>
+                        <button id="export-request-btn" class="btn btn-primary" type="button">Request data ZIP</button>
+                        <div id="export-status-container" class="export-status" hidden><span id="export-status-icon" aria-hidden="true">&middot;</span><div><strong id="export-status-title">Export status</strong><p id="export-status-message"></p></div><div id="export-download-action" hidden><a id="export-download-link" class="btn btn-secondary" href="#" target="_blank" rel="noreferrer">Download ZIP</a></div></div>
+                    </div>
+                    <div class="account-panel danger-zone"><span class="panel-kicker">Permanent action</span><h3>Delete account</h3><p>Delete your account and associated cloud data. This cannot be undone.</p><div class="form-group"><label for="feedback">Optional feedback</label><textarea id="feedback" rows="3" placeholder="What could we improve?"></textarea></div><div class="form-group"><label for="confirm-delete">Type <strong>DELETE</strong> to confirm</label><input type="text" id="confirm-delete" placeholder="DELETE" autocomplete="off"></div><button id="delete-account-btn" class="btn btn-danger" type="button" disabled>Delete account</button><p id="delete-message" role="status"></p></div>
+                </div>
             </div>
         </section>
     </main>

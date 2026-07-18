@@ -24,6 +24,10 @@ const confirmInput = document.getElementById("confirm-delete");
 const deleteBtn = document.getElementById("delete-account-btn");
 const feedbackInput = document.getElementById("feedback");
 const messageEl = document.getElementById("delete-message");
+const accountSignedOut = document.getElementById("account-signed-out");
+const accountSignedIn = document.getElementById("account-signed-in");
+const accountSignInButton = document.getElementById("account-sign-in");
+const isV2Landing = document.body.dataset.landingVariant === "v2";
 
 let currentUser = null;
 
@@ -31,16 +35,28 @@ onAuthStateChanged(auth, (user) => {
     if (user) {
         currentUser = user;
         authButton.textContent = "Sign Out";
-        accountSection.classList.remove("hidden");
-        accountLink.style.display = "inline-block";
+        if (isV2Landing) {
+            accountSection.dataset.authState = "signed-in";
+            accountSignedOut.hidden = true;
+            accountSignedIn.hidden = false;
+        } else {
+            accountSection.classList.remove("hidden");
+            accountLink.style.display = "inline-block";
+        }
         userNameSpan.textContent = user.displayName || "Explorer";
         userEmailSpan.textContent = user.email;
         checkExportStatus(user.uid);
     } else {
         currentUser = null;
         authButton.textContent = "Sign In";
-        accountSection.classList.add("hidden");
-        accountLink.style.display = "none";
+        if (isV2Landing) {
+            accountSection.dataset.authState = "signed-out";
+            accountSignedOut.hidden = false;
+            accountSignedIn.hidden = true;
+        } else {
+            accountSection.classList.add("hidden");
+            accountLink.style.display = "none";
+        }
         confirmInput.value = "";
         deleteBtn.disabled = true;
         messageEl.textContent = "";
@@ -48,7 +64,7 @@ onAuthStateChanged(auth, (user) => {
     }
 });
 
-authButton.addEventListener("click", () => {
+function handleAuthAction() {
     if (currentUser) {
         signOut(auth);
     } else {
@@ -57,7 +73,10 @@ authButton.addEventListener("click", () => {
             alert("Sign in failed: " + error.message);
         });
     }
-});
+}
+
+authButton.addEventListener("click", handleAuthAction);
+if (accountSignInButton) accountSignInButton.addEventListener("click", handleAuthAction);
 
 confirmInput.addEventListener("input", (e) => {
     if (e.target.value === "DELETE") {
