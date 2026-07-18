@@ -2,15 +2,12 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebas
 import { getAuth, onAuthStateChanged, signOut, signInWithPopup, GoogleAuthProvider } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 import { getFirestore, doc, getDoc, setDoc, collection, getCountFromServer } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
-const firebaseConfig = {
-  projectId: "trackme-android-1234",
-  appId: "1:126912105508:web:980a4522cf6071a2df1cb1",
-  storageBucket: "trackme-android-1234.firebasestorage.app",
-  apiKey: "REDACTED-FIREBASE-KEY",
-  authDomain: "trackme-android-1234.firebaseapp.com",
-  messagingSenderId: "126912105508",
-  projectNumber: "126912105508"
-};
+// Firebase config is provided by /firebase-config.js (loaded via a script tag
+// before this module). See public/firebase-config.example.js.
+const firebaseConfig = window.__FIREBASE_CONFIG__;
+if (!firebaseConfig) {
+  throw new Error("Missing Firebase config: include firebase-config.js before admin.js");
+}
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
