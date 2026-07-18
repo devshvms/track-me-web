@@ -4,6 +4,10 @@
     {
       "source": "/live/:sessionId",
       "destination": "/tracker.html"
+    },
+    {
+      "source": "/api/telemetry/:route",
+      "destination": "/api/telemetry?route=:route"
     }
   ]
 }
