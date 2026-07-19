@@ -183,13 +183,18 @@ export default async function handler(
         });
 
         let trkpts = '';
-        if (Array.isArray(ride.points)) {
-          for (const loc of ride.points) {
+        const pointsSnapshot = await doc.ref.collection('points').orderBy('timestamp').get();
+        const points = pointsSnapshot.empty ? (ride.points || []) : pointsSnapshot.docs.map((p: any) => p.data());
+
+        if (Array.isArray(points)) {
+          for (const loc of points) {
+            const lat = loc.lat ?? loc.latitude;
+            const lng = loc.lng ?? loc.longitude;
             const ele = loc.altitude !== undefined ? `\n        <ele>${finiteCoordinate(loc.altitude)}</ele>` : '';
             const timestamp = isoTimestamp(loc.timestamp);
             const time = timestamp ? `\n        <time>${timestamp}</time>` : '';
             const speed = loc.speed !== undefined ? `\n        <speed>${finiteCoordinate(loc.speed)}</speed>` : '';
-            trkpts += `      <trkpt lat="${finiteCoordinate(loc.lat)}" lon="${finiteCoordinate(loc.lng)}">${ele}${time}${speed}\n      </trkpt>\n`;
+            trkpts += `      <trkpt lat="${finiteCoordinate(lat)}" lon="${finiteCoordinate(lng)}">${ele}${time}${speed}\n      </trkpt>\n`;
           }
         }
 
