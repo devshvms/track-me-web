@@ -77,6 +77,7 @@ function handleAuthAction() {
 
 authButton.addEventListener("click", handleAuthAction);
 if (accountSignInButton) accountSignInButton.addEventListener("click", handleAuthAction);
+window.__TRACKME_AUTH_READY__ = true;
 
 confirmInput.addEventListener("input", (e) => {
     if (e.target.value === "DELETE") {
@@ -154,55 +155,6 @@ deleteBtn.addEventListener("click", async () => {
         deleteBtn.disabled = false;
     }
 });
-
-// Tab switching logic
-const tabBtns = document.querySelectorAll('.tab-btn');
-const tabContents = document.querySelectorAll('.tab-content');
-
-tabBtns.forEach(btn => {
-    btn.addEventListener('click', () => {
-        // Remove active class from all
-        tabBtns.forEach(b => {
-            b.classList.remove('active');
-            b.setAttribute('aria-selected', 'false');
-        });
-        tabContents.forEach(c => {
-            c.classList.remove('active');
-            c.hidden = true;
-        });
-        
-        // Add active class to clicked button and target content
-        btn.classList.add('active');
-        btn.setAttribute('aria-selected', 'true');
-        const targetId = btn.getAttribute('data-target');
-        const target = document.getElementById(targetId);
-        target.classList.add('active');
-        target.hidden = false;
-    });
-});
-
-// Release Cards Accordion Logic
-const releaseHeaders = document.querySelectorAll('.release-header');
-releaseHeaders.forEach(header => {
-    header.addEventListener('click', () => {
-        const currentCard = header.closest('.release-card');
-        const wasActive = currentCard.classList.contains('active');
-
-        // Collapse all release cards ("expand only 1 at a time")
-        document.querySelectorAll('.release-card').forEach(card => {
-            card.classList.remove('active');
-            const cardHeader = card.querySelector('.release-header');
-            if (cardHeader) cardHeader.setAttribute('aria-expanded', 'false');
-        });
-
-        // If clicked card wasn't already open, open it now
-        if (!wasActive) {
-            currentCard.classList.add('active');
-            header.setAttribute('aria-expanded', 'true');
-        }
-    });
-});
-
 
 // --- Data Portability & Archive Export Logic ---
 function displayExportStatus(data) {
