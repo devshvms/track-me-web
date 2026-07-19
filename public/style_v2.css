@@ -1,21 +1,40 @@
+@font-face {
+    font-family: "Inter";
+    src: url("assets/fonts/inter-variable.ttf") format("truetype");
+    font-style: normal;
+    font-weight: 100 900;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: "Space Grotesk";
+    src: url("assets/fonts/space-grotesk-variable.ttf") format("truetype");
+    font-style: normal;
+    font-weight: 300 700;
+    font-display: swap;
+}
+
 :root {
-    --ink: #eef4f7;
-    --muted: #aebfc7;
-    --muted-strong: #c9d6db;
-    --night: #0b1320;
-    --night-soft: #111d2c;
-    --panel: #162536;
-    --line: #2a4150;
-    --cyan: #63d9e8;
-    --cyan-deep: #1b9cad;
-    --green: #8ce2b4;
-    --danger: #ff9c93;
+    --ink: #f8fafc;
+    --muted: #94a3b8;
+    --muted-strong: #e2e8f0;
+    --night: #12161c;
+    --night-soft: #181a20;
+    --panel: #23272f;
+    --line: #475569;
+    --cyan: #29b6f6;
+    --cyan-deep: #0277b6;
+    --green: #16a34a;
+    --danger: #f87171;
+    --danger-solid: #dc2626;
+    --amber: #f59e0b;
     --max: 1120px;
 }
 
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
 body { margin: 0; background: var(--night); color: var(--ink); font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; line-height: 1.55; }
+h1, h2, .brand { font-family: "Space Grotesk", Inter, ui-sans-serif, system-ui, sans-serif; }
 a { color: inherit; }
 button, input, textarea { font: inherit; }
 button, a { -webkit-tap-highlight-color: transparent; }
@@ -24,7 +43,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .section-shell { width: min(var(--max), calc(100% - 40px)); margin-inline: auto; }
 .site-header { position: sticky; top: 0; z-index: 10; border-bottom: 1px solid rgba(99, 217, 232, .16); background: rgba(11, 19, 32, .96); }
 .site-header-inner { width: min(var(--max), calc(100% - 40px)); min-height: 72px; margin-inline: auto; display: flex; align-items: center; justify-content: space-between; gap: 24px; }
-.brand { display: inline-flex; align-items: center; gap: 10px; font-weight: 850; font-size: 1.2rem; text-decoration: none; letter-spacing: .01em; }
+.brand { display: inline-flex; align-items: center; gap: 10px; font-weight: 700; font-size: 1.2rem; text-decoration: none; letter-spacing: .01em; }
 .brand-mark { display: grid; place-items: center; width: 30px; height: 30px; border: 2px solid var(--cyan); color: var(--cyan); border-radius: 50%; font-weight: 900; }
 .site-nav { display: flex; align-items: center; justify-content: flex-end; gap: 20px; color: var(--muted-strong); font-size: .92rem; }
 .site-nav a { text-decoration: none; }
@@ -34,8 +53,8 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .btn:hover { transform: translateY(-1px); }
 .btn:focus-visible, .text-link:focus-visible, .site-nav a:focus-visible, .brand:focus-visible, summary:focus-visible, .release-header:focus-visible, input:focus-visible, textarea:focus-visible { outline: 3px solid var(--green); outline-offset: 3px; }
 .btn-small { min-height: 44px; padding: 7px 13px; background: transparent; border-color: var(--line); color: var(--ink); }
-.btn-primary { background: var(--cyan); color: #06202a; }
-.btn-primary:hover { background: #8be6ef; }
+.btn-primary { background: var(--cyan); color: var(--night); }
+.btn-primary:hover { background: #67cdf9; }
 .btn-secondary { background: transparent; border-color: var(--line); color: var(--ink); }
 .btn-secondary:hover { border-color: var(--cyan); color: var(--cyan); }
 .btn-outline-light { border-color: var(--muted-strong); color: var(--ink); }
