@@ -2,50 +2,159 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Privacy Policy - TrackMe</title>
-    <link rel="stylesheet" href="style.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="TrackMe privacy policy: what data is handled, why it is used, service providers, security, retention, export, and deletion controls.">
+    <meta name="theme-color" content="#12161c">
+    <link rel="canonical" href="https://trackme.shvms.in/privacy.html">
+    <link rel="icon" href="assets/trackme-favicon.svg">
+    <link rel="stylesheet" href="style_v2.css?v=3">
+    <title>Privacy Policy | TrackMe</title>
 </head>
 <body>
-    <header class="header">
-        <div class="logo">TrackMe</div>
-        <nav class="nav">
-            <a href="index.html">Home</a>
-        </nav>
+    <a class="skip-link" href="#privacy-content">Skip to policy</a>
+    <header class="site-header">
+        <div class="site-header-inner">
+            <a class="brand" href="index_v2.html#top" aria-label="TrackMe home">
+                <span class="brand-mark" aria-hidden="true">T</span><span>TrackMe</span>
+            </a>
+            <nav class="site-nav" aria-label="Privacy navigation">
+                <a href="index_v2.html">Home</a>
+                <a href="index_v2.html#support">Support</a>
+                <a href="index_v2.html#account">Account</a>
+            </nav>
+        </div>
     </header>
 
-    <main>
-        <section class="section">
-            <div class="card">
-                <h2>Privacy Policy</h2>
-                <p><strong>Last Updated:</strong> June 23, 2026</p>
-
-                <h3>1. Information We Collect</h3>
-                <p>TrackMe is designed to be a personal ride-tracking application. When you use the application, we may collect the following information:</p>
-                <ul>
-                    <li><strong>Account Information:</strong> When you sign in using Google Authentication, we collect your name and email address.</li>
-                    <li><strong>Location Data (GPS):</strong> To provide our core service (ride tracking), the app collects your location data, including latitude, longitude, and altitude, both while the app is in the foreground and the background during an active recording.</li>
-                    <li><strong>User-Generated Content:</strong> Any feedback or crash reports you optionally submit.</li>
-                </ul>
-
-                <h3>2. How We Use Your Information</h3>
-                <p>We use the collected information exclusively to provide, maintain, and improve the TrackMe service. Your GPS data is used to render maps and calculate your speed and altitude metrics. Your account information is used to authenticate you across devices securely and synchronize your ride data via Firebase.</p>
-
-                <h3>3. Account and Data Deletion</h3>
-                <p>You have full control over your data. You can permanently delete your account and all associated cloud data (rides, GPS points, emergency configurations) at any time. This can be done directly within the TrackMe Android app or through our <a href="index.html#account">web management portal</a>.</p>
-                <p>Upon deletion, all your associated data is permanently wiped from our Firestore database and cannot be recovered.</p>
-
-                <h3>4. Data Sharing and Security</h3>
-                <p>We do not sell, rent, or trade your personal information or location data to third parties. Your data is stored securely using Google Firebase, which employs industry-standard encryption and security protocols.</p>
-
-                <h3>5. Contact Us</h3>
-                <p>If you have any questions or concerns about this Privacy Policy, please contact the developer via the feedback mechanism inside the app or the web portal.</p>
-            </div>
+    <main id="privacy-content">
+        <section class="section-shell legal-hero" aria-labelledby="privacy-title">
+            <p class="eyebrow">Privacy, in plain language</p>
+            <h1 id="privacy-title">Privacy Policy</h1>
+            <p>TrackMe is a local-first GPS tracking app for Android, with optional account, cloud-sync, live-sharing, emergency, analytics, and Web account-management features. This policy explains the data those features handle and the choices available to you.</p>
+            <span class="legal-updated">Effective and last updated: July 19, 2026</span>
         </section>
+
+        <div class="section-shell legal-layout">
+            <aside class="legal-toc" aria-label="Policy contents">
+                <strong>On this page</strong>
+                <a href="#scope">1. Scope</a>
+                <a href="#data-we-handle">2. Data we handle</a>
+                <a href="#how-we-use-data">3. How data is used</a>
+                <a href="#sharing-processors">4. Sharing and processors</a>
+                <a href="#local-cloud">5. Local and cloud storage</a>
+                <a href="#retention-deletion">6. Retention and deletion</a>
+                <a href="#security">7. Security and transfers</a>
+                <a href="#permissions">8. Device permissions</a>
+                <a href="#choices">9. Your choices</a>
+                <a href="#children">10. Children</a>
+                <a href="#contact">11. Contact and changes</a>
+            </aside>
+
+            <article class="legal-content">
+                <section id="scope" class="legal-section">
+                    <h2>1. Scope and operator</h2>
+                    <p>This policy applies to the TrackMe Android application (package <code>in.shvms.trackme</code>), the TrackMe website, public Live Share pages, and related account-management services. TrackMe is the product and operator named in this policy.</p>
+                    <div class="legal-callout"><strong>Core promise:</strong> TrackMe does not sell, rent, or trade your personal information or precise location data. It has no third-party advertising SDK.</div>
+                </section>
+
+                <section id="data-we-handle" class="legal-section">
+                    <h2>2. Data we access, collect, or process</h2>
+                    <div class="legal-grid">
+                        <div class="legal-card"><h3>Location and ride records</h3><p>During active tracking, TrackMe handles precise and approximate location, latitude, longitude, altitude, accuracy, speed, heading, timestamps, route points, distance, duration, and related ride statistics. Background location is used only for an active recording or user-enabled safety feature.</p></div>
+                        <div class="legal-card"><h3>Account information</h3><p>If you choose Google Sign-In, Firebase Authentication provides your display name, email address, account identifier, and authentication/security metadata. An account is optional for local-only recording.</p></div>
+                        <div class="legal-card"><h3>Emergency information</h3><p>If you configure SOS, TrackMe stores the contact names and phone numbers you enter or select, your message template, SOS settings, and delivery logs. A delivery log can include the recipient number, message text, type, and timestamp.</p></div>
+                        <div class="legal-card"><h3>Live Share information</h3><p>When you start Live Share, the service processes the active session identifier, exact location, speed, heading, battery information, and timestamps needed to show your progress to people holding the link.</p></div>
+                        <div class="legal-card"><h3>Feedback and support</h3><p>TrackMe processes feedback text and an optional account-deletion reason that you submit. Authenticated feedback is associated with your account identifier so it can be removed with your account.</p></div>
+                        <div class="legal-card"><h3>Analytics and diagnostics</h3><p>Product events can include screen names, ride/SOS/Live Share lifecycle events, identifiers, durations, distances, counts, and interaction data. Current PostHog event payloads do not include raw latitude or longitude. Firebase Crashlytics can process crash reports, non-fatal errors, diagnostic logs, device/app information, and the Firebase user ID when signed in.</p></div>
+                    </div>
+                    <p>TrackMe uses the Android SMS permission to send an SOS message you initiate or configure. It does not read your SMS inbox or message history. The app does retain its own SOS configuration and delivery-log data as described above.</p>
+                </section>
+
+                <section id="how-we-use-data" class="legal-section">
+                    <h2>3. How data is used</h2>
+                    <ul>
+                        <li>Record routes and calculate distance, speed, altitude, duration, maps, charts, and ride summaries.</li>
+                        <li>Provide optional sign-in, cloud backup, synchronization, data export, and account management.</li>
+                        <li>Send SOS messages to contacts you configure and report whether Android accepted each send request.</li>
+                        <li>Create a time-limited Live Share experience when you explicitly start it.</li>
+                        <li>Protect accounts, prevent abuse, diagnose crashes, measure reliability, and improve product flows.</li>
+                        <li>Respond to support requests and process account/data deletion requests.</li>
+                    </ul>
+                </section>
+
+                <section id="sharing-processors" class="legal-section">
+                    <h2>4. Sharing, recipients, and service providers</h2>
+                    <p>TrackMe discloses data only for the features and processing described here:</p>
+                    <ul>
+                        <li><strong>Google Firebase:</strong> Firebase Authentication, Cloud Firestore, and Crashlytics process account, optional cloud, and diagnostic data as service providers. See <a href="https://firebase.google.com/support/privacy" target="_blank" rel="noreferrer">Firebase privacy and security information</a>.</li>
+                        <li><strong>PostHog:</strong> PostHog's EU-hosted service processes product analytics and app-interaction events. Raw precise GPS coordinates were removed from TrackMe analytics events. See the <a href="https://posthog.com/privacy" target="_blank" rel="noreferrer">PostHog privacy policy</a>.</li>
+                        <li><strong>People you choose:</strong> Anyone with an active Live Share link can see the live-session data exposed by that link until the session ends or expires.</li>
+                        <li><strong>Emergency recipients and telecom providers:</strong> Android and your mobile carrier deliver the SOS SMS, including the message and location link, to contacts you selected.</li>
+                        <li><strong>Legal and safety requirements:</strong> Data may be disclosed if required by applicable law or necessary to protect users, the public, or the service from fraud, abuse, or security threats.</li>
+                    </ul>
+                    <p>Service-provider processing is not a sale of personal data. TrackMe does not use location data for advertising.</p>
+                </section>
+
+                <section id="local-cloud" class="legal-section">
+                    <h2>5. Local-first and optional cloud storage</h2>
+                    <p>Ride recording is local-first and does not require an account or mobile-data connection. Data remains in the app's local database unless you enable an online feature, such as account sync, Live Share, cloud export, or SOS logging while signed in.</p>
+                    <p>When cloud features are used, data is stored within the authenticated user's Firebase namespace or in the limited service record needed for that feature. Public Live Share data is accessible through the unguessable link supplied to you; treat that link as sensitive and share it only with people you trust.</p>
+                </section>
+
+                <section id="retention-deletion" class="legal-section">
+                    <h2>6. Retention, export, and deletion</h2>
+                    <ul>
+                        <li><strong>Local records:</strong> remain on your device until you delete a ride, clear app data, uninstall according to Android backup behavior, or otherwise remove them.</li>
+                        <li><strong>Cloud ride/account data:</strong> remains while your account and cloud features are active or until you delete it.</li>
+                        <li><strong>Live Share:</strong> remains available only for the session lifetime and stops being public when the session ends or expires.</li>
+                        <li><strong>Export:</strong> signed-in users can request a ZIP containing their profile, ride history, and GPX traces through the Android app or Web account portal.</li>
+                        <li><strong>Account deletion:</strong> TrackMe attempts to delete rides and GPS points, emergency configuration, emergency delivery logs, and feedback associated with your user ID before deleting the Firebase Authentication account. If the cloud purge fails, the account is not silently removed and the app reports the failure so you can retry or contact support.</li>
+                        <li><strong>Analytics and diagnostics:</strong> processor-managed analytics, security, and crash records may follow Firebase or PostHog retention controls and may not be individually accessible through the TrackMe account screen.</li>
+                    </ul>
+                    <p>You can start account deletion from Android Settings or the <a href="index_v2.html#account">Web account portal</a>. For help with a failed request, email the privacy contact below.</p>
+                </section>
+
+                <section id="security" class="legal-section">
+                    <h2>7. Security and international processing</h2>
+                    <p>TrackMe uses HTTPS/TLS for service traffic, authenticated user namespaces, platform security controls, and restricted database rules. No system can guarantee absolute security, so keep your account and Live Share links private and report suspected misuse promptly.</p>
+                    <p>Firebase and PostHog may process data in countries outside your own. Firebase states that Authentication runs from United States data centers and that other Firebase services may use global infrastructure; the providers' terms and privacy materials describe their safeguards.</p>
+                </section>
+
+                <section id="permissions" class="legal-section">
+                    <h2>8. Android device permissions</h2>
+                    <ul>
+                        <li><strong>Precise/approximate and foreground-service location:</strong> route recording, maps, Live Share, and location-based SOS.</li>
+                        <li><strong>SMS:</strong> sending an SOS message to contacts you configure; TrackMe does not read the inbox.</li>
+                        <li><strong>Notifications:</strong> persistent tracking status, safety results, sync, and other operational alerts.</li>
+                        <li><strong>Vibration and battery-optimization request:</strong> tactile feedback and reliable long-running ride recording.</li>
+                    </ul>
+                    <p>Android presents permission controls in system Settings. Denying a permission limits the related feature but does not prevent unrelated local features from working.</p>
+                </section>
+
+                <section id="choices" class="legal-section">
+                    <h2>9. Your choices and rights</h2>
+                    <p>You can use TrackMe without signing in, decline optional permissions, stop Live Share, delete individual rides, export supported data, delete your account, and contact us about access, correction, deletion, or privacy questions. Rights vary by location; TrackMe will respond in accordance with applicable law.</p>
+                </section>
+
+                <section id="children" class="legal-section">
+                    <h2>10. Children</h2>
+                    <p>TrackMe is intended for an adult audience and is not designed or marketed for children. If you believe a child provided personal data without appropriate authorization, contact us so the matter can be reviewed and addressed.</p>
+                </section>
+
+                <section id="contact" class="legal-section">
+                    <h2>11. Contact and policy changes</h2>
+                    <p>For privacy questions, account-deletion help, or data enquiries, email <a href="mailto:dev.shvms@gmail.com">dev.shvms@gmail.com</a> or use the in-app feedback mechanism.</p>
+                    <p>This policy may change when TrackMe's features, processors, or legal obligations change. Material updates will be reflected by the date at the top of this page and, where appropriate, an in-app or website notice.</p>
+                </section>
+            </article>
+        </div>
     </main>
 
-    <footer>
-        <p>&copy; 2026 TrackMe. All rights reserved.</p>
+    <footer class="site-footer">
+        <div class="section-shell footer-inner">
+            <a class="brand brand-footer" href="index_v2.html"><span class="brand-mark" aria-hidden="true">T</span><span>TrackMe</span></a>
+            <div><a href="index_v2.html">Home</a><a href="index_v2.html#support">Support</a><a href="mailto:dev.shvms@gmail.com">Privacy contact</a></div>
+            <p>&copy; 2026 TrackMe. Privacy-first by design, transparent by policy.</p>
+        </div>
     </footer>
 </body>
 </html>
