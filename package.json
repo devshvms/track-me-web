@@ -5,8 +5,10 @@
   "main": "index.js",
   "scripts": {
     "build": "node scripts/write-firebase-config.js",
-    "test": "npm run check:theme",
-    "check:theme": "node scripts/check-theme-contrast.js"
+    "test": "npm run check:theme && npm run test:unit",
+    "check:theme": "node scripts/check-theme-contrast.js",
+    "test:unit": "npm run test:waitlist",
+    "test:waitlist": "ts-node --project tests/tsconfig.json tests/waitlist.test.ts"
   },
   "keywords": [],
   "author": "",
