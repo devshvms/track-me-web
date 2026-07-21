@@ -134,6 +134,37 @@
             </div>
         </section>
 
+        <section id="waitlist" class="section-shell section-block waitlist-section" aria-labelledby="waitlist-title">
+            <div class="waitlist-card">
+                <div class="waitlist-copy">
+                    <p class="eyebrow">Be first out the door</p>
+                    <h2 id="waitlist-title">Join the launch list.</h2>
+                    <p>Get a single note when TrackMe opens up — Android rollout or iOS TestFlight. No newsletter, no sharing your address. We store a one-way hash, not your email.</p>
+                </div>
+                <form id="waitlist-form" class="waitlist-form" novalidate>
+                    <div class="form-group">
+                        <label for="waitlist-email">Email address</label>
+                        <input type="email" id="waitlist-email" name="email" inputmode="email" autocomplete="email" placeholder="you@example.com" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="waitlist-platform">Which platform? <span class="label-optional">(optional)</span></label>
+                        <select id="waitlist-platform" name="platform">
+                            <option value="unspecified">No preference</option>
+                            <option value="android">Android</option>
+                            <option value="ios">iOS</option>
+                        </select>
+                    </div>
+                    <!-- Honeypot: hidden from users, tempting to bots. Must stay empty. -->
+                    <div class="waitlist-hp" aria-hidden="true">
+                        <label for="waitlist-company">Company</label>
+                        <input type="text" id="waitlist-company" name="company" tabindex="-1" autocomplete="off">
+                    </div>
+                    <button type="submit" id="waitlist-submit" class="btn btn-primary btn-large">Join the list</button>
+                    <p id="waitlist-message" class="waitlist-message" role="status" aria-live="polite"></p>
+                </form>
+            </div>
+        </section>
+
         <section id="releases" class="section-shell section-block releases-section" aria-labelledby="releases-title">
             <div class="section-heading section-heading-row">
                 <div><p class="eyebrow">Start where you are</p><h2 id="releases-title">Get the app.</h2></div>
@@ -212,6 +243,38 @@
             }), { threshold: 0.4 });
             document.querySelectorAll('section[id]').forEach((section) => observer.observe(section));
             document.querySelectorAll('.download-cta').forEach((button) => button.addEventListener('click', () => trackEvent('download_cta_clicked', { platform: button.dataset.downloadPlatform || 'unknown', target: button.getAttribute('href') })));
+            const waitlistForm = document.getElementById('waitlist-form');
+            if (waitlistForm) {
+                const message = document.getElementById('waitlist-message');
+                const submit = document.getElementById('waitlist-submit');
+                waitlistForm.addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    const email = document.getElementById('waitlist-email').value.trim();
+                    const platform = document.getElementById('waitlist-platform').value;
+                    const company = document.getElementById('waitlist-company').value;
+                    if (!email) { message.textContent = 'Please enter your email address.'; message.dataset.state = 'error'; return; }
+                    submit.disabled = true; message.dataset.state = ''; message.textContent = 'Adding you…';
+                    try {
+                        const res = await fetch('/api/telemetry/subscribe', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, platform, company }) });
+                        if (res.ok) {
+                            waitlistForm.reset();
+                            message.textContent = "You're on the list. We'll be in touch at launch.";
+                            message.dataset.state = 'success';
+                        } else if (res.status === 429) {
+                            message.textContent = 'Too many attempts. Please try again in a little while.';
+                            message.dataset.state = 'error';
+                        } else {
+                            message.textContent = 'Please enter a valid email address.';
+                            message.dataset.state = 'error';
+                        }
+                    } catch (err) {
+                        message.textContent = 'Network hiccup — please try again.';
+                        message.dataset.state = 'error';
+                    } finally {
+                        submit.disabled = false;
+                    }
+                });
+            }
             fetch('/api/telemetry/stats').then((response) => response.json()).then((data) => {
                 const values = { 'stat-shares-24h': data.shares24h ?? 0, 'stat-total-shares': data.totalShares ?? 0, 'stat-total-hours': data.totalHoursShared ?? 0, 'stat-viewers-24h': data.viewers24h ?? 0 };
                 Object.entries(values).forEach(([id, value]) => { const element = document.getElementById(id); if (element) element.textContent = value; });
