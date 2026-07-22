@@ -292,7 +292,7 @@ if (exportBtn) {
 }
 
 // --- GitHub Releases Fetching Logic ---
-async function fetchReleases(repoName, containerId) {
+async function fetchReleases(repoName, containerId, emptyMessage = 'No public releases yet.') {
     const container = document.getElementById(containerId);
     if (!container) return;
 
@@ -302,7 +302,7 @@ async function fetchReleases(repoName, containerId) {
         const releases = await res.json();
 
         if (releases.length === 0) {
-            container.innerHTML = '<p style="color: #8c9baf; font-size: 0.95rem; padding: 1rem;">No public releases yet.</p>';
+            container.innerHTML = `<p class="release-empty">${emptyMessage}</p>`;
             return;
         }
 
@@ -352,11 +352,15 @@ async function fetchReleases(repoName, containerId) {
 
     } catch (err) {
         console.warn(`Could not fetch releases for ${repoName}:`, err);
-        container.innerHTML = '<p style="color: #8c9baf; font-size: 0.95rem; padding: 1rem;">Release history is temporarily unavailable.</p>';
+        container.innerHTML = '<p class="release-empty">Release history is temporarily unavailable.</p>';
     }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
     fetchReleases('track-me-android', 'dynamic-android-releases');
-    fetchReleases('track-me-ios', 'dynamic-ios-releases');
+    fetchReleases(
+        'track-me-ios',
+        'dynamic-ios-releases',
+        "iOS isn't on TestFlight yet — releases will show up here once it opens. Join the launch list above to be the first to know."
+    );
 });
