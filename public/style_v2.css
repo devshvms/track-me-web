@@ -51,7 +51,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .site-header { position: sticky; top: 0; z-index: 10; border-bottom: 1px solid rgba(41, 182, 246, .16); background: rgba(11, 19, 32, .96); }
 .site-header-inner { width: min(var(--max), calc(100% - 40px)); min-height: 72px; margin-inline: auto; display: flex; align-items: center; justify-content: space-between; gap: 24px; }
 .brand { display: inline-flex; align-items: center; gap: 10px; font-weight: 850; font-size: 1.2rem; text-decoration: none; letter-spacing: .01em; }
-.brand-mark { display: grid; place-items: center; width: 30px; height: 30px; border: 2px solid var(--cyan); color: var(--cyan); border-radius: 50%; font-weight: 900; }
+.brand-mark { flex-shrink: 0; width: 32px; height: 32px; border-radius: 8px; object-fit: cover; display: block; }
 .site-nav { display: flex; align-items: center; justify-content: flex-end; gap: 20px; color: var(--muted-strong); font-size: .92rem; }
 .site-nav a { text-decoration: none; }
 .site-nav a:hover, .site-nav a:focus-visible { color: var(--cyan); }
