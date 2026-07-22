@@ -50,16 +50,41 @@
                 </div>
                 <p class="hero-note">Local-first by default. Cloud sync is always your choice.</p>
             </div>
-            <div class="route-visual" aria-label="Illustration of a route passing through three checkpoints">
-                <div class="route-visual-topline"><span>LIVE ROUTE</span><span class="route-status"><i aria-hidden="true"></i> Ready</span></div>
+            <div class="route-visual" aria-label="A live TrackMe recording: a winding trail tracked offline and shared live, showing 12.4 kilometres in 58 minutes at a 4:42 per kilometre pace.">
+                <div class="route-visual-topline"><span>LIVE ROUTE</span><span class="route-status"><i aria-hidden="true"></i> Recording</span></div>
                 <div class="route-map" aria-hidden="true">
-                    <span class="map-grid map-grid-a"></span>
-                    <span class="map-grid map-grid-b"></span>
-                    <span class="route-line route-line-one"></span>
-                    <span class="route-line route-line-two"></span>
-                    <span class="route-point route-point-start">A</span>
-                    <span class="route-point route-point-mid">B</span>
-                    <span class="route-point route-point-end">C</span>
+                    <svg class="rv-svg" viewBox="0 0 420 300" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+                        <defs>
+                            <linearGradient id="rvTrail" x1="0" y1="1" x2="1" y2="0">
+                                <stop offset="0" stop-color="#0277b6"/>
+                                <stop offset="1" stop-color="#29b6f6"/>
+                            </linearGradient>
+                            <radialGradient id="rvGlow" cx="0.5" cy="0.5" r="0.5">
+                                <stop offset="0" stop-color="#29b6f6" stop-opacity=".5"/>
+                                <stop offset="1" stop-color="#29b6f6" stop-opacity="0"/>
+                            </radialGradient>
+                        </defs>
+                        <g class="rv-terrain" fill="none" stroke="#94a3b8" stroke-opacity=".10" stroke-width="1.2">
+                            <path d="M-20,118 C60,90 120,140 200,108 320,66 360,120 440,88"/>
+                            <path d="M-20,172 C70,150 130,192 210,160 330,120 372,172 440,150"/>
+                            <path d="M-20,232 C80,216 140,252 220,226 340,196 382,236 440,214"/>
+                        </g>
+                        <path class="rv-remaining" d="M356,66 C378,50 396,58 414,40" fill="none" stroke="#29b6f6" stroke-opacity=".4" stroke-width="3" stroke-dasharray="1 8" stroke-linecap="round"/>
+                        <path class="rv-trail" pathLength="1" d="M46,252 C92,206 132,232 176,186 C214,146 250,190 286,132 C312,92 338,96 356,66" fill="none" stroke="url(#rvTrail)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+                        <circle cx="46" cy="252" r="9" fill="#12161c" stroke="#29b6f6" stroke-width="3"/>
+                        <circle cx="46" cy="252" r="3.5" fill="#29b6f6"/>
+                        <circle class="rv-here-glow" cx="356" cy="66" r="26" fill="url(#rvGlow)"/>
+                        <circle class="rv-here-ring" cx="356" cy="66" r="11" fill="none" stroke="#29b6f6" stroke-width="2"/>
+                        <circle cx="356" cy="66" r="6.5" fill="#29b6f6" stroke="#12161c" stroke-width="2.5"/>
+                    </svg>
+                    <span class="rv-chip rv-chip-offline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M12 3v11m0 0l-4-4m4 4l4-4M5 21h14" stroke-linecap="round" stroke-linejoin="round"/></svg> Offline<span class="rv-chip-more"> · saved on device</span></span>
+                    <span class="rv-chip rv-chip-live"><i></i> Live<span class="rv-chip-more"> link</span> · 3<span class="rv-chip-more"> watching</span></span>
+                    <span class="rv-start-label">Start · 8:04 AM</span>
+                    <div class="rv-hud">
+                        <div><small>Distance</small><strong>12.4<em>km</em></strong></div>
+                        <div><small>Time</small><strong>58:12</strong></div>
+                        <div><small>Pace</small><strong>4:42<em>/km</em></strong></div>
+                    </div>
                 </div>
                 <div class="route-visual-footer"><span>Offline recording</span><strong>0 third-party ads</strong></div>
             </div>
