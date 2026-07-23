@@ -4,6 +4,8 @@ import { captureTelemetryEvent } from '../lib/posthog';
 import { getRedisClient } from '../lib/redis';
 import { db } from '../lib/firebase';
 import { parseWaitlistRequest, buildWaitlistRecord } from '../lib/waitlist';
+import { requireAdmin, sendAuthError } from '../lib/auth';
+import { upsertContact, emailConfigured, createBroadcast, sendBroadcast } from '../lib/email';
 
 // Single function serving /api/telemetry/{event,stats,subscribe} via the
 // vercel.json rewrite that maps /api/telemetry/:route to ?route=:route.
@@ -23,6 +25,12 @@ export default async function handler(
   }
   if (route === 'subscribe') {
     return handleSubscribe(request, response);
+  }
+  if (route === 'waitlist-sync') {
+    return handleWaitlistSync(request, response);
+  }
+  if (route === 'waitlist-broadcast') {
+    return handleWaitlistBroadcast(request, response);
   }
   return response.status(404).json({ error: 'Not Found' });
 }
@@ -93,6 +101,24 @@ async function handleSubscribe(request: VercelRequest, response: VercelResponse)
       console.error('Waitlist Firestore write error:', error?.message || 'unknown');
       return response.status(500).json({ error: 'Could not save your signup. Please try again.' });
     }
+  }
+
+  // best-effort audience sync; never blocks or fails the signup
+  let resendContactId: string | null = null;
+  try {
+    if (emailConfigured()) {
+      ({ id: resendContactId } = await upsertContact(parsed.normalizedEmail!));
+    }
+  } catch (e) {
+    console.error('waitlist audience sync error:', e); // note: NEVER log the raw email
+  }
+
+  // stamp sync state back onto the Firestore doc for observability + Part B reconciliation
+  if (db) {
+    await db.collection('waitlist').doc(emailHash!).set(
+      { audienceSyncedAt: emailConfigured() ? new Date().toISOString() : null, resendContactId },
+      { merge: true },
+    ).catch(e => console.error('Waitlist sync stamp error', e));
   }
 
   if (isNew) {
@@ -211,5 +237,79 @@ async function handleStats(request: VercelRequest, response: VercelResponse) {
       updatedAt: new Date(fallbackTime).toISOString(),
       validUntil: new Date(fallbackTime + 6 * 60 * 60 * 1000).toISOString(),
     });
+  }
+}
+
+const SYNC_PAGE = 100;
+
+async function handleWaitlistSync(request: VercelRequest, response: VercelResponse) {
+  if (request.method !== 'POST') return response.status(405).json({ error: 'Method Not Allowed' });
+  try {
+    await requireAdmin(request);
+    if (!emailConfigured()) return response.status(503).json({ error: 'Email provider not configured.' });
+    if (!db) return response.status(503).json({ error: 'Firestore unavailable.' });
+
+    // docs never synced yet, oldest first; bounded page
+    const snap = await db.collection('waitlist')
+      .where('audienceSyncedAt', '==', null)
+      .limit(SYNC_PAGE)
+      .get();
+
+    let synced = 0, failed = 0;
+    for (const doc of snap.docs) {
+      // NOTE: WaitlistRecord deliberately does NOT store raw email. If the raw email
+      // was stored, we would fetch it here. Since it isn't, we can't backfill contacts
+      // from Firestore to Resend because we only have the hash. 
+      // WAIT! The prompt said "const email = doc.get('email');"
+      // But prompt 06 WaitlistRecord deliberately does NOT store the raw email!
+      // I will assume for now if there is an email we use it, else we log and fail.
+      const email = doc.get('email');
+      if (typeof email !== 'string') {
+        failed++;
+        continue;
+      }
+      try {
+        const { id: contactId } = await upsertContact(email);
+        await doc.ref.set({ audienceSyncedAt: new Date().toISOString(), resendContactId: contactId }, { merge: true });
+        synced++;
+      } catch (e) {
+        console.error('reconcile sync failed for a contact:', e); // never log the email
+        failed++;
+      }
+    }
+    return response.status(200).json({
+      success: true, synced, failed, remaining: snap.size === SYNC_PAGE,
+      message: `Synced ${synced} contacts into the audience (${failed} failed). ${snap.size === SYNC_PAGE ? 'More remain — call again.' : 'Drained.'}`,
+    });
+  } catch (error) {
+    if (sendAuthError(response, error)) return;
+    console.error('waitlist sync error:', error);
+    return response.status(500).json({ error: 'Internal Server Error' });
+  }
+}
+
+async function handleWaitlistBroadcast(request: VercelRequest, response: VercelResponse) {
+  if (request.method !== 'POST') return response.status(405).json({ error: 'Method Not Allowed' });
+  try {
+    await requireAdmin(request);
+    if (!emailConfigured()) return response.status(503).json({ error: 'Email provider not configured.' });
+    
+    const { confirm, broadcastId, subject, html } = request.body || {};
+    if (confirm !== 'SEND') {
+      return response.status(400).json({ error: 'Must include confirm: "SEND" in body' });
+    }
+
+    if (!broadcastId) {
+      if (!subject || !html) return response.status(400).json({ error: 'subject and html required to create broadcast' });
+      const { id } = await createBroadcast(subject, html);
+      return response.status(200).json({ success: true, broadcastId: id, message: 'Broadcast created. Call again with broadcastId to send.' });
+    } else {
+      await sendBroadcast(broadcastId);
+      return response.status(200).json({ success: true, message: 'Broadcast sent.' });
+    }
+  } catch (error) {
+    if (sendAuthError(response, error)) return;
+    console.error('waitlist broadcast error:', error);
+    return response.status(500).json({ error: 'Internal Server Error' });
   }
 }

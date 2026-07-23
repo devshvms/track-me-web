@@ -248,7 +248,7 @@
                 <div class="waitlist-copy">
                     <p class="eyebrow">Be first out the door</p>
                     <h2 id="waitlist-title">Join the launch list.</h2>
-                    <p>Get a single note when TrackMe opens up — Android rollout or iOS TestFlight. No newsletter, no sharing your address. We store a one-way hash, not your email.</p>
+                    <p>Get a single note when TrackMe opens up. No newsletter, no sharing your address. Sent securely via <a href="https://resend.com/legal/dpa" target="_blank" rel="noopener noreferrer" style="color:inherit;text-decoration:underline;">Resend</a> EU; we store only a one-way hash locally.</p>
                 </div>
                 <form id="waitlist-form" class="waitlist-form" novalidate>
                     <div class="form-group">
@@ -373,7 +373,8 @@
                             message.textContent = 'Too many attempts. Please try again in a little while.';
                             message.dataset.state = 'error';
                         } else {
-                            message.textContent = 'Please enter a valid email address.';
+                            const data = await res.json().catch(() => ({}));
+                            message.textContent = data.error || 'Please enter a valid email address.';
                             message.dataset.state = 'error';
                         }
                     } catch (err) {
