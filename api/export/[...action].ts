@@ -566,19 +566,25 @@ async function handleStatus(request: VercelRequest, response: VercelResponse) {
   }
 }
 
+// Vercel's zero-config routing for a *file-level* catch-all (`[...action].ts`) injects the
+// captured segment under the literal key `...action` (ellipsis retained), not `action` — confirmed
+// against both `vercel dev` and production logs (E15). `action` is also checked in case that
+// convention ever changes; without this every export request 404s before reaching any handler.
+function extractAction(request: VercelRequest): string | undefined {
+  const raw = request.query['...action'] ?? request.query.action;
+  return Array.isArray(raw) ? raw[0] : raw;
+}
+
 export default async function handler(request: VercelRequest, response: VercelResponse) {
-  let actionStr: string | undefined;
-  if (Array.isArray(request.query.action)) {
-    actionStr = request.query.action[0];
-  } else {
-    actionStr = request.query.action;
-  }
+  const actionStr = extractAction(request);
 
   switch (actionStr) {
     case 'download': return handleDownload(request, response);
     case 'process': return handleProcess(request, response);
     case 'request': return handleRequest(request, response);
     case 'status': return handleStatus(request, response);
-    default: return response.status(404).json({ error: 'Not Found' });
+    default:
+      console.error('Unmatched export action route', { url: request.url, query: request.query });
+      return response.status(404).json({ error: 'Not Found' });
   }
 }
