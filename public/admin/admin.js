@@ -1,6 +1,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signOut, signInWithPopup, GoogleAuthProvider } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-import { getFirestore, doc, getDoc, setDoc, collection, getCountFromServer } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import { getFirestore, collection, getCountFromServer } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import { resolvePosthogDashboard } from "/admin/posthog-state.mjs";
 
 // Firebase config is provided by /firebase-config.js (loaded via a script tag
 // before this module). See public/firebase-config.example.js.
@@ -30,6 +31,7 @@ const cfgExports = document.getElementById('cfg-exports');
 const cfgAnnouncement = document.getElementById('cfg-announcement');
 const cfgMinAndroid = document.getElementById('cfg-min-android');
 const saveConfigBtn = document.getElementById('save-config-btn');
+const configStatus = document.getElementById('config-status');
 
 // Metrics Elements
 const metricUsers = document.getElementById('metric-users');
@@ -48,6 +50,7 @@ const userResult = document.getElementById('user-result');
 
 // Admin Auth State
 let currentAdmin = null;
+let saveConfigResetTimer = null;
 
 async function authFetch(url, options = {}) {
     if (!auth.currentUser) {
@@ -62,6 +65,11 @@ async function authFetch(url, options = {}) {
             'Authorization': `Bearer ${idToken}`
         }
     });
+}
+
+async function responseError(response, fallbackMessage) {
+    const data = await response.json().catch(() => ({}));
+    return new Error(data.error || `${fallbackMessage} (HTTP ${response.status})`);
 }
 
 onAuthStateChanged(auth, async (user) => {
@@ -147,51 +155,80 @@ navItems.forEach(item => {
 });
 
 // --- Remote Config ---
+function setConfigStatus(message, type) {
+    if (!configStatus) return;
+    configStatus.textContent = message;
+    configStatus.className = `status-message ${type}`;
+}
+
+function clearConfigStatus() {
+    if (!configStatus) return;
+    configStatus.textContent = '';
+    configStatus.className = 'status-message hidden';
+}
+
 async function loadConfig() {
+    clearConfigStatus();
     try {
-        const configRef = doc(db, 'app_config', 'global_settings');
-        const configSnap = await getDoc(configRef);
-        
-        if (configSnap.exists()) {
-            const data = configSnap.data();
-            cfgMaintenance.checked = data.maintenance_mode || false;
-            cfgLiveShare.checked = data.enable_live_sharing !== false; // default true
-            cfgExports.checked = data.enable_archive_export !== false; // default true
-            cfgAnnouncement.value = data.system_announcement || '';
-            cfgMinAndroid.value = data.force_update_version_android || '';
+        const response = await authFetch('/api/admin/config');
+        if (!response.ok) {
+            throw await responseError(response, 'Could not load Remote Config');
         }
+
+        const { config } = await response.json();
+        cfgMaintenance.checked = config.maintenance_mode === true;
+        cfgLiveShare.checked = config.enable_live_sharing !== false;
+        cfgExports.checked = config.enable_archive_export !== false;
+        cfgAnnouncement.value = config.system_announcement || '';
+        cfgMinAndroid.value = config.force_update_version_android || '';
     } catch (err) {
         console.error("Error loading config:", err);
+        setConfigStatus(`Could not load Remote Config: ${err.message || 'Unknown error.'}`, 'error');
     }
 }
 
 saveConfigBtn.addEventListener('click', async () => {
-    if (!currentAdmin) return;
+    if (!currentAdmin) {
+        setConfigStatus('You must be signed in as an admin to save changes.', 'error');
+        return;
+    }
+
+    clearConfigStatus();
+    if (saveConfigResetTimer) {
+        clearTimeout(saveConfigResetTimer);
+        saveConfigResetTimer = null;
+    }
     saveConfigBtn.textContent = 'Saving...';
     saveConfigBtn.disabled = true;
     
     try {
-        const configRef = doc(db, 'app_config', 'global_settings');
-        await setDoc(configRef, {
-            maintenance_mode: cfgMaintenance.checked,
-            enable_live_sharing: cfgLiveShare.checked,
-            enable_archive_export: cfgExports.checked,
-            system_announcement: cfgAnnouncement.value,
-            force_update_version_android: cfgMinAndroid.value,
-            updatedAt: new Date(),
-            updatedBy: currentAdmin.email
-        }, { merge: true });
-        
-        setTimeout(() => {
-            saveConfigBtn.textContent = 'Saved!';
-            setTimeout(() => {
-                saveConfigBtn.textContent = 'Save Changes';
-                saveConfigBtn.disabled = false;
-            }, 2000);
-        }, 500);
+        const response = await authFetch('/api/admin/config', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                maintenance_mode: cfgMaintenance.checked,
+                enable_live_sharing: cfgLiveShare.checked,
+                enable_archive_export: cfgExports.checked,
+                system_announcement: cfgAnnouncement.value,
+                force_update_version_android: cfgMinAndroid.value
+            })
+        });
+
+        if (!response.ok) {
+            throw await responseError(response, 'Could not save Remote Config');
+        }
+
+        saveConfigBtn.textContent = 'Saved!';
+        setConfigStatus('Remote Config saved successfully.', 'success');
+        saveConfigResetTimer = setTimeout(() => {
+            saveConfigBtn.textContent = 'Save Changes';
+            saveConfigResetTimer = null;
+        }, 2000);
     } catch (err) {
         console.error("Error saving config:", err);
-        saveConfigBtn.textContent = 'Error';
+        saveConfigBtn.textContent = 'Save Changes';
+        setConfigStatus(`Could not save Remote Config: ${err.message || 'Unknown error.'}`, 'error');
+    } finally {
         saveConfigBtn.disabled = false;
     }
 });
@@ -257,25 +294,63 @@ refreshMetricsBtn.addEventListener('click', loadMetrics);
 function initPosthogEmbed() {
     const iframe = document.getElementById('posthog-iframe');
     const fallback = document.getElementById('posthog-fallback');
+    const fallbackTitle = document.getElementById('posthog-fallback-title');
+    const fallbackMessage = document.getElementById('posthog-fallback-message');
+    const description = document.getElementById('posthog-dashboard-description');
     const openLink = document.getElementById('posthog-open-link');
     const dashboardLink = document.getElementById('posthog-dashboard-link');
-    const dashboardUrl = window.__POSTHOG_DASHBOARD_URL__;
+    const dashboard = resolvePosthogDashboard(window.__POSTHOG_DASHBOARD_URL__);
 
-    if (typeof dashboardUrl === 'string' && dashboardUrl.trim()) {
-        const url = dashboardUrl.trim();
-        if (iframe) iframe.src = url;
-        if (openLink) openLink.href = url;
-        if (dashboardLink) {
-            dashboardLink.href = url;
-            dashboardLink.classList.remove('hidden');
+    if (dashboard.kind === 'invalid' || dashboard.kind === 'missing') {
+        if (iframe) {
+            iframe.src = 'about:blank';
+            iframe.classList.add('hidden');
         }
-        if (fallback) fallback.classList.add('hidden');
+        if (dashboardLink) dashboardLink.classList.add('hidden');
+        if (openLink) openLink.classList.add('hidden');
+        if (fallbackTitle) {
+            fallbackTitle.textContent = dashboard.kind === 'invalid'
+                ? 'PostHog dashboard URL is invalid.'
+                : 'PostHog dashboard not configured.';
+        }
+        if (fallbackMessage) {
+            fallbackMessage.textContent = dashboard.kind === 'invalid'
+                ? 'Update POSTHOG_DASHBOARD_URL with a valid public shared-dashboard URL.'
+                : 'Set POSTHOG_DASHBOARD_URL to a public shared-dashboard URL to enable this panel.';
+        }
+        if (description) description.textContent = 'Dashboard embedding is unavailable.';
+        if (fallback) fallback.classList.remove('hidden');
         return;
     }
 
-    if (iframe) iframe.src = 'about:blank';
-    if (dashboardLink) dashboardLink.classList.add('hidden');
-    if (fallback) fallback.classList.remove('hidden');
+    if (dashboard.url) {
+        if (openLink) {
+            openLink.href = dashboard.url;
+            openLink.classList.remove('hidden');
+        }
+        if (dashboardLink) {
+            dashboardLink.href = dashboard.url;
+            dashboardLink.classList.remove('hidden');
+        }
+
+        if (dashboard.kind === 'embedded') {
+            if (iframe) {
+                iframe.src = dashboard.url;
+                iframe.classList.remove('hidden');
+            }
+            if (description) description.textContent = 'Live PostHog dashboard, embedded below.';
+            if (fallback) fallback.classList.add('hidden');
+        } else {
+            if (iframe) {
+                iframe.src = 'about:blank';
+                iframe.classList.add('hidden');
+            }
+            if (fallbackTitle) fallbackTitle.textContent = 'Authenticated dashboard cannot be embedded.';
+            if (fallbackMessage) fallbackMessage.textContent = 'PostHog blocks its signed-in app inside other sites. Open the full dashboard in a new tab instead.';
+            if (description) description.textContent = 'This authenticated dashboard is available through the secure PostHog link.';
+            if (fallback) fallback.classList.remove('hidden');
+        }
+    }
 }
 
 async function loadTelemetry() {

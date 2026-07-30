@@ -8,9 +8,11 @@
     "test": "npm run check:theme && npm run check:landing && npm run test:unit",
     "check:theme": "node scripts/check-theme-contrast.js",
     "check:landing": "node scripts/check-landing-structure.js",
-    "test:unit": "npm run test:waitlist && npm run test:notify",
+    "test:unit": "npm run test:waitlist && npm run test:notify && npm run test:admin-config && npm run test:posthog-state",
     "test:waitlist": "ts-node --project tests/tsconfig.json tests/waitlist.test.ts",
-    "test:notify": "ts-node --project tests/tsconfig.json tests/notify.test.ts"
+    "test:notify": "ts-node --project tests/tsconfig.json tests/notify.test.ts",
+    "test:admin-config": "ts-node --project tests/tsconfig.json tests/admin-config.test.ts",
+    "test:posthog-state": "node tests/posthog-state.test.mjs"
   },
   "keywords": [],
   "author": "",
