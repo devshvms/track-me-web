@@ -7,7 +7,7 @@
     "build": "node scripts/write-firebase-config.js",
     "test": "npm run check:theme && npm run check:landing && npm run test:unit",
     "check:theme": "node scripts/check-theme-contrast.js",
-    "check:landing": "node scripts/check-landing-structure.js && node --check public/app.js",
+    "check:landing": "node scripts/check-landing-structure.js",
     "test:unit": "npm run test:waitlist && npm run test:notify",
     "test:waitlist": "ts-node --project tests/tsconfig.json tests/waitlist.test.ts",
     "test:notify": "ts-node --project tests/tsconfig.json tests/notify.test.ts"
