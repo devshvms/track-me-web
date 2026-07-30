@@ -242,3 +242,77 @@ if (exportBtn) {
         }
     });
 }
+
+// --- GitHub Releases Fetching Logic ---
+async function fetchReleases(repoName, containerId, emptyMessage = 'No public releases yet.') {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+
+    try {
+        const res = await fetch(`https://api.github.com/repos/devshvms/${repoName}/releases`);
+        if (!res.ok) throw new Error('Failed to fetch releases');
+        const releases = await res.json();
+
+        if (releases.length === 0) {
+            container.innerHTML = `<p class="release-empty">${emptyMessage}</p>`;
+            return;
+        }
+
+        let html = '';
+        releases.forEach((release, index) => {
+            const isActive = index === 0;
+            const version = release.tag_name;
+            const releaseName = release.name || release.tag_name;
+            const date = new Date(release.published_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+            const bodyHtml = release.body
+                ? release.body.split('\n\n').map(p => `<p>${p.replace(/\n/g, '<br>')}</p>`).join('')
+                : '<p>No release notes provided.</p>';
+
+            html += `
+                <article class="release-card ${isActive ? 'active' : ''}">
+                    <button class="release-header" type="button" aria-expanded="${isActive ? 'true' : 'false'}">
+                        <span><strong>${version}</strong><span>${releaseName}</span><small>${date}</small></span>
+                        <span class="release-toggle-icon" aria-hidden="true">&#9662;</span>
+                    </button>
+                    <div class="release-body">
+                        ${bodyHtml}
+                    </div>
+                </article>
+            `;
+        });
+        container.innerHTML = html;
+
+        // Re-attach accordion listeners for new elements
+        const headers = container.querySelectorAll('.release-header');
+        headers.forEach(header => {
+            header.addEventListener('click', () => {
+                const currentCard = header.closest('.release-card');
+                const wasActive = currentCard.classList.contains('active');
+
+                container.querySelectorAll('.release-card').forEach(card => {
+                    card.classList.remove('active');
+                    const cardHeader = card.querySelector('.release-header');
+                    if (cardHeader) cardHeader.setAttribute('aria-expanded', 'false');
+                });
+
+                if (!wasActive) {
+                    currentCard.classList.add('active');
+                    header.setAttribute('aria-expanded', 'true');
+                }
+            });
+        });
+
+    } catch (err) {
+        console.warn(`Could not fetch releases for ${repoName}:`, err);
+        container.innerHTML = '<p class="release-empty">Release history is temporarily unavailable.</p>';
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    fetchReleases('track-me-android', 'dynamic-android-releases');
+    fetchReleases(
+        'track-me-ios',
+        'dynamic-ios-releases',
+        "iOS isn't on TestFlight yet — releases will show up here once it opens. Join the launch list above to be the first to know."
+    );
+});

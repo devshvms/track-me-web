@@ -2,490 +2,444 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TrackMe - Your Ultimate Ride Tracker</title>
-    <link rel="stylesheet" href="style.css?v=2">
-    
-    <!-- Firebase SDKs -->
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="TrackMe is a privacy-first GPS tracker for cyclists, runners, hikers, and solo explorers. Record offline, share live progress, and keep your data portable.">
+    <meta name="theme-color" content="#0b1320">
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="TrackMe | Private outdoor tracking">
+    <meta property="og:description" content="Offline-first activity tracking with live sharing, SOS support, and data exports that stay yours.">
+    <meta property="og:url" content="https://trackme.shvms.in/">
+    <meta property="og:image" content="https://trackme.shvms.in/assets/trackme-social-card.svg">
+    <link rel="canonical" href="https://trackme.shvms.in/">
+    <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32.png">
+    <link rel="icon" type="image/png" sizes="48x48" href="assets/favicon-48.png">
+    <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="TrackMe | Private outdoor tracking">
+    <meta name="twitter:description" content="Record your route offline, share it live when you choose, and export your data any time.">
+    <title>TrackMe | Private outdoor tracking</title>
+    <link rel="stylesheet" href="style_v2.css?v=2">
     <script src="/firebase-config.js"></script>
     <script type="module" src="app.js"></script>
 </head>
-<body>
-    <header class="header">
-        <div class="logo">TrackMe</div>
-        <nav class="nav">
-            <a href="#features">Features</a>
-            <a href="#releases">Releases</a>
-            <a href="#account" id="account-link">Account</a>
-            <button id="auth-button" class="btn">Sign In</button>
-        </nav>
+<body data-landing-variant="v2">
+    <a class="skip-link" href="#main-content">Skip to content</a>
+    <header class="site-header">
+        <div class="site-header-inner">
+            <a class="brand" href="#top" aria-label="TrackMe home">
+                <img class="brand-mark" src="assets/trackme-logo.png" width="32" height="32" alt="" aria-hidden="true">
+                <span>TrackMe</span>
+            </a>
+            <nav class="site-nav" aria-label="Primary navigation">
+                <a href="#features">Features</a>
+                <a href="#releases">Get the app</a>
+                <a href="#support">Support</a>
+                <a href="#account" id="account-link" class="account-link">Account</a>
+                <button id="auth-button" class="btn btn-small" type="button">Sign in</button>
+            </nav>
+        </div>
     </header>
 
-    <main>
-        <section id="hero" class="hero">
-            <h1>Track Your Rides, Analyze Your Performance</h1>
-            <p>The ultimate open-source Android app for logging your cycling, walking, and running activities with precision.</p>
-            <a href="#releases" class="btn btn-large">Download Now</a>
+    <main id="main-content">
+        <section id="top" class="hero section-shell" aria-labelledby="hero-title">
+            <div class="hero-copy">
+                <p class="eyebrow"><span class="eyebrow-dot" aria-hidden="true"></span> Private outdoor tracking</p>
+                <h1 id="hero-title">Your route. Your pace. Your data.</h1>
+                <p class="hero-lede">Track a ride, run, hike, or solo outing offline. Share your live location when it matters, then take every route home with you.</p>
+                <div class="hero-actions">
+                    <a class="btn btn-primary btn-large download-cta" href="#releases" data-download-platform="android">Get TrackMe</a>
+                    <a class="text-link" href="#features">See how it works <span aria-hidden="true">&darr;</span></a>
+                </div>
+                <p class="hero-note">Local-first by default. Cloud sync is always your choice.</p>
+            </div>
+            <div class="route-visual" aria-label="A live TrackMe recording: a winding trail tracked offline and shared live, showing 12.4 kilometres in 58 minutes at a 4:42 per kilometre pace.">
+                <div class="route-visual-topline"><span>LIVE ROUTE</span><span class="route-status"><i aria-hidden="true"></i> Recording</span></div>
+                <div class="route-map" aria-hidden="true">
+                    <svg class="rv-svg" viewBox="0 0 420 300" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+                        <defs>
+                            <linearGradient id="rvTrail" x1="0" y1="1" x2="1" y2="0">
+                                <stop offset="0" stop-color="#0277b6"/>
+                                <stop offset="1" stop-color="#29b6f6"/>
+                            </linearGradient>
+                            <radialGradient id="rvGlow" cx="0.5" cy="0.5" r="0.5">
+                                <stop offset="0" stop-color="#29b6f6" stop-opacity=".5"/>
+                                <stop offset="1" stop-color="#29b6f6" stop-opacity="0"/>
+                            </radialGradient>
+                        </defs>
+                        <g class="rv-terrain" fill="none" stroke="#94a3b8" stroke-opacity=".10" stroke-width="1.2">
+                            <path d="M-20,118 C60,90 120,140 200,108 320,66 360,120 440,88"/>
+                            <path d="M-20,172 C70,150 130,192 210,160 330,120 372,172 440,150"/>
+                            <path d="M-20,232 C80,216 140,252 220,226 340,196 382,236 440,214"/>
+                        </g>
+                        <path class="rv-remaining" d="M356,66 C378,50 396,58 414,40" fill="none" stroke="#29b6f6" stroke-opacity=".4" stroke-width="3" stroke-dasharray="1 8" stroke-linecap="round"/>
+                        <path class="rv-trail" pathLength="1" d="M46,252 C92,206 132,232 176,186 C214,146 250,190 286,132 C312,92 338,96 356,66" fill="none" stroke="url(#rvTrail)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+                        <circle cx="46" cy="252" r="9" fill="#12161c" stroke="#29b6f6" stroke-width="3"/>
+                        <circle cx="46" cy="252" r="3.5" fill="#29b6f6"/>
+                        <circle class="rv-here-glow" cx="356" cy="66" r="26" fill="url(#rvGlow)"/>
+                        <circle class="rv-here-ring" cx="356" cy="66" r="11" fill="none" stroke="#29b6f6" stroke-width="2"/>
+                        <circle cx="356" cy="66" r="6.5" fill="#29b6f6" stroke="#12161c" stroke-width="2.5"/>
+                    </svg>
+                    <span class="rv-chip rv-chip-offline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M12 3v11m0 0l-4-4m4 4l4-4M5 21h14" stroke-linecap="round" stroke-linejoin="round"/></svg> Offline<span class="rv-chip-more"> · saved on device</span></span>
+                    <span class="rv-chip rv-chip-live"><i></i> Live<span class="rv-chip-more"> link</span> · 3<span class="rv-chip-more"> watching</span></span>
+                    <span class="rv-start-label">Start · 8:04 AM</span>
+                    <div class="rv-hud">
+                        <div><small>Distance</small><strong>12.4<em>km</em></strong></div>
+                        <div><small>Time</small><strong>58:12</strong></div>
+                        <div><small>Pace</small><strong>4:42<em>/km</em></strong></div>
+                    </div>
+                </div>
+                <div class="route-visual-footer"><span>Offline recording</span><strong>0 third-party ads</strong></div>
+            </div>
         </section>
 
-        <section id="features" class="section">
-            <h2>Key Features</h2>
-            <div class="grid">
-                <div class="card">
-                    <h3>Accurate Tracking</h3>
-                    <p>Logs your GPS points with high frequency to give you detailed speed and altitude graphs.</p>
-                </div>
-                <div class="card">
-                    <h3>Cloud Sync</h3>
-                    <p>Safely back up your rides to the cloud using your Google account.</p>
-                </div>
-                <div class="card">
-                    <h3>Emergency Broadcast</h3>
-                    <p>Stay safe with automated emergency tracking and SMS alerts when you need help.</p>
-                </div>
+        <section id="features" class="section-shell section-block" aria-labelledby="features-title">
+            <div class="section-heading">
+                <p class="eyebrow">Made for the miles ahead</p>
+                <h2 id="features-title">The useful parts stay close.</h2>
+                <p>TrackMe gives niche outdoor users the safety and history tools they need without turning every outing into a social feed.</p>
+            </div>
+            <div class="feature-grid">
+                <article class="feature-item">
+                    <span class="feature-number">01</span>
+                    <h3>Offline-first tracking</h3>
+                    <p>Keep recording when the trail loses signal. Your route is saved locally and can sync later when you decide.</p>
+                </article>
+                <article class="feature-item">
+                    <span class="feature-number">02</span>
+                    <h3>Live share when useful</h3>
+                    <p>Send a time-limited link to a trusted person. Viewers can follow without creating an account.</p>
+                </article>
+                <article class="feature-item">
+                    <span class="feature-number">03</span>
+                    <h3>Portable history</h3>
+                    <p>Review your activity, export GPX traces, and download your cloud data as a real archive any time.</p>
+                </article>
+            </div>
+        </section>
+
+        <section id="showcase" class="section-shell section-block showcase-section" aria-labelledby="showcase-title">
+            <div class="section-heading">
+                <p class="eyebrow">A look inside</p>
+                <h2 id="showcase-title">Built for the whole outing.</h2>
+                <p>The same instrument on Android and iOS — record offline, share when it matters, and see what you did after. Auto-playing; use the dots to jump around.</p>
             </div>
 
-            <!-- Live Share Telemetry & Pulse Card -->
+            <div class="showcase" role="group" aria-roledescription="carousel" aria-label="TrackMe feature highlights">
+                <button class="showcase-nav showcase-prev" type="button" aria-label="Previous feature">&#8249;</button>
+
+                <div class="showcase-viewport">
+                    <div class="showcase-track" id="showcase-track">
+
+                        <!-- 01 · Offline tracking -->
+                        <article class="showcase-card" role="group" aria-roledescription="slide" aria-label="1 of 5: Offline tracking">
+                            <div class="showcase-poster-wrap">
+                                <img class="showcase-poster" src="assets/showcase/offline-tracking.jpg" width="1120" height="611" loading="lazy" decoding="async" alt="TrackMe on Android showing real-time GPS tracking on a satellite map with a live stats panel">
+                            </div>
+                            <div class="showcase-caption">
+                                <span class="showcase-index">01 / 05</span>
+                                <h3>Offline-first recording</h3>
+                                <p>Your route is saved on the device the moment you start — no signal required. The map, distance, and pace keep going where the trail loses coverage.</p>
+                            </div>
+                        </article>
+
+                        <!-- 02 · Live share -->
+                        <article class="showcase-card" role="group" aria-roledescription="slide" aria-label="2 of 5: Live share">
+                            <div class="showcase-poster-wrap">
+                                <img class="showcase-poster" src="assets/showcase/live-share.jpg" width="1120" height="611" loading="lazy" decoding="async" alt="TrackMe on Android showing live sharing and the offline recording shield">
+                            </div>
+                            <div class="showcase-caption">
+                                <span class="showcase-index">02 / 05</span>
+                                <h3>Live share, on your terms</h3>
+                                <p>Send a time-limited link to someone you trust. They follow along in a browser — no account, no app — and it expires when you say so.</p>
+                            </div>
+                        </article>
+
+                        <!-- 03 · Post-ride reveal -->
+                        <article class="showcase-card" role="group" aria-roledescription="slide" aria-label="3 of 5: Post-ride reveal">
+                            <div class="showcase-poster-wrap">
+                                <img class="showcase-poster" src="assets/showcase/post-ride-reveal.jpg" width="1120" height="611" loading="lazy" decoding="async" alt="TrackMe on Android showing ride stats and elevation and speed charts after a ride">
+                            </div>
+                            <div class="showcase-caption">
+                                <span class="showcase-index">03 / 05</span>
+                                <h3>A little reward after the ride</h3>
+                                <p>Finish recording and TrackMe surfaces one gain-framed highlight — a distance record, a milestone, a personal best. Encouraging, never nagging.</p>
+                            </div>
+                        </article>
+
+                        <!-- 04 · Weekly recap + streak -->
+                        <article class="showcase-card" role="group" aria-roledescription="slide" aria-label="4 of 5: Weekly recap and streak">
+                            <div class="showcase-poster-wrap">
+                                <img class="showcase-poster" src="assets/showcase/weekly-recap.jpg" width="1120" height="611" loading="lazy" decoding="async" alt="TrackMe on Android showing multi-sport activity tracking across a map">
+                            </div>
+                            <div class="showcase-caption">
+                                <span class="showcase-index">04 / 05</span>
+                                <h3>Weekly recap &amp; active streak</h3>
+                                <p>A calm weekly summary of what you covered, plus a forgiving streak that celebrates showing up — a single quiet week won't reset it.</p>
+                            </div>
+                        </article>
+
+                        <!-- 05 · Safety / SOS -->
+                        <article class="showcase-card" role="group" aria-roledescription="slide" aria-label="5 of 5: Safety and SOS">
+                            <div class="showcase-poster-wrap">
+                                <img class="showcase-poster" src="assets/showcase/sos-safety.jpg" width="1120" height="611" loading="lazy" decoding="async" alt="TrackMe on Android showing the emergency SOS alert control on the tracking screen">
+                            </div>
+                            <div class="showcase-caption">
+                                <span class="showcase-index">05 / 05</span>
+                                <h3>Safety when you're solo</h3>
+                                <p>A deliberate slide-to-send SOS reaches your emergency contacts with your live location — hard to trigger by accident, there when you need it.</p>
+                            </div>
+                        </article>
+
+                    </div>
+                </div>
+
+                <button class="showcase-nav showcase-next" type="button" aria-label="Next feature">&#8250;</button>
+
+                <div class="showcase-dots" id="showcase-dots" role="tablist" aria-label="Choose a feature"></div>
+            </div>
+        </section>
+
+        <section id="safety" class="safety-band" aria-labelledby="safety-title">
+            <div class="section-shell safety-layout">
+                <div>
+                    <p class="eyebrow eyebrow-light">A little more peace of mind</p>
+                    <h2 id="safety-title">Keep the people you trust in the loop.</h2>
+                </div>
+                <p>Live sharing and SOS tools are designed for the moment you are moving, not for a dashboard you have to babysit. You choose when a session starts, who gets the link, and when it expires.</p>
+                <a class="btn btn-outline-light" href="#support">Read the safety FAQ</a>
+            </div>
+        </section>
+
+        <section id="pulse" class="section-shell section-block" aria-labelledby="pulse-title">
             <div class="telemetry-card">
                 <div class="telemetry-header">
-                    <div class="telemetry-title">
-                        <span>📊 Live Share Community Pulse & Metrics</span>
+                    <div>
+                        <p class="eyebrow">Community pulse</p>
+                        <h2 id="pulse-title">People are sharing the miles that matter.</h2>
                     </div>
-                    <div class="telemetry-badge" title="Automatically refreshes every 6 hours from edge cache">
-                        <span class="live-pulse"></span>
-                        <span>Dynamic Live Stats (6h Edge Sync)</span>
-                    </div>
+                    <span class="telemetry-badge"><span class="live-pulse" aria-hidden="true"></span> Updated every 6 hours</span>
                 </div>
                 <div class="telemetry-grid">
-                    <div class="telemetry-stat">
-                        <div class="stat-label">Live Links (Last 24h)</div>
-                        <div class="stat-value"><span id="stat-shares-24h">...</span> <span style="font-size: 1rem; color: #94a3b8; font-weight: 500;">links</span></div>
-                        <div class="stat-desc">New live tracking links generated recently</div>
+                    <div class="telemetry-stat"><span class="stat-label">Shared links, 24h</span><strong id="stat-shares-24h">...</strong><span class="stat-desc">New live sessions</span></div>
+                    <div class="telemetry-stat"><span class="stat-label">All-time sessions</span><strong id="stat-total-shares">...</strong><span class="stat-desc">Created by the community</span></div>
+                    <div class="telemetry-stat"><span class="stat-label">Hours shared</span><strong id="stat-total-hours">...</strong><span class="stat-desc">Time shared with others</span></div>
+                    <div class="telemetry-stat"><span class="stat-label">Viewers, 24h</span><strong id="stat-viewers-24h">...</strong><span class="stat-desc">People following a link</span></div>
+                </div>
+                <p class="telemetry-footnote">Last updated <span id="stat-updated-at">just now</span>. Cache valid until <span id="stat-valid-until">the next 6h cycle</span>.</p>
+            </div>
+        </section>
+
+        <section id="privacy" class="section-shell section-block privacy-section" aria-labelledby="privacy-title">
+            <div class="privacy-copy">
+                <p class="eyebrow">Your data has an exit door</p>
+                <h2 id="privacy-title">Useful cloud features without lock-in.</h2>
+                <p>TrackMe works locally first. When you enable cloud sync, your data stays tied to your account, can be exported in a standard archive, and is never sold as an audience product.</p>
+                <a class="text-link" href="privacy.html">Read the privacy policy <span aria-hidden="true">&rarr;</span></a>
+            </div>
+            <div class="privacy-list" aria-label="Privacy commitments">
+                <div><strong>Local by default</strong><span>Recording does not depend on a connection.</span></div>
+                <div><strong>Exportable</strong><span>Download your profile, rides, and GPX traces.</span></div>
+                <div><strong>Time-limited sharing</strong><span>Live links expire instead of lingering forever.</span></div>
+            </div>
+        </section>
+
+        <section id="waitlist" class="section-shell section-block waitlist-section" aria-labelledby="waitlist-title">
+            <div class="waitlist-card">
+                <div class="waitlist-copy">
+                    <p class="eyebrow">Be first out the door</p>
+                    <h2 id="waitlist-title">Join the launch list.</h2>
+                    <p>Get a single note when TrackMe opens up. No newsletter, no sharing your address. Sent securely via <a href="https://resend.com/legal/dpa" target="_blank" rel="noopener noreferrer" style="color:inherit;text-decoration:underline;">Resend</a> EU; we store only a one-way hash locally.</p>
+                </div>
+                <form id="waitlist-form" class="waitlist-form" novalidate>
+                    <div class="form-group">
+                        <label for="waitlist-email">Email address</label>
+                        <input type="email" id="waitlist-email" name="email" inputmode="email" autocomplete="email" placeholder="you@example.com" required>
                     </div>
-                    <div class="telemetry-stat">
-                        <div class="stat-label">Total Live Shares</div>
-                        <div class="stat-value"><span id="stat-total-shares">...</span> <span style="font-size: 1rem; color: #94a3b8; font-weight: 500;">sessions</span></div>
-                        <div class="stat-desc">All-time location sharing sessions created</div>
+                    <div class="form-group">
+                        <label for="waitlist-platform">Which platform? <span class="label-optional">(optional)</span></label>
+                        <select id="waitlist-platform" name="platform">
+                            <option value="unspecified">No preference</option>
+                            <option value="android">Android</option>
+                            <option value="ios">iOS</option>
+                        </select>
                     </div>
-                    <div class="telemetry-stat">
-                        <div class="stat-label">Total Ride Hours Shared</div>
-                        <div class="stat-value"><span id="stat-total-hours">...</span> <span style="font-size: 1rem; color: #94a3b8; font-weight: 500;">hrs</span></div>
-                        <div class="stat-desc">Cumulative ride time shared across all users</div>
+                    <!-- Honeypot: hidden from users, tempting to bots. Must stay empty. -->
+                    <div class="waitlist-hp" aria-hidden="true">
+                        <label for="waitlist-company">Company</label>
+                        <input type="text" id="waitlist-company" name="company" tabindex="-1" autocomplete="off">
                     </div>
-                    <div class="telemetry-stat">
-                        <div class="stat-label">Viewer Sessions (Last 24h)</div>
-                        <div class="stat-value"><span id="stat-viewers-24h">...</span> <span style="font-size: 1rem; color: #34d399; font-weight: 500;">viewers</span></div>
-                        <div class="stat-desc">Unique live share viewer sessions in last 24 hrs</div>
+                    <button type="submit" id="waitlist-submit" class="btn btn-primary btn-large">Join the list</button>
+                    <p id="waitlist-message" class="waitlist-message" role="status" aria-live="polite"></p>
+                </form>
+            </div>
+        </section>
+
+        <section id="releases" class="section-shell section-block releases-section" aria-labelledby="releases-title">
+            <div class="section-heading section-heading-row">
+                <div><p class="eyebrow">Start where you are</p><h2 id="releases-title">Get the app.</h2></div>
+                <p>Android is in closed testing now. iOS is in preparation while Apple distribution access is completed.</p>
+            </div>
+            <div class="tabs" role="tablist" aria-label="Platform releases">
+                <button class="tab-btn active" id="android-tab" type="button" role="tab" aria-selected="true" aria-controls="android-releases" data-target="android-releases">Android</button>
+                <button class="tab-btn" id="ios-tab" type="button" role="tab" aria-selected="false" aria-controls="ios-releases" data-target="ios-releases">iOS</button>
+            </div>
+            <div id="android-releases" class="tab-content active" role="tabpanel" aria-labelledby="android-tab">
+                <div class="download-panel">
+                    <div><span class="status-label">Current channel</span><h3>Closed testing</h3><p>Join the testing group, opt in, then install from Google Play with the same account.</p></div>
+                    <div class="download-actions">
+                        <a class="btn btn-primary download-cta" href="https://groups.google.com/g/trackride-alpha-testing-track" target="_blank" rel="noreferrer" data-download-platform="android">Join testing group</a>
+                        <a class="btn btn-secondary download-cta" href="https://play.google.com/apps/testing/in.shvms.trackme" target="_blank" rel="noreferrer" data-download-platform="android">Open Play opt-in</a>
+                        <a class="text-link" href="https://play.google.com/store/apps/details?id=in.shvms.trackme" target="_blank" rel="noreferrer" data-download-platform="android">View Play listing</a>
+                    </div>
+                    <p class="store-slot"><span>Production badge slot</span> The direct Google Play listing is ready to replace this testing path after rollout approval.</p>
+                </div>
+                    <div class="release-history" id="dynamic-android-releases" aria-label="Android release history">
+                        <!-- Releases populated via GitHub API -->
                     </div>
                 </div>
-                <div style="margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid rgba(255, 255, 255, 0.1); display: flex; justify-content: space-between; align-items: center; font-size: 0.82rem; color: #94a3b8; flex-wrap: wrap; gap: 0.5rem;">
-                    <span>⏳ <strong style="color: #cbd5e1;">Last Updated:</strong> <span id="stat-updated-at">Just now</span></span>
-                    <span>🔄 <strong style="color: #cbd5e1;">Valid Until:</strong> <span id="stat-valid-until">Next 6h cycle</span></span>
+            <div id="ios-releases" class="tab-content" role="tabpanel" aria-labelledby="ios-tab" hidden>
+                <div class="download-panel"><span class="status-label">Coming next</span><h3>iOS preparation</h3><p>Core tracking and sync are being brought to functional parity before TestFlight. Apple Developer enrollment is the remaining distribution gate.</p><a class="text-link" href="#support">See the launch FAQ <span aria-hidden="true">&rarr;</span></a></div>
+                <div class="release-history" id="dynamic-ios-releases" aria-label="iOS release history">
+                    <!-- Releases populated via GitHub API -->
                 </div>
             </div>
         </section>
 
-        <section id="releases" class="section bg-light">
-            <h2>Releases</h2>
-            
-            <div class="tabs">
-                <button class="tab-btn active" data-target="android-releases">Android</button>
-                <button class="tab-btn" data-target="ios-releases">iOS</button>
-            </div>
-
-            <div id="android-releases" class="tab-content active">
-                <div class="card" style="margin-bottom: 20px;">
-                    <h3>Join Alpha Testing (Android)</h3>
-                    <p style="margin-bottom: 10px;">TrackMe is currently in closed Alpha Testing. To download and try the app, please complete the following steps:</p>
-                    <ol style="margin-left: 20px; line-height: 1.8;">
-                        <li><strong>Join the Testing Group:</strong> <a href="https://groups.google.com/g/trackride-alpha-testing-track" target="_blank">trackride-alpha-testing-track</a></li>
-                        <li><strong>Become a Tester:</strong> Opt-in via our <a href="https://play.google.com/apps/testing/in.shvms.trackme" target="_blank">Web Testing Link</a></li>
-                        <li><strong>Download on Google Play:</strong> Download the app using the same Google account: <a href="https://play.google.com/store/apps/details?id=in.shvms.trackme" target="_blank">Google Play Store</a></li>
-                    </ol>
-                </div>
-
-                <div class="releases-scroll-container">
-                    <div class="card release-card" data-version="1.5.6">
-                        <div class="release-header">
-                            <h3>
-                                <span class="release-version-badge">Version 1.5.6</span>
-                                <span class="release-name">— "Zenith Hotfix 6"</span>
-                                <span class="release-date">(July 17, 2026)</span>
-                            </h3>
-                            <span class="release-toggle-icon">▼</span>
-                        </div>
-                        <div class="release-body">
-                            <p style="margin-top: 10px; color: var(--text-muted);"><strong>Release Notes:</strong></p>
-                            <ul style="margin-left: 20px; margin-top: 8px;">
-                                <li><strong>Clear Live Share Sign-In State:</strong> Signed-out users now see why live location sharing is unavailable, and the share action is disabled until they sign in.</li>
-                                <li><strong>Localized Guidance:</strong> Added sign-in guidance across all supported app languages, plus a defensive authentication check before creating a live-share session.</li>
-                            </ul>
-                        </div>
-                    </div>
-
-                    <div class="card release-card" data-version="1.5.5">
-                        <div class="release-header">
-                            <h3>
-                                <span class="release-version-badge">Version 1.5.5</span>
-                                <span class="release-name">— "Zenith Hotfix 5"</span>
-                                <span class="release-date">(July 17, 2026)</span>
-                            </h3>
-                            <span class="release-toggle-icon">▼</span>
-                        </div>
-                        <div class="release-body">
-                            <p style="margin-top: 10px; color: var(--text-muted);"><strong>Release Notes:</strong></p>
-                            <ul style="margin-left: 20px; margin-top: 8px;">
-                                <li><strong>R8 and WorkManager Stability:</strong> Hardened Room and WorkManager keep rules so reflective database constructors and generated implementations remain available in minified builds.</li>
-                                <li><strong>Release Metadata:</strong> Bumped the Android patch release and documented the minified release verification path.</li>
-                            </ul>
-                        </div>
-                    </div>
-
-                    <div class="card release-card" data-version="1.5.4">
-                        <div class="release-header">
-                            <h3>
-                                <span class="release-version-badge">Version 1.5.4</span>
-                                <span class="release-name">— "Zenith Hotfix 4"</span>
-                                <span class="release-date">(July 15, 2026)</span>
-                            </h3>
-                            <span class="release-toggle-icon">▼</span>
-                        </div>
-                        <div class="release-body">
-                            <p style="margin-top: 10px; color: var(--text-muted);"><strong>Release Notes:</strong></p>
-                            <ul style="margin-left: 20px; margin-top: 8px;">
-                                <li><strong>UI & Styling Refinements:</strong> Cumulative update incorporating visual contrast improvements on the web portal.</li>
-                                <li><strong>Data Export Polish:</strong> Finalized stability fixes for background archive downloads.</li>
-                            </ul>
-                        </div>
-                    </div>
-
-                    <div class="card release-card" data-version="1.5.3">
-                        <div class="release-header">
-                            <h3>
-                                <span class="release-version-badge">Version 1.5.3</span>
-                                <span class="release-name">— "Zenith Hotfix 3"</span>
-                                <span class="release-date">(July 15, 2026)</span>
-                            </h3>
-                            <span class="release-toggle-icon">▼</span>
-                        </div>
-                        <div class="release-body">
-                            <p style="margin-top: 10px; color: var(--text-muted);"><strong>Release Notes:</strong></p>
-                            <ul style="margin-left: 20px; margin-top: 8px;">
-                                <li><strong>Data Export Silent Failure Fix:</strong> Fixed a critical bug where data exports would queue in DownloadManager but silently fail to download. The app now correctly resolves the relative path returned by the server into a fully-qualified domain URL, enabling stable `.zip` downloads.</li>
-                            </ul>
-                        </div>
-                    </div>
-
-                    <div class="card release-card" data-version="1.5.2">
-                        <div class="release-header">
-                            <h3>
-                                <span class="release-version-badge">Version 1.5.2</span>
-                                <span class="release-name">— "Zenith Hotfix 2"</span>
-                                <span class="release-date">(July 15, 2026)</span>
-                            </h3>
-                            <span class="release-toggle-icon">▼</span>
-                        </div>
-                        <div class="release-body">
-                            <p style="margin-top: 10px; color: var(--text-muted);"><strong>Release Notes:</strong></p>
-                            <ul style="margin-left: 20px; margin-top: 8px;">
-                                <li><strong>Data Export Download Fix:</strong> Replaced the legacy external browser intent with native Android `DownloadManager`. The `.zip` archive now downloads securely and directly into the device's Downloads folder without crashing on devices lacking default browser configurations.</li>
-                            </ul>
-                        </div>
-                    </div>
-
-                    <div class="card release-card" data-version="1.5.1">
-                        <div class="release-header">
-                            <h3>
-                                <span class="release-version-badge">Version 1.5.1</span>
-                                <span class="release-name">— "Zenith Hotfix"</span>
-                                <span class="release-date">(July 15, 2026)</span>
-                            </h3>
-                            <span class="release-toggle-icon">▼</span>
-                        </div>
-                        <div class="release-body">
-                            <p style="margin-top: 10px; color: var(--text-muted);"><strong>Release Notes:</strong></p>
-                            <ul style="margin-left: 20px; margin-top: 8px;">
-                                <li><strong>Immediate Startup Crash Resolution:</strong> Reverted R8 code minification (`isMinifyEnabled`) and resource shrinking to restore 100% reflection and bytecode compatibility (`v1.4.0` standard), ensuring clean launch and stability.</li>
-                                <li><strong>Version & Signature Conflict Fix:</strong> Bumped version to `1.5.1` (version code `12`) to resolve Google Play package installer conflicts and ensure smooth upgrades over all prior builds.</li>
-                            </ul>
-                        </div>
-                    </div>
-
-                    <div class="card release-card" data-version="1.5.0">
-                        <div class="release-header">
-                            <h3>
-                                <span class="release-version-badge">Version 1.5.0</span>
-                                <span class="release-name">— "Zenith"</span>
-                                <span class="release-date">(July 15, 2026)</span>
-                            </h3>
-                            <span class="release-toggle-icon">▼</span>
-                        </div>
-                        <div class="release-body">
-                            <p style="margin-top: 10px; color: var(--text-muted);"><strong>Release Notes:</strong></p>
-                            <ul style="margin-left: 20px; margin-top: 8px;">
-                                <li><strong>Production Firestore Security Lockdown:</strong> Enforces strict user-isolated access control (`firestore.rules`) safeguarding ride histories, emergency contacts, and feedback against unauthorized access.</li>
-                                <li><strong>PostHog Product Telemetry & Remote Kill-Switch:</strong> Privacy-aware event tracking across authentication, ride lifecycle, and SOS beacons, dynamically controlled via Firebase Remote Config.</li>
-                                <li><strong>Centralized UI Theming & Chart Polish:</strong> Standardized color design tokens across core screens and improved edge avoidance and padding on scrubbable telemetry charts.</li>
-                                <li><strong>Build & ProGuard Optimization:</strong> Minified and resource-shrunk release bundle configuration for peak runtime performance and security.</li>
-                            </ul>
-                        </div>
-                    </div>
-
-                    <div class="card release-card" data-version="1.4.0">
-                        <div class="release-header">
-                            <h3>
-                                <span class="release-version-badge">Version 1.4.0</span>
-                                <span class="release-name">— "Summit"</span>
-                                <span class="release-date">(July 12, 2026)</span>
-                            </h3>
-                            <span class="release-toggle-icon">▼</span>
-                        </div>
-                        <div class="release-body">
-                            <p style="margin-top: 10px; color: var(--text-muted);"><strong>Release Notes:</strong></p>
-                            <ul style="margin-left: 20px; margin-top: 8px;">
-                                <li><strong>Complete Data Ownership & Cloud Export:</strong> Download your entire tracking history from the cloud in a secure, tokenized on-demand ZIP flow to prevent vendor lock-in.</li>
-                                <li><strong>Live Ride Sharing with Notifications:</strong> Share your real-time ride progress with friends or family via a secure live-tracking link, complete with interactive red-dot UI notifications and personalized SMS templates.</li>
-                                <li><strong>Emergency SOS Refactor:</strong> Streamlined emergency beacon trigger to an intuitive push-button action with smooth visual feedback.</li>
-                                <li><strong>Smart Graph Edge Avoidance:</strong> Telemetry graphs intelligently flip labels to prevent any data from being clipped at the screen edges during interaction.</li>
-                            </ul>
-                        </div>
-                    </div>
-
-                    <div class="card release-card" data-version="1.3.0">
-                        <div class="release-header">
-                            <h3>
-                                <span class="release-version-badge">Version 1.3.0</span>
-                                <span class="release-name">— "Vanguard"</span>
-                                <span class="release-date">(July 12, 2026)</span>
-                            </h3>
-                            <span class="release-toggle-icon">▼</span>
-                        </div>
-                        <div class="release-body">
-                            <p style="margin-top: 10px; color: var(--text-muted);"><strong>Release Notes:</strong></p>
-                            <ul style="margin-left: 20px; margin-top: 8px;">
-                                <li><strong>Interactive Live Share Pill Drawer:</strong> Sleek upward glassmorphism drawer (90% transparency) with dynamic state animations, clean symbology, one-click X transform, and crisp haptics.</li>
-                                <li><strong>Orphaned Ride Auto-Recovery:</strong> Intelligent trajectory recovery that automatically reconstructs complete ride stats (distance, speed, duration) from persisted SQLite GPS points if the device powers off or app force-closes mid-ride.</li>
-                                <li><strong>Completed Rides Isolation & Delete Guard:</strong> History screen strictly lists completed sessions while safeguarding active rides against accidental deletion.</li>
-                                <li><strong>LTTB Graph Downsampling:</strong> High-fidelity telemetry chart rendering that preserves visual peaks and uniform spacing for any duration without spikiness.</li>
-                            </ul>
-                        </div>
-                    </div>
-
-                    <div class="card release-card" data-version="1.2.1">
-                        <div class="release-header">
-                            <h3>
-                                <span class="release-version-badge">Version 1.2.1</span>
-                                <span class="release-name">— "Ascent"</span>
-                                <span class="release-date">(July 9, 2026)</span>
-                            </h3>
-                            <span class="release-toggle-icon">▼</span>
-                        </div>
-                        <div class="release-body">
-                            <p style="margin-top: 10px; color: var(--text-muted);"><strong>Release Notes:</strong></p>
-                            <ul style="margin-left: 20px; margin-top: 8px;">
-                                <li><strong>In-App Auto-Update Notifications:</strong> Asynchronously checks for new updates via cloud configuration on launch and presents an interactive release notes dialog with one-click store updating.</li>
-                                <li><strong>Manual Update Check:</strong> Added a dedicated "Check for Updates" button on the Settings screen.</li>
-                                <li><strong>CI/CD & Security Hardening:</strong> Automated JSON schema resilience and API key configuration hardening.</li>
-                            </ul>
-                        </div>
-                    </div>
-
-                    <div class="card release-card" data-version="1.2.0">
-                        <div class="release-header">
-                            <h3>
-                                <span class="release-version-badge">Version 1.2.0</span>
-                                <span class="release-name">— "Horizon"</span>
-                                <span class="release-date">(July 9, 2026)</span>
-                            </h3>
-                            <span class="release-toggle-icon">▼</span>
-                        </div>
-                        <div class="release-body">
-                            <p style="margin-top: 10px; color: var(--text-muted);"><strong>Release Notes:</strong></p>
-                            <ul style="margin-left: 20px; margin-top: 8px;">
-                                <li><strong>Ride History UX Overhaul:</strong> Compact high-density cards with native date sticky headers and vector route thumbnails.</li>
-                                <li><strong>Smart Background Cloud Sync:</strong> Automated daily background synchronization with WorkManager and lazy list loading.</li>
-                                <li><strong>Global Multi-Language Localization:</strong> Full translation support across 7 languages (English, Spanish, French, German, Hindi, Japanese, Chinese).</li>
-                            </ul>
-                        </div>
-                    </div>
-
-                    <div class="card release-card" data-version="1.1.0-rc.5">
-                        <div class="release-header">
-                            <h3>
-                                <span class="release-version-badge">Version 1.1.0-rc.5</span>
-                                <span class="release-date">(June 27, 2026)</span>
-                            </h3>
-                            <span class="release-toggle-icon">▼</span>
-                        </div>
-                        <div class="release-body">
-                            <p style="margin-top: 10px; color: var(--text-muted);"><strong>Release Notes:</strong></p>
-                            <ul style="margin-left: 20px; margin-top: 8px;">
-                                <li><strong>Settings & Account Management Redesign:</strong> Split the settings into a cleaner interface with a dedicated Account Management screen for privacy controls.</li>
-                                <li><strong>Enhanced Account Deletion Security:</strong> Added explicit typing confirmation before permanently deleting accounts to prevent accidental data loss.</li>
-                                <li><strong>Improved Export Preview:</strong> Refined the visual layout of the Image Export screen and added a new "Save to Gallery" button.</li>
-                            </ul>
-                        </div>
-                    </div>
-
-                    <div class="card release-card" data-version="1.1.0-rc.4">
-                        <div class="release-header">
-                            <h3>
-                                <span class="release-version-badge">Version 1.1.0-rc.4</span>
-                                <span class="release-date">(June 26, 2026)</span>
-                            </h3>
-                            <span class="release-toggle-icon">▼</span>
-                        </div>
-                        <div class="release-body">
-                            <p style="margin-top: 10px; color: var(--text-muted);"><strong>Release Notes:</strong></p>
-                            <ul style="margin-left: 20px; margin-top: 8px;">
-                                <li><strong>Live GPS Status:</strong> Added a visual warning banner when GPS signal is lost during an active ride.</li>
-                                <li><strong>Smart Ride Discarding:</strong> Rides that fail to capture any GPS points are now automatically discarded to keep your history clean.</li>
-                                <li><strong>Enhanced GPX Import:</strong> The "Import GPX" button is now clearer and includes validation to ensure only valid .gpx files are imported.</li>
-                                <li><strong>Bug Fixes:</strong> Resolved layout issues and crashes on the Ride History and Detail screens.</li>
-                            </ul>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div id="ios-releases" class="tab-content">
-                <div class="card">
-                    <p style="text-align: center; color: var(--text-light); font-style: italic;">No release for iOS yet. We are working hard to bring TrackMe to the App Store soon. Stay tuned!</p>
-                </div>
+        <section id="support" class="section-shell section-block support-section" aria-labelledby="support-title">
+            <div class="section-heading"><p class="eyebrow">Need a hand?</p><h2 id="support-title">Clear answers before you head out.</h2><p>Start with the common questions below. For account-specific help, sign in and use the feedback form in your account area.</p></div>
+            <div class="faq-list">
+                <details><summary>Will tracking work without mobile data?</summary><p>Yes. TrackMe records locally first. A connection is only needed for cloud sync, live sharing, or an SOS message.</p></details>
+                <details><summary>Who can see a live-share link?</summary><p>Anyone you give the link to can view the public location page until the session expires. Only the signed-in owner can start, update, or stop that session.</p></details>
+                <details><summary>Can I leave TrackMe with my data?</summary><p>Yes. Signed-in users can request a tokenized ZIP containing their profile, ride history, and GPX traces from the Account section.</p></details>
+                <details><summary>How do I report a problem?</summary><p><a class="text-link" href="mailto:dev.shvms@gmail.com">Email TrackMe support</a> or sign in and include details in the account feedback form.</p></details>
             </div>
         </section>
 
-        <section id="account" class="section hidden">
-            <h2>Manage Account</h2>
-
-            <!-- Data Portability & Archive Export Card -->
-            <div class="card" id="export-card" style="margin-bottom: 24px; border-left: 4px solid #3b82f6; background: rgba(30, 41, 59, 0.75);">
-                <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 16px;">
-                    <div style="flex: 1; min-width: 260px;">
-                        <h3 style="margin-bottom: 8px; color: #fff; display: flex; align-items: center; gap: 8px;">
-                            <span>📦</span> Download All My Data
-                        </h3>
-                        <p style="color: #cbd5e1; font-size: 0.95rem; line-height: 1.5; margin-bottom: 4px;">
-                            Request a complete archive of your historical cloud data (.gpx trace files and JSON profile metadata).
-                        </p>
-                    </div>
-                    <div>
-                        <button id="export-request-btn" class="btn" style="background: #3b82f6; color: #fff; border: none; padding: 10px 20px; font-weight: 600; border-radius: 8px; cursor: pointer;">
-                            Download My Data (.zip)
-                        </button>
-                    </div>
+        <section id="account" class="section-shell section-block account-section" aria-labelledby="account-title" data-auth-state="signed-out">
+            <div id="account-signed-out" class="account-signed-out">
+                <div class="section-heading">
+                    <p class="eyebrow">Your account</p>
+                    <h2 id="account-title">Keep your data within reach.</h2>
+                    <p>Sign in to request your archive, manage your account, or send account-specific feedback.</p>
                 </div>
-
-                <!-- Dynamic Status Box -->
-                <div id="export-status-container" style="display: none; margin-top: 18px; padding: 14px 18px; border-radius: 8px; background: rgba(59, 130, 246, 0.12); border: 1px solid rgba(59, 130, 246, 0.35);">
-                    <div style="display: flex; align-items: flex-start; gap: 12px;">
-                        <span id="export-status-icon" style="font-size: 1.4rem; line-height: 1.2;">⏳</span>
-                        <div>
-                            <strong id="export-status-title" style="color: #fff; display: block; font-size: 1.05rem;">Export Request Queued</strong>
-                            <p id="export-status-message" style="color: #cbd5e1; font-size: 0.92rem; margin: 6px 0 0 0; line-height: 1.45;"></p>
-                        </div>
-                    </div>
-                    <div id="export-download-action" style="display: none; margin-top: 14px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.1);">
-                        <a id="export-download-link" href="#" target="_blank" class="btn" style="background: #10b981; color: #fff; text-decoration: none; padding: 9px 18px; border-radius: 6px; display: inline-block; font-weight: 600;">
-                            ⬇️ Download TrackMe_Archive.zip
-                        </a>
-                    </div>
-                </div>
+                <button id="account-sign-in" class="btn btn-primary btn-large" type="button">Sign in to manage data</button>
             </div>
-
-            <div class="card danger-zone">
-                <h3 class="danger-text">Danger Zone</h3>
-                <p>Welcome, <span id="user-name"></span> (<span id="user-email"></span>).</p>
-                <p>If you wish to permanently delete your account and all associated cloud data (rides, GPS points, emergency configs), you can do so below.</p>
-                
-                <div class="form-group">
-                    <label for="feedback">Why are you leaving? (Optional)</label>
-                    <textarea id="feedback" rows="3" placeholder="Let us know how we can improve..."></textarea>
+            <div id="account-signed-in" hidden>
+                <div class="section-heading"><p class="eyebrow">Your account</p><h2>Manage your data.</h2><p>Welcome, <span id="user-name">Explorer</span> (<span id="user-email"></span>).</p></div>
+                <div class="account-grid">
+                    <div class="account-panel" id="export-card">
+                        <span class="panel-kicker">Data portability</span><h3>Download all my data</h3><p>Request your profile, ride history, and GPX traces as a tokenized ZIP assembled from your own Firestore data.</p>
+                        <button id="export-request-btn" class="btn btn-primary" type="button">Request data ZIP</button>
+                        <div id="export-status-container" class="export-status" hidden><span id="export-status-icon" aria-hidden="true">&middot;</span><div><strong id="export-status-title">Export status</strong><p id="export-status-message"></p></div><div id="export-download-action" hidden><a id="export-download-link" class="btn btn-secondary" href="#" target="_blank" rel="noreferrer">Download ZIP</a></div></div>
+                    </div>
+                    <div class="account-panel danger-zone"><span class="panel-kicker">Permanent action</span><h3>Delete account</h3><p>Delete your account and associated cloud data. This cannot be undone.</p><div class="form-group"><label for="feedback">Optional feedback</label><textarea id="feedback" rows="3" placeholder="What could we improve?"></textarea></div><div class="form-group"><label for="confirm-delete">Type <strong>DELETE</strong> to confirm</label><input type="text" id="confirm-delete" placeholder="DELETE" autocomplete="off"></div><button id="delete-account-btn" class="btn btn-danger" type="button" disabled>Delete account</button><p id="delete-message" role="status"></p></div>
                 </div>
-
-                <div class="form-group">
-                    <label for="confirm-delete">To confirm, type <span class="danger-text">DELETE</span> below:</label>
-                    <input type="text" id="confirm-delete" placeholder="DELETE">
-                </div>
-
-                <button id="delete-account-btn" class="btn btn-danger" disabled>Delete Account Permanently</button>
-                <p id="delete-message"></p>
             </div>
         </section>
     </main>
 
-    <footer>
-        <p>&copy; 2026 TrackMe. All rights reserved.</p>
-        <p style="margin-top: 10px;"><a href="privacy.html" style="color: #ccc; text-decoration: none;">Privacy Policy</a></p>
-    </footer>
+    <footer class="site-footer"><div class="section-shell footer-inner"><a class="brand brand-footer" href="#top"><img class="brand-mark" src="assets/trackme-logo.png" width="32" height="32" alt="" aria-hidden="true"><span>TrackMe</span></a><div><a href="privacy.html">Privacy policy</a><a href="#support">Support</a><a href="mailto:dev.shvms@gmail.com">Contact</a></div><p>&copy; 2026 TrackMe. Built for people who want their routes to stay theirs.</p></div></footer>
 
-    <!-- Secure Proxy Telemetry Tracker -->
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            function trackEvent(event, properties = {}) {
-                fetch('/api/telemetry/event', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ event, properties: { ...properties, page: 'home' } })
-                }).catch(() => {});
+            const trackEvent = (event, properties = {}) => fetch('/api/telemetry/event', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ event, properties: { ...properties, page: 'home_v2' } }) }).catch(() => {});
+            trackEvent('landing_page_viewed', { url: window.location.href, version: 'v2' });
+            const timers = {};
+            const observer = new IntersectionObserver((entries) => entries.forEach((entry) => {
+                const id = entry.target.id;
+                if (entry.isIntersecting) timers[id] = Date.now();
+                else if (timers[id]) { const dwell = Math.round((Date.now() - timers[id]) / 1000); if (dwell >= 2) trackEvent('section_viewed', { section_id: id, dwell_time_seconds: dwell }); delete timers[id]; }
+            }), { threshold: 0.4 });
+            document.querySelectorAll('section[id]').forEach((section) => observer.observe(section));
+            document.querySelectorAll('.download-cta').forEach((button) => button.addEventListener('click', () => trackEvent('download_cta_clicked', { platform: button.dataset.downloadPlatform || 'unknown', target: button.getAttribute('href') })));
+            const waitlistForm = document.getElementById('waitlist-form');
+            if (waitlistForm) {
+                const message = document.getElementById('waitlist-message');
+                const submit = document.getElementById('waitlist-submit');
+                waitlistForm.addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    const email = document.getElementById('waitlist-email').value.trim();
+                    const platform = document.getElementById('waitlist-platform').value;
+                    const company = document.getElementById('waitlist-company').value;
+                    if (!email) { message.textContent = 'Please enter your email address.'; message.dataset.state = 'error'; return; }
+                    submit.disabled = true; message.dataset.state = ''; message.textContent = 'Adding you…';
+                    try {
+                        const res = await fetch('/api/telemetry/subscribe', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, platform, company }) });
+                        if (res.ok) {
+                            waitlistForm.reset();
+                            message.textContent = "You're on the list. We'll be in touch at launch.";
+                            message.dataset.state = 'success';
+                        } else if (res.status === 429) {
+                            message.textContent = 'Too many attempts. Please try again in a little while.';
+                            message.dataset.state = 'error';
+                        } else {
+                            const data = await res.json().catch(() => ({}));
+                            message.textContent = data.error || 'Please enter a valid email address.';
+                            message.dataset.state = 'error';
+                        }
+                    } catch (err) {
+                        message.textContent = 'Network hiccup — please try again.';
+                        message.dataset.state = 'error';
+                    } finally {
+                        submit.disabled = false;
+                    }
+                });
             }
-
-            trackEvent('landing_page_viewed', { url: window.location.href });
-
-            // Track section dwell times
-            const sections = document.querySelectorAll('section[id]');
-            const sectionTimers = {};
-
-            const observer = new IntersectionObserver((entries) => {
-                entries.forEach((entry) => {
-                    const id = entry.target.id;
-                    if (entry.isIntersecting) {
-                        sectionTimers[id] = Date.now();
-                    } else if (sectionTimers[id]) {
-                        const dwellSeconds = Math.round((Date.now() - sectionTimers[id]) / 1000);
-                        if (dwellSeconds >= 2) {
-                            trackEvent('section_viewed', {
-                                section_id: id,
-                                dwell_time_seconds: dwellSeconds
-                            });
-                        }
-                        delete sectionTimers[id];
-                    }
+            // Feature showcase carousel: auto-advance every 5s, pausable, a11y-aware.
+            const track = document.getElementById('showcase-track');
+            if (track) {
+                const cards = Array.from(track.children);
+                const dotsWrap = document.getElementById('showcase-dots');
+                const carousel = track.closest('.showcase');
+                const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+                let index = 0;
+                let timer = null;
+                const INTERVAL = 5000;
+                cards.forEach((_, i) => {
+                    const dot = document.createElement('button');
+                    dot.className = 'showcase-dot';
+                    dot.type = 'button';
+                    dot.setAttribute('role', 'tab');
+                    dot.setAttribute('aria-label', 'Feature ' + (i + 1));
+                    dot.addEventListener('click', () => { go(i); restart(); });
+                    dotsWrap.appendChild(dot);
                 });
-            }, { threshold: 0.4 });
-
-            sections.forEach((s) => observer.observe(s));
-
-            // Track button clicks
-            document.querySelectorAll('a.btn, button.btn').forEach((btn) => {
-                btn.addEventListener('click', () => {
-                    trackEvent('cta_clicked', {
-                        text: btn.innerText.trim(),
-                        target: btn.getAttribute('href') || btn.id || 'unknown'
-                    });
+                const dots = Array.from(dotsWrap.children);
+                function render() {
+                    track.style.transform = 'translateX(' + (-index * 100) + '%)';
+                    dots.forEach((d, i) => d.setAttribute('aria-selected', i === index ? 'true' : 'false'));
+                }
+                function go(i) { index = (i + cards.length) % cards.length; render(); }
+                function next() { go(index + 1); }
+                function prev() { go(index - 1); }
+                function stop() { if (timer) { clearInterval(timer); timer = null; } }
+                function start() { if (!reduceMotion && !timer) timer = setInterval(next, INTERVAL); }
+                function restart() { stop(); start(); }
+                carousel.querySelector('.showcase-next').addEventListener('click', () => { next(); restart(); trackEvent('showcase_nav', { direction: 'next', index }); });
+                carousel.querySelector('.showcase-prev').addEventListener('click', () => { prev(); restart(); trackEvent('showcase_nav', { direction: 'prev', index }); });
+                carousel.addEventListener('mouseenter', stop);
+                carousel.addEventListener('mouseleave', start);
+                carousel.addEventListener('focusin', stop);
+                carousel.addEventListener('focusout', start);
+                document.addEventListener('visibilitychange', () => { document.hidden ? stop() : start(); });
+                // Touch swipe (mobile).
+                let x0 = null;
+                track.addEventListener('touchstart', (e) => { x0 = e.touches[0].clientX; stop(); }, { passive: true });
+                track.addEventListener('touchend', (e) => {
+                    if (x0 === null) return;
+                    const dx = e.changedTouches[0].clientX - x0;
+                    if (Math.abs(dx) > 40) { dx < 0 ? next() : prev(); }
+                    x0 = null; start();
                 });
-            });
-
-            // Fetch dynamic 6h edge-cached live metrics
-            fetch('/api/telemetry/stats')
-                .then(res => res.json())
-                .then(data => {
-                    if (document.getElementById('stat-shares-24h')) {
-                        document.getElementById('stat-shares-24h').textContent = data.shares24h ?? 0;
-                        document.getElementById('stat-total-shares').textContent = data.totalShares ?? 0;
-                        document.getElementById('stat-total-hours').textContent = data.totalHoursShared ?? 0;
-                        if (document.getElementById('stat-viewers-24h')) {
-                            document.getElementById('stat-viewers-24h').textContent = data.viewers24h ?? 0;
-                        }
-                        if (data.updatedAt && document.getElementById('stat-updated-at')) {
-                            document.getElementById('stat-updated-at').textContent = new Date(data.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                        }
-                        if (data.validUntil && document.getElementById('stat-valid-until')) {
-                            document.getElementById('stat-valid-until').textContent = new Date(data.validUntil).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                        }
-                    }
-                })
-                .catch(err => console.error('Error loading pulse stats:', err));
+                render();
+                start();
+            }
+            fetch('/api/telemetry/stats').then((response) => response.json()).then((data) => {
+                const values = { 'stat-shares-24h': data.shares24h ?? 0, 'stat-total-shares': data.totalShares ?? 0, 'stat-total-hours': data.totalHoursShared ?? 0, 'stat-viewers-24h': data.viewers24h ?? 0 };
+                Object.entries(values).forEach(([id, value]) => { const element = document.getElementById(id); if (element) element.textContent = value; });
+                if (data.updatedAt) document.getElementById('stat-updated-at').textContent = new Date(data.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                if (data.validUntil) document.getElementById('stat-valid-until').textContent = new Date(data.validUntil).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            }).catch(() => {});
         });
     </script>
 </body>

@@ -1,0 +1,54 @@
+name: Receive Mobile Release
+
+on:
+  repository_dispatch:
+    types: [mobile_release]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update-releases:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      - name: Update releases.json
+        run: |
+          mkdir -p public
+          if [ ! -f public/releases.json ]; then
+            echo '{"android": [], "ios": []}' > public/releases.json
+          fi
+          
+          node -e "
+            const fs = require('fs');
+            const data = JSON.parse(fs.readFileSync('public/releases.json', 'utf8'));
+            const payload = ${{ toJson(github.event.client_payload) }};
+            const platform = payload.platform;
+            
+            if (!data[platform]) data[platform] = [];
+            
+            // Avoid duplicates
+            if (!data[platform].find(r => r.version === payload.version)) {
+              data[platform].unshift({
+                version: payload.version,
+                name: payload.release_name,
+                date: new Date().toISOString().split('T')[0]
+              });
+              fs.writeFileSync('public/releases.json', JSON.stringify(data, null, 2));
+            }
+          "
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v5
+        with:
+          commit-message: "chore: add ${{ github.event.client_payload.platform }} release ${{ github.event.client_payload.version }}"
+          title: "New Mobile Release: ${{ github.event.client_payload.platform }} ${{ github.event.client_payload.version }}"
+          body: "Automated PR to update releases.json for new mobile release."
+          branch: "update-release-${{ github.event.client_payload.platform }}-${{ github.event.client_payload.version }}"

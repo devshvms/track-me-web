@@ -1,0 +1,38 @@
+// D1 — waitlist Firestore rules (REVIEW ARTIFACT — do not deploy from here).
+//
+// The canonical ruleset lives in track-me-android/firestore.rules (the Firebase
+// project home). That file already DENIES the `waitlist` collection to all
+// clients via its trailing `match /{document=**} { allow read, write: if false }`,
+// and all waitlist writes go through the Vercel API using the Admin SDK, which
+// bypasses security rules entirely. So the feature is safe today with no rules
+// change.
+//
+// This block is the EXPLICIT defense-in-depth version to fold into the canonical
+// file at deploy time (pending Antigravity review, per RELEASE-1.6.0-PLAN.md).
+// It makes the "server-only, no client reads/writes" intent legible rather than
+// relying on the catch-all default-deny.
+//
+// Place ABOVE the trailing `match /{document=**}` default-deny block:
+
+match /waitlist/{emailHash} {
+  // Writes are performed exclusively by the backend Admin SDK (which bypasses
+  // rules). No client — signed-in or anonymous — may read, create, update, or
+  // delete a waitlist document. Reads are denied so the hashed-email set can
+  // never be enumerated; the raw address is never stored regardless.
+  allow read, write: if false;
+}
+
+// --- Reference only: the "public create-only, validated schema" alternative ---
+// If a future design ever needed direct client creates (it does NOT today —
+// rate-limiting and PII handling require the server), the safe shape would be:
+//
+//   match /waitlist/{emailHash} {
+//     allow read, update, delete: if false;
+//     allow create: if request.resource.data.keys().hasOnly(['emailHash', 'platform', 'status', 'source', 'providerContactId', 'createdAt'])
+//                   && request.resource.data.emailHash is string
+//                   && request.resource.data.platform in ['android', 'ios', 'web', 'unspecified'];
+//   }
+//
+// We deliberately do NOT ship that: a public write rule cannot enforce the
+// per-IP rate limit, the honeypot, or keep the address server-side. Server +
+// Admin writes are the mandated path (Codex + Antigravity review, 2026-07-20).
