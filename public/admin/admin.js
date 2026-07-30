@@ -79,6 +79,7 @@ onAuthStateChanged(auth, async (user) => {
                 loadConfig();
                 loadMetrics();
                 loadTelemetry();
+                initPosthogEmbed();
             } else {
                 const errorData = await adminResponse.json().catch(() => ({}));
                 throw new Error(errorData.error || 'Access Denied. You do not have administrator privileges.');
@@ -253,6 +254,30 @@ async function loadMetrics() {
 refreshMetricsBtn.addEventListener('click', loadMetrics);
 
 // --- PostHog Telemetry Stats ---
+function initPosthogEmbed() {
+    const iframe = document.getElementById('posthog-iframe');
+    const fallback = document.getElementById('posthog-fallback');
+    const openLink = document.getElementById('posthog-open-link');
+    const dashboardLink = document.getElementById('posthog-dashboard-link');
+    const dashboardUrl = window.__POSTHOG_DASHBOARD_URL__;
+
+    if (typeof dashboardUrl === 'string' && dashboardUrl.trim()) {
+        const url = dashboardUrl.trim();
+        if (iframe) iframe.src = url;
+        if (openLink) openLink.href = url;
+        if (dashboardLink) {
+            dashboardLink.href = url;
+            dashboardLink.classList.remove('hidden');
+        }
+        if (fallback) fallback.classList.add('hidden');
+        return;
+    }
+
+    if (iframe) iframe.src = 'about:blank';
+    if (dashboardLink) dashboardLink.classList.add('hidden');
+    if (fallback) fallback.classList.remove('hidden');
+}
+
 async function loadTelemetry() {
     const refreshBtn = document.getElementById('refresh-telemetry-btn');
     if (refreshBtn) { refreshBtn.textContent = 'Refreshing...'; refreshBtn.disabled = true; }

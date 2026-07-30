@@ -3,3 +3,4 @@ node_modules
 .vercel
 dist
 public/firebase-config.js
+public/posthog-config.js

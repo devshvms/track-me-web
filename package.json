@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "build": "node scripts/write-firebase-config.js",
+    "build": "node scripts/write-firebase-config.js && node scripts/write-posthog-config.js",
     "test": "npm run check:theme && npm run check:landing && npm run test:unit",
     "check:theme": "node scripts/check-theme-contrast.js",
     "check:landing": "node scripts/check-landing-structure.js",
