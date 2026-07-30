@@ -1,7 +1,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 
-const css = fs.readFileSync(path.join(__dirname, "..", "public", "style_v2.css"), "utf8");
+const css = fs.readFileSync(path.join(__dirname, "..", "public", "style.css"), "utf8");
 
 function token(name) {
   const match = css.match(new RegExp(`--${name}:\\s*(#[0-9a-fA-F]{6})`));
