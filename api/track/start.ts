@@ -54,7 +54,7 @@ export default async function handler(
     }
 
     const country = (request.headers['x-vercel-ip-country'] as string) || 'unknown';
-    await captureTelemetryEvent(sessionId, 'live_share_started', {
+    await captureTelemetryEvent(sessionId, 'web_live_share_session_started', {
       sessionId,
       username: sessionData.username,
       durationMinutes: duration,

@@ -54,7 +54,7 @@ export default async function handler(
       });
     }
 
-    await captureTelemetryEvent(sessionId, 'live_share_stopped', {
+    await captureTelemetryEvent(sessionId, 'web_live_share_session_stopped', {
       sessionId,
       username: sessionData.username,
       stopReason: stopReason || 'manual_stop',
