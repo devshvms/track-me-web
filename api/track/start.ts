@@ -4,6 +4,11 @@ import { getRedisClient } from '../../lib/redis';
 import { captureTelemetryEvent } from '../../lib/posthog';
 import { absoluteUrl } from '../../lib/http';
 import { requireUser, sendAuthError } from '../../lib/auth';
+import {
+  MAX_SESSION_MINUTES,
+  computeStartTtlSeconds,
+  parseTripPlan,
+} from '../../lib/tripExpiry';
 
 export default async function handler(
   request: VercelRequest,
@@ -16,33 +21,57 @@ export default async function handler(
   try {
     const decoded = await requireUser(request);
     const { durationMinutes, username } = request.body || {};
-    let duration = parseInt(durationMinutes, 10);
-    if (isNaN(duration) || duration <= 0) {
-      duration = 1440;
-    } else if (duration > 1440) {
-      return response.status(400).json({ error: 'Duration cannot exceed 24 hours (1440 minutes).' });
+
+    // TASK-171 / D5. The fixed 24-hour cap is gone; a session is scoped to the
+    // trip when the client sends one (destination / etaAt / deadlineAt), and
+    // the only remaining ceiling is the anti-typo guard in lib/tripExpiry.ts.
+    const parsed = parseInt(durationMinutes, 10);
+    const duration = isNaN(parsed) || parsed <= 0 ? null : parsed;
+    if (duration !== null && duration > MAX_SESSION_MINUTES) {
+      return response.status(400).json({
+        error: `Duration cannot exceed ${MAX_SESSION_MINUTES} minutes (${MAX_SESSION_MINUTES / (24 * 60)} days).`,
+      });
     }
+
+    const now = Date.now();
+    const trip = parseTripPlan(request.body, now);
+    if (!trip.ok) {
+      return response.status(400).json({ error: trip.error });
+    }
+    const { destination, etaAt, deadlineAt } = trip.plan;
+
+    const ttlSeconds = computeStartTtlSeconds(
+      {
+        durationMinutes: duration,
+        deadlineAtMs: deadlineAt ? new Date(deadlineAt).getTime() : null,
+      },
+      now,
+    );
 
     const redis = await getRedisClient();
 
-    const now = Date.now();
     const sessionId = crypto.randomUUID();
-    const expiresAt = new Date(now + duration * 60 * 1000);
-    
-    const sessionData = {
+    const expiresAt = new Date(now + ttlSeconds * 1000);
+
+    const sessionData: Record<string, unknown> = {
       sessionId,
       ownerUid: decoded.uid,
       ownerEmail: decoded.email || null,
       username: username || 'Anonymous',
-      initialDuration: duration,
+      initialDuration: Math.round(ttlSeconds / 60),
       startedAt: now,
       expiresAt: expiresAt.toISOString(),
       status: 'active',
       lastLocation: null
     };
+    // Only trip sessions carry trip fields; the viewer renders them (TASK-173)
+    // and the closure TTL is computed from deadlineAt (TASK-171).
+    if (destination) sessionData.destination = destination;
+    if (etaAt) sessionData.etaAt = etaAt;
+    if (deadlineAt) sessionData.deadlineAt = deadlineAt;
 
     await redis.set(`session:${sessionId}`, JSON.stringify(sessionData), {
-      EX: duration * 60
+      EX: ttlSeconds
     });
 
     try {
@@ -54,10 +83,15 @@ export default async function handler(
     }
 
     const country = (request.headers['x-vercel-ip-country'] as string) || 'unknown';
+    // Trip details stay out of telemetry — a guardian deadline and destination
+    // are the rider's business; only their presence is worth counting.
     await captureTelemetryEvent(sessionId, 'web_live_share_session_started', {
       sessionId,
       username: sessionData.username,
-      durationMinutes: duration,
+      durationMinutes: Math.round(ttlSeconds / 60),
+      tripScoped: Boolean(deadlineAt),
+      hasDestination: Boolean(destination),
+      hasEta: Boolean(etaAt),
       country,
     });
 
@@ -66,7 +100,9 @@ export default async function handler(
     return response.status(200).json({
       sessionId,
       shareLink,
-      expiresAt: sessionData.expiresAt
+      expiresAt: sessionData.expiresAt,
+      etaAt,
+      deadlineAt
     });
   } catch (error) {
     if (sendAuthError(response, error)) return;

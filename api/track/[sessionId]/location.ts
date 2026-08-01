@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { getRedisClient } from '../../../lib/redis';
+import { expectsDurableStore, getRedisClient, isDurableStore, setPreservingExpiry } from '../../../lib/redis';
 import { AuthError, requireUser, sendAuthError } from '../../../lib/auth';
 
 
@@ -56,11 +56,34 @@ export default async function handler(
         timestamp: timestamp || new Date().toISOString()
       };
 
-      const ttl = await redis.ttl(`session:${sessionId}`);
-      if (ttl > 0) {
-        await redis.set(`session:${sessionId}`, JSON.stringify(sessionData), {
-          EX: ttl
-        });
+      // TASK-170 / DEFECT-B. This handler must never answer 200 {success:true}
+      // for an update it did not store. The rider's phone treats success as
+      // "delivered" and stops caring; the viewer keeps rendering the last
+      // stored position, which a worried person reads as a stationary rider
+      // rather than a dead feed.
+      if (!isDurableStore(redis) && expectsDurableStore()) {
+        console.error(
+          `Live-share location write refused: no durable store (see the [redis] DEGRADED warning) session=${sessionId}`,
+        );
+        return response.status(503).json({ error: 'Location store unavailable. This update was not saved.' });
+      }
+
+      const written = await setPreservingExpiry(
+        redis,
+        `session:${sessionId}`,
+        JSON.stringify(sessionData),
+      );
+
+      if (!written.ok) {
+        if (written.reason === 'key_missing') {
+          // The session expired between the read above and this write.
+          return response.status(404).json({ error: 'Session not found or expired' });
+        }
+        console.error(
+          `Live-share location write failed session=${sessionId} ttl=${written.ttl}`,
+          written.error,
+        );
+        return response.status(503).json({ error: 'Location store unavailable. This update was not saved.' });
       }
 
       return response.status(200).json({ success: true });

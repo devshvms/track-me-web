@@ -13,6 +13,8 @@
             top: 20px;
             left: 50%;
             transform: translateX(-50%);
+            width: min(92vw, 440px);
+            box-sizing: border-box;
             background: white;
             padding: 10px 20px;
             border-radius: 8px;
@@ -23,8 +25,43 @@
         .status { font-weight: bold; }
         .active { color: green; }
         .offline { color: red; }
+        .warning { color: #b45309; }
         .user-name { font-size: 1.1em; font-weight: bold; margin-top: 5px; color: #333; }
         .details { font-size: 0.9em; color: #666; margin-top: 5px; }
+        /* Staleness has to outweigh the map pin, not sit in a footnote beside
+           battery and speed. Past the threshold this headline is the largest
+           thing on the page. */
+        .age {
+            font-size: 1.5em;
+            font-weight: bold;
+            line-height: 1.2;
+            margin-top: 6px;
+            color: #b45309;
+        }
+        .age.critical { color: #b91c1c; }
+        /* Trip plan line: destination and "back by" time (TASK-173). */
+        .trip {
+            font-size: 0.95em;
+            color: #333;
+            margin-top: 5px;
+        }
+        .trip .deadline-note {
+            display: block;
+            color: #b45309;
+            font-weight: bold;
+        }
+        .banner {
+            margin: -10px -20px 8px -20px;
+            padding: 10px 20px;
+            border-radius: 8px 8px 0 0;
+            font-weight: bold;
+            font-size: 0.95em;
+            color: white;
+            background: #b45309;
+            text-align: left;
+        }
+        .banner.critical { background: #b91c1c; }
+        .banner.neutral { background: #4b5563; }
         .human-marker {
             background-color: white;
             border: 2px solid #007bff;
@@ -44,12 +81,39 @@
             margin-right: 6px;
             font-size: 16px;
         }
+        /* A pin that is no longer a current position must not look like one. */
+        .human-marker.last-seen {
+            border-style: dashed;
+            border-color: #6b7280;
+            color: #6b7280;
+            opacity: 0.85;
+        }
+        .human-marker.last-seen::before { content: "📍"; }
+        /* The planned destination is a fixed fact, styled apart from the rider. */
+        .dest-marker {
+            background-color: white;
+            border: 2px solid #16a34a;
+            border-radius: 20px;
+            padding: 3px 10px;
+            font-size: 13px;
+            font-weight: bold;
+            color: #166534;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            white-space: nowrap;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .dest-marker::before { content: "🏁"; margin-right: 6px; font-size: 14px; }
     </style>
 </head>
 <body>
     <div id="overlay">
+        <div class="banner" id="bannerText" hidden></div>
         <div class="status" id="statusText">Connecting...</div>
         <div class="user-name" id="userNameText"></div>
+        <div class="trip" id="tripText" hidden></div>
+        <div class="age" id="ageText" hidden></div>
         <div class="details" id="detailsText">Waiting for location data</div>
     </div>
     <div id="map"></div>
@@ -60,11 +124,56 @@
         const pathParts = window.location.pathname.split('/');
         const sessionId = pathParts[pathParts.length - 1];
 
+        const statusEl = document.getElementById('statusText');
+        const userNameEl = document.getElementById('userNameText');
+        const detailsEl = document.getElementById('detailsText');
+        const ageEl = document.getElementById('ageText');
+        const bannerEl = document.getElementById('bannerText');
+        const tripEl = document.getElementById('tripText');
+
         if (!sessionId || sessionId === 'live') {
-            document.getElementById('statusText').innerText = 'Error';
-            document.getElementById('detailsText').innerText = 'No session ID provided in URL';
+            statusEl.innerText = 'Error';
+            detailsEl.innerText = 'No session ID provided in URL';
             throw new Error('No session ID');
         }
+
+        // --- Freshness policy -------------------------------------------------
+        // This page is used to decide whether someone is in trouble, so the two
+        // thresholds below are safety decisions, not styling.
+        //
+        // DELAYED_MS (2 min): longer than any normal gap between uploads. Below
+        // it the feed is behaving; above it something is worth noticing but is
+        // still routinely explained by a tunnel, a lift, or a lost fix.
+        //
+        // NOT_CURRENT_MS (5 min): past this, no ordinary signal hiccup explains
+        // the silence — the app stopped uploading, the phone lost service or
+        // power, or writes are failing. The pin is therefore no longer presented
+        // as where the rider *is*, only as where they were last seen and when.
+        // Five minutes is short enough that nobody is misled for long, and long
+        // enough not to cry wolf at every traffic light.
+        const DELAYED_MS = 2 * 60 * 1000;
+        const NOT_CURRENT_MS = 5 * 60 * 1000;
+        const LONG_GONE_MS = 30 * 60 * 1000;
+
+        // --- Poll policy (TASK-174) -------------------------------------------
+        // Cost was linked to safety: sustained watching burns the store's free
+        // tier, and the failure mode when it runs out is dropped writes. A feed
+        // that has not moved in ten minutes does not need to be asked every five
+        // seconds, so the poll backs off with staleness and stops entirely once
+        // the session is over.
+        const POLL_LIVE_MS = 5000;
+        const POLL_DELAYED_MS = 15000;
+        const POLL_STALE_MS = 30000;
+        const POLL_LONG_GONE_MS = 120000;
+        const POLL_ERROR_BASE_MS = 5000;
+        const POLL_ERROR_MAX_MS = 60000;
+
+        // The server evicts a viewer that has not pinged for 40s. Backing the
+        // ping off past that would drop this viewer from the presence set and
+        // could then bounce them out of a full session with a 429, so the slow
+        // tier stays comfortably under it.
+        const PING_LIVE_MS = 15000;
+        const PING_SLOW_MS = 30000;
 
         // Generate a random viewer ID to track concurrent users
         let viewerId = sessionStorage.getItem('viewerId');
@@ -80,6 +189,124 @@
 
         let marker = null;
         let isFirstLoad = true;
+        let finished = false;          // session is over; stop all network work
+        let consecutiveErrors = 0;
+        let lastGoodData = null;       // last session payload we successfully read
+        let pollTimer = null;
+        let pingTimer = null;
+
+        function setBanner(text, tone) {
+            if (!text) {
+                bannerEl.hidden = true;
+                bannerEl.innerText = '';
+                return;
+            }
+            bannerEl.hidden = false;
+            bannerEl.innerText = text;
+            bannerEl.className = tone ? `banner ${tone}` : 'banner';
+        }
+
+        function setAge(text, tone) {
+            if (!text) {
+                ageEl.hidden = true;
+                ageEl.innerText = '';
+                return;
+            }
+            ageEl.hidden = false;
+            ageEl.innerText = text;
+            ageEl.className = tone ? `age ${tone}` : 'age';
+        }
+
+        function formatAge(ms) {
+            const seconds = Math.max(0, Math.round(ms / 1000));
+            if (seconds < 60) return `${seconds} seconds`;
+            const minutes = Math.round(seconds / 60);
+            if (minutes < 60) return `${minutes} minute${minutes === 1 ? '' : 's'}`;
+            const hours = Math.floor(minutes / 60);
+            const rest = minutes % 60;
+            return rest ? `${hours} hr ${rest} min` : `${hours} hour${hours === 1 ? '' : 's'}`;
+        }
+
+        function formatClock(value) {
+            const date = new Date(value);
+            if (isNaN(date.getTime())) return null;
+            return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+        }
+
+        // Trip sessions can span days, so an ETA that is not today needs its
+        // day said out loud — "back by 5:30 pm" must not silently mean tomorrow.
+        function formatClockWithDay(value) {
+            const date = new Date(value);
+            if (isNaN(date.getTime())) return null;
+            const time = date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+            const today = new Date();
+            const sameDay = date.getFullYear() === today.getFullYear() &&
+                date.getMonth() === today.getMonth() && date.getDate() === today.getDate();
+            if (sameDay) return time;
+            return `${date.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })}, ${time}`;
+        }
+
+        // --- Trip plan (TASK-173) ---------------------------------------------
+        // Destination and "back by" time give the pin its meaning: a rider ten
+        // minutes from a destination they said they'd reach by now is a
+        // different picture from a rider with no stated plan. All values are
+        // rendered via textContent — the label is rider-supplied text.
+        let destMarker = null;
+
+        function renderTripPlan(data) {
+            if (!data || (!data.destination && !data.etaAt)) {
+                tripEl.hidden = true;
+                return;
+            }
+
+            if (data.destination && !destMarker) {
+                const icon = L.divIcon({
+                    className: 'custom-div-icon',
+                    html: '<div class="dest-marker"></div>',
+                    iconSize: [null, null],
+                    iconAnchor: [0, 0]
+                });
+                destMarker = L.marker([data.destination.lat, data.destination.lng], { icon }).addTo(map);
+                const el = destMarker.getElement()?.querySelector('.dest-marker');
+                if (el) el.textContent = data.destination.label || 'Destination';
+            }
+
+            tripEl.hidden = false;
+            tripEl.textContent = '';
+            const parts = [];
+            if (data.destination) {
+                parts.push(`Headed to ${data.destination.label || 'a chosen destination'}`);
+            }
+            const eta = data.etaAt ? formatClockWithDay(data.etaAt) : null;
+            if (eta) parts.push(`back by ${eta}`);
+            tripEl.appendChild(document.createTextNode(parts.join(' · ')));
+
+            // Only an open session gets the deadline call-out: once the rider
+            // has closed the link, the closure state is the message.
+            const deadlineMs = data.deadlineAt ? new Date(data.deadlineAt).getTime() : NaN;
+            if (data.status === 'active' && !isNaN(deadlineMs) && Date.now() > deadlineMs) {
+                const note = document.createElement('span');
+                note.className = 'deadline-note';
+                note.textContent = `Their "act if no word by" time (${formatClockWithDay(data.deadlineAt)}) has passed.`;
+                tripEl.appendChild(note);
+            }
+        }
+
+        function markerIcon(isCurrent) {
+            return L.divIcon({
+                className: 'custom-div-icon',
+                html: `<div class="human-marker${isCurrent ? '' : ' last-seen'}"></div>`,
+                iconSize: [null, null],
+                iconAnchor: [0, 0]
+            });
+        }
+
+        function setMarkerCurrency(isCurrent) {
+            if (!marker) return;
+            marker.setIcon(markerIcon(isCurrent));
+            const el = marker.getElement()?.querySelector('.human-marker');
+            if (el && lastGoodData) el.textContent = lastGoodData.username || 'Anonymous';
+        }
 
         function buildLocationPopup(lat, lon, username, timestamp) {
             const container = document.createElement('div');
@@ -125,7 +352,7 @@
 
             return container;
         }
-        
+
         window.shareLocation = function(lat, lon, username, timestamp) {
             fetch('/api/telemetry/event', {
                 method: 'POST',
@@ -136,7 +363,7 @@
             const appleMapsLink = `https://maps.apple.com/?q=${lat},${lon}`;
             const timeString = new Date(timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
             const text = `${username}'s last location was fetched here at ${timeString}:\nGoogle Maps: ${googleMapsLink}\nApple Maps: ${appleMapsLink}`;
-            
+
             if (navigator.share) {
                 navigator.share({ title: `${username}'s Location`, text: text }).catch(console.error);
             } else {
@@ -144,144 +371,307 @@
             }
         };
 
-        let pollingInterval = null;
-        let pingInterval = null;
+        function stopEverything() {
+            finished = true;
+            if (pollTimer) clearTimeout(pollTimer);
+            if (pingTimer) clearTimeout(pingTimer);
+            pollTimer = null;
+            pingTimer = null;
+        }
+
+        // --- Terminal states --------------------------------------------------
+
+        function renderViewerLimit() {
+            stopEverything();
+            setBanner(null);
+            setAge(null);
+            statusEl.innerText = 'Session Full';
+            statusEl.className = 'status offline';
+            detailsEl.innerText = 'Maximum number of viewers reached. Try again later.';
+        }
+
+        /**
+         * The link ran out of time. This is the ABSENCE of a signal: nobody said
+         * anything about whether the rider is fine. It must never read like an
+         * ending the rider chose (DEFECT-A).
+         */
+        function renderExpired() {
+            stopEverything();
+            setMarkerCurrency(false);
+            setAge(null);
+            // Keep the trip context on screen: knowing where they were headed
+            // still matters after the link dies. Suppress only the live
+            // deadline call-out by rendering with the terminal status.
+            if (lastGoodData) renderTripPlan({ ...lastGoodData, status: 'expired' });
+            setBanner('This link has expired. It was not closed by the rider.', 'neutral');
+            statusEl.innerText = 'Session Expired';
+            statusEl.className = 'status offline';
+            const shared = window.lastKnownDuration
+                ? `Location was shared for ${window.lastKnownDuration} minutes, then the link timed out. `
+                : 'The sharing window ended. ';
+            detailsEl.innerText = shared +
+                'A timeout says nothing about whether they arrived — if you have not heard from them, that is not an all-clear.';
+        }
+
+        /**
+         * The rider closed the session. Three outcomes, rendered three different
+         * ways, because ending a ride is the safe signal and a timeout is not.
+         * Sessions stopped before `endReason` existed carry no reason at all and
+         * fall through to the neutral case — never to "safe" (TASK-172).
+         */
+        function renderEnded(data) {
+            stopEverything();
+            setMarkerCurrency(false);
+            setAge(null);
+            const name = data.username || 'The rider';
+            const at = data.endedAt ? formatClock(data.endedAt) : null;
+            const when = at ? ` at ${at}` : '';
+
+            if (data.endReason === 'marked_safe') {
+                setBanner(`${name} marked themselves safe${when}.`, 'neutral');
+                statusEl.innerText = 'Marked Safe';
+                statusEl.className = 'status active';
+                detailsEl.innerText = `${name} confirmed they were safe${when} and closed this link. The pin shows where they were then.`;
+                return;
+            }
+
+            if (data.endReason === 'ride_ended') {
+                setBanner(`${name} ended this ride${when}.`, 'neutral');
+                statusEl.innerText = 'Sharing Stopped';
+                statusEl.className = 'status offline';
+                detailsEl.innerText = `${name} stopped sharing${when}. Ending a ride is not the same as confirming they are safe.`;
+                return;
+            }
+
+            // Unknown / legacy: say only what we actually know.
+            setBanner('Sharing has ended.', 'neutral');
+            statusEl.innerText = 'Sharing Stopped';
+            statusEl.className = 'status offline';
+            detailsEl.innerText = `This link was closed${when}. TrackMe does not know whether ${name} arrived safely.`;
+        }
+
+        /**
+         * We cannot reach the location service. The previous version left the
+         * pin looking live and changed one small line of text; a viewer had no
+         * way to tell a broken page from a stationary rider.
+         */
+        function renderConnectionError() {
+            setMarkerCurrency(false);
+            setBanner('This page is not updating — TrackMe cannot reach the location service.', 'critical');
+            statusEl.innerText = 'Not Updating';
+            statusEl.className = 'status offline';
+            if (lastGoodData && lastGoodData.lastLocation) {
+                const age = Date.now() - new Date(lastGoodData.lastLocation.timestamp).getTime();
+                setAge(`Last position received ${formatAge(age)} ago`, 'critical');
+                detailsEl.innerText = 'The pin below is the last position received before the connection failed. It is not a current position. Retrying.';
+            } else {
+                setAge(null);
+                detailsEl.innerText = 'Retrying. No position has been received on this page yet.';
+            }
+        }
+
+        // --- Live rendering ---------------------------------------------------
+
+        function renderFreshness() {
+            if (finished || consecutiveErrors > 0) return;
+            if (!lastGoodData || !lastGoodData.lastLocation) return;
+
+            const data = lastGoodData;
+            const { batteryLevel, speed, timestamp } = data.lastLocation;
+            const name = data.username || 'Anonymous';
+            const age = Date.now() - new Date(timestamp).getTime();
+            const clock = formatClock(timestamp);
+            const detailTail = `Battery: ${batteryLevel ? batteryLevel + '%' : 'N/A'} | Speed: ${speed ? Math.round(speed) + ' km/h' : 'N/A'}`;
+
+            userNameEl.innerText = `${name}'s Live Location`;
+
+            if (age >= NOT_CURRENT_MS) {
+                // Past the threshold the pin stops being a claim about where the
+                // rider is now, and the page says so in the largest text on it.
+                setMarkerCurrency(false);
+                const critical = age >= LONG_GONE_MS;
+                setAge(`No update for ${formatAge(age)}`, critical ? 'critical' : null);
+                setBanner(
+                    `This is where ${name} was last seen${clock ? `, at ${clock}` : ''} — not where they are now.`,
+                    critical ? 'critical' : null,
+                );
+                statusEl.innerText = 'Not Live';
+                statusEl.className = 'status offline';
+                detailsEl.innerText = `${name}'s phone has sent nothing since then. ${detailTail}`;
+                return;
+            }
+
+            setMarkerCurrency(true);
+
+            if (age >= DELAYED_MS) {
+                setBanner(null);
+                setAge(`No update for ${formatAge(age)}`, null);
+                statusEl.innerText = 'Delayed';
+                statusEl.className = 'status warning';
+                detailsEl.innerText = `Last position${clock ? ` at ${clock}` : ''}. ${detailTail}`;
+                return;
+            }
+
+            setBanner(null);
+            setAge(null);
+            statusEl.innerText = 'Live';
+            statusEl.className = 'status active';
+            detailsEl.innerText = `Updated: ${formatAge(age)} ago | ${detailTail}`;
+        }
+
+        function renderLocation(data) {
+            const { lat, timestamp } = data.lastLocation;
+            // Canonical field is `lng`; fall back to legacy `lon` for sessions
+            // written before the schema migration.
+            const lon = data.lastLocation.lng !== undefined ? data.lastLocation.lng : data.lastLocation.lon;
+            const pos = [lat, lon];
+            const username = data.username || 'Anonymous';
+            const popupContent = buildLocationPopup(lat, lon, username, timestamp);
+
+            if (!marker) {
+                marker = L.marker(pos, { icon: markerIcon(true) }).bindPopup(popupContent).addTo(map);
+            } else {
+                marker.setLatLng(pos);
+                marker.setPopupContent(popupContent);
+            }
+
+            if (isFirstLoad) {
+                if (data.destination) {
+                    // Both ends of the trip on screen: the gap between where
+                    // they are and where they said they'd be is the story.
+                    map.fitBounds([pos, [data.destination.lat, data.destination.lng]], { padding: [60, 60], maxZoom: 15 });
+                } else {
+                    map.setView(pos, 15);
+                }
+                isFirstLoad = false;
+                fetch('/api/telemetry/event', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ event: 'live_share_viewed', distinctId: viewerId, properties: { sessionId, username, viewerId } })
+                }).catch(() => {});
+            }
+
+            renderFreshness();
+        }
+
+        // --- Scheduling -------------------------------------------------------
+
+        function nextPollDelay() {
+            if (consecutiveErrors > 0) {
+                return Math.min(POLL_ERROR_BASE_MS * Math.pow(2, consecutiveErrors - 1), POLL_ERROR_MAX_MS);
+            }
+            if (!lastGoodData || !lastGoodData.lastLocation) return POLL_LIVE_MS;
+            const age = Date.now() - new Date(lastGoodData.lastLocation.timestamp).getTime();
+            if (age >= LONG_GONE_MS) return POLL_LONG_GONE_MS;
+            if (age >= NOT_CURRENT_MS) return POLL_STALE_MS;
+            if (age >= DELAYED_MS) return POLL_DELAYED_MS;
+            return POLL_LIVE_MS;
+        }
+
+        function nextPingDelay() {
+            if (!lastGoodData || !lastGoodData.lastLocation) return PING_LIVE_MS;
+            const age = Date.now() - new Date(lastGoodData.lastLocation.timestamp).getTime();
+            return age >= NOT_CURRENT_MS ? PING_SLOW_MS : PING_LIVE_MS;
+        }
+
+        function schedulePoll() {
+            if (finished) return;
+            pollTimer = setTimeout(fetchLocation, nextPollDelay());
+        }
+
+        function schedulePing() {
+            if (finished) return;
+            pingTimer = setTimeout(pingPresence, nextPingDelay());
+        }
 
         async function pingPresence() {
+            if (finished) return;
             try {
                 const response = await fetch(`/api/track/${sessionId}/ping`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ viewerId })
                 });
-                
+
                 if (!response.ok) {
                     if (response.status === 404) {
-                        document.getElementById('statusText').innerText = 'Session Expired';
-                        document.getElementById('statusText').className = 'status offline';
-                        const timeStr = window.lastKnownDuration ? `Location was shared for ${window.lastKnownDuration} minutes and time elapsed.` : 'Location sharing time elapsed or session ended.';
-                        document.getElementById('detailsText').innerText = timeStr;
-                        if (pollingInterval) clearInterval(pollingInterval);
-                        if (pingInterval) clearInterval(pingInterval);
+                        renderExpired();
                         return;
                     }
                     if (response.status === 429) {
-                        document.getElementById('statusText').innerText = 'Session Full';
-                        document.getElementById('statusText').className = 'status offline';
-                        document.getElementById('detailsText').innerText = 'Maximum number of viewers reached. Try again later.';
-                        if (pollingInterval) clearInterval(pollingInterval);
-                        if (pingInterval) clearInterval(pingInterval);
+                        renderViewerLimit();
                         return;
                     }
                 }
             } catch (err) {
                 console.error('Ping failed:', err);
             }
+            schedulePing();
         }
 
         async function fetchLocation() {
+            if (finished) return;
             try {
                 const response = await fetch(`/api/track/${sessionId}/location`);
                 if (!response.ok) {
                     if (response.status === 404) {
-                        document.getElementById('statusText').innerText = 'Session Expired';
-                        document.getElementById('statusText').className = 'status offline';
-                        const timeStr = window.lastKnownDuration ? `Location was shared for ${window.lastKnownDuration} minutes and time elapsed.` : 'Location sharing time elapsed or session ended.';
-                        document.getElementById('detailsText').innerText = timeStr;
-                        if (pollingInterval) clearInterval(pollingInterval);
-                        if (pingInterval) clearInterval(pingInterval);
+                        renderExpired();
                         return;
                     }
                     if (response.status === 429) {
-                        document.getElementById('statusText').innerText = 'Session Full';
-                        document.getElementById('statusText').className = 'status offline';
-                        document.getElementById('detailsText').innerText = 'Maximum number of viewers reached. Try again later.';
-                        if (pollingInterval) clearInterval(pollingInterval);
-                        if (pingInterval) clearInterval(pingInterval);
+                        renderViewerLimit();
                         return;
                     }
-                    throw new Error('Failed to fetch');
+                    // 5xx means the store is unavailable. The rider may well be
+                    // uploading fine; we simply cannot see it, and saying
+                    // nothing would leave a stale pin looking live.
+                    throw new Error(`Failed to fetch (${response.status})`);
                 }
 
                 const data = await response.json();
-                
+                consecutiveErrors = 0;
+                lastGoodData = data;
+
                 if (data.initialDuration) {
                     window.lastKnownDuration = data.initialDuration;
                 }
-                
+
+                renderTripPlan(data);
+
                 if (data.status === 'stopped') {
-                    document.getElementById('statusText').innerText = 'Sharing Stopped';
-                    document.getElementById('statusText').className = 'status offline';
-                    document.getElementById('detailsText').innerText = data.stopReason || 'The rider has ended this trip.';
-                    if (pollingInterval) clearInterval(pollingInterval);
-                    if (pingInterval) clearInterval(pingInterval);
+                    if (data.lastLocation) renderLocation(data);
+                    renderEnded(data);
                     return;
                 }
-                
+
                 if (data.lastLocation) {
-                    const { lat, batteryLevel, speed, timestamp } = data.lastLocation;
-                    // Canonical field is `lng`; fall back to legacy `lon` for sessions
-                    // written before the schema migration.
-                    const lon = data.lastLocation.lng !== undefined ? data.lastLocation.lng : data.lastLocation.lon;
-                    const pos = [lat, lon];
-                    const username = data.username || 'Anonymous';
-                    
-                    const humanIcon = L.divIcon({
-                        className: 'custom-div-icon',
-                        html: `<div class="human-marker"></div>`,
-                        iconSize: [null, null],
-                        iconAnchor: [0, 0]
-                    });
-
-                    const popupContent = buildLocationPopup(lat, lon, username, timestamp);
-
-                    if (!marker) {
-                        marker = L.marker(pos, { icon: humanIcon }).bindPopup(popupContent).addTo(map);
-                    } else {
-                        marker.setLatLng(pos);
-                        marker.setIcon(humanIcon);
-                        marker.setPopupContent(popupContent);
-                    }
-
-                    const markerElement = marker.getElement()?.querySelector('.human-marker');
-                    if (markerElement) markerElement.textContent = username;
-
-                    if (isFirstLoad) {
-                        map.setView(pos, 15);
-                        isFirstLoad = false;
-                        fetch('/api/telemetry/event', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ event: 'live_share_viewed', distinctId: viewerId, properties: { sessionId, username, viewerId } })
-                        }).catch(() => {});
-                    }
-
-                    const timeAgo = Math.round((new Date() - new Date(timestamp)) / 1000);
-                    const timeAgoStr = timeAgo < 60 ? `${timeAgo}s ago` : `${Math.round(timeAgo/60)}m ago`;
-
-                    document.getElementById('statusText').innerText = 'Live';
-                    document.getElementById('statusText').className = 'status active';
-                    document.getElementById('userNameText').innerText = `${data.username || 'Anonymous'}'s Live Location`;
-                    document.getElementById('detailsText').innerText = 
-                        `Updated: ${timeAgoStr} | Battery: ${batteryLevel ? batteryLevel + '%' : 'N/A'} | Speed: ${speed ? Math.round(speed) + ' km/h' : 'N/A'}`;
+                    renderLocation(data);
                 } else {
-                    document.getElementById('statusText').innerText = 'Waiting...';
-                    document.getElementById('statusText').className = 'status offline';
-                    document.getElementById('userNameText').innerText = `${data.username || 'Anonymous'}'s Live Location`;
-                    document.getElementById('detailsText').innerText = 'Session active, waiting for first location ping from rider.';
+                    setBanner(null);
+                    setAge(null);
+                    statusEl.innerText = 'Waiting...';
+                    statusEl.className = 'status offline';
+                    userNameEl.innerText = `${data.username || 'Anonymous'}'s Live Location`;
+                    detailsEl.innerText = 'Session active, waiting for first location ping from rider.';
+                    if (isFirstLoad && data.destination) {
+                        map.setView([data.destination.lat, data.destination.lng], 13);
+                    }
                 }
             } catch (err) {
                 console.error(err);
-                document.getElementById('statusText').innerText = 'Connection Error';
-                document.getElementById('statusText').className = 'status offline';
+                consecutiveErrors += 1;
+                renderConnectionError();
             }
+            schedulePoll();
         }
 
-        // Fetch immediately, then poll every 5 seconds
+        // Re-render on a local timer as well as on each poll: once polling has
+        // backed off, the displayed age must still keep counting up rather than
+        // freezing at whatever it was during the last successful request.
+        setInterval(renderFreshness, 1000);
+
         fetchLocation();
         pingPresence();
-        pollingInterval = setInterval(fetchLocation, 5000);
-        pingInterval = setInterval(pingPresence, 15000);
     </script>
 </body>
 </html>

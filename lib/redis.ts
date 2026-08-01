@@ -88,7 +88,12 @@ if (!globalAny._mockRedis) {
       return count;
     },
     async ttl(key: string) {
-      // Mock always returns -1 (no expiry) since we don't track TTLs in memory
+      // Mock always returns -1 (no expiry) since we don't track TTLs in memory.
+      // -1 is a real Redis answer too ("exists, never expires"), so every caller
+      // must handle it. Writing `if (ttl > 0)` here silently discards the write
+      // under the mock AND against a real key with no expiry — see
+      // setPreservingExpiry() below, which is the only supported way to rewrite
+      // a session blob.
       return store.has(key) || zsets.has(key) || hashes.has(key) ? -1 : -2;
     },
     async hIncrBy(key: string, field: string, increment: number) {
@@ -110,6 +115,23 @@ if (!globalAny._mockRedis) {
 
 let cachedClient: any = null;
 
+// getRedisClient() runs on every request, so a per-call warning would drown the
+// logs and get filtered out — but a fallback that logs nothing is worse: it is
+// what turns a dropped live-share write into an *invisible* dropped write
+// (TASK-176). Each distinct degradation is therefore logged exactly once per
+// process, which is once per cold serverless instance.
+const warnedFallbacks = new Set<string>();
+function warnFallbackOnce(cause: string, detail: string) {
+  if (warnedFallbacks.has(cause)) return;
+  warnedFallbacks.add(cause);
+  console.warn(
+    `[redis] DEGRADED: using the in-memory mock store (${cause}). ${detail} ` +
+    'Sessions live only in this serverless instance, are not shared between ' +
+    'instances, vanish on cold start, and have no TTL. Live-share sessions are ' +
+    'not durable until REDIS_URL points at a real Redis instance.',
+  );
+}
+
 export async function getRedisClient() {
   if (cachedClient && cachedClient.isOpen) {
     return cachedClient;
@@ -127,13 +149,149 @@ export async function getRedisClient() {
       }
       return cachedClient;
     } catch (err) {
-      console.warn("Real Redis connection failed, falling back to mock:", err);
+      warnFallbackOnce('REDIS_URL is set but the connection failed', `Connection error: ${(err as Error)?.message || err}.`);
       return globalAny._mockRedis;
     }
   }
 
-  // If no REDIS_URL provided or pointing to localhost in Vercel, use mock cleanly
+  if (!redisUrl) {
+    warnFallbackOnce('REDIS_URL is not set', 'No Redis URL was provided to this deployment.');
+  } else {
+    // `redis://localhost:6379` is special-cased because a serverless function
+    // has no localhost Redis to reach. It used to be the value documented in
+    // doc/technical.md, so it is a value people actually deploy with.
+    warnFallbackOnce(
+      'REDIS_URL is redis://localhost:6379',
+      'That value is treated as "no Redis" because a serverless function cannot reach localhost.',
+    );
+  }
+
   return globalAny._mockRedis;
+}
+
+/** The in-memory fallback lives in one process and disappears with it. */
+export function isDurableStore(redis: any): boolean {
+  return !redis?.isMock;
+}
+
+/**
+ * True where the in-memory mock is a fault rather than a convenience.
+ *
+ * Local development and the test suite deliberately run on the mock, so they
+ * must keep working. A production deployment serving live share out of a
+ * per-instance memory map is a different thing: the rider's next upload can
+ * land on a different instance that has never heard of the session, so the
+ * viewer's pin freezes while the phone reports success. That is DEFECT-B, and
+ * on the safety surface it must fail loudly instead.
+ */
+export function expectsDurableStore(): boolean {
+  return process.env.VERCEL_ENV === 'production';
+}
+
+export type RedisWriteResult =
+  | { ok: true; ttl: number }
+  | { ok: false; reason: 'key_missing' | 'write_failed'; ttl: number; error?: unknown };
+
+/**
+ * Overwrite `key` while preserving whatever expiry it already carries.
+ *
+ * Redis TTL semantics are the whole point here:
+ *   ttl  > 0  the key has a live expiry -> re-apply it, so rewriting a session
+ *             never extends it past the window its owner chose.
+ *   ttl == -1 the key exists with NO expiry -> write it WITHOUT an EX option.
+ *             The in-memory fallback reports -1 unconditionally, so in a
+ *             degraded deployment this is the normal case, not an exotic one.
+ *   ttl == -2 the key does not exist; it expired between the read and this
+ *             write. There is nothing to update, and recreating it would
+ *             resurrect an expired session, so this is reported as a failure.
+ *
+ * The idiom this replaces was `if (ttl > 0) { await redis.set(...) }`, which
+ * dropped the write for both -1 and -2 while the caller went on to return
+ * 200 {success:true}. The rider's phone believed it was uploading and the
+ * viewer watched a frozen pin, which reads as a stationary rider rather than a
+ * dead feed (DEFECT-B / TASK-170).
+ *
+ * Callers MUST branch on `ok` and MUST NOT report success when it is false.
+ */
+export async function setPreservingExpiry(
+  redis: any,
+  key: string,
+  value: string,
+): Promise<RedisWriteResult> {
+  let ttl: number;
+  try {
+    ttl = await redis.ttl(key);
+  } catch (error) {
+    return { ok: false, reason: 'write_failed', ttl: Number.NaN, error };
+  }
+
+  if (ttl === -2) {
+    return { ok: false, reason: 'key_missing', ttl };
+  }
+
+  // Any answer that is not a finite number means we cannot reason about the
+  // expiry. Writing without EX would strip the TTL and mint an immortal
+  // tracking link, so refuse rather than guess.
+  if (typeof ttl !== 'number' || !Number.isFinite(ttl)) {
+    return { ok: false, reason: 'write_failed', ttl: Number.NaN };
+  }
+
+  try {
+    const result = ttl > 0
+      ? await redis.set(key, value, { EX: ttl })
+      : await redis.set(key, value);
+    // node-redis resolves SET to 'OK'; an explicit null means the server
+    // declined the write. Treat that as a failure, never as a success.
+    if (result === null) {
+      return { ok: false, reason: 'write_failed', ttl };
+    }
+    return { ok: true, ttl };
+  } catch (error) {
+    return { ok: false, reason: 'write_failed', ttl, error };
+  }
+}
+
+/**
+ * Overwrite `key` and give it an explicit expiry, replacing whatever expiry it
+ * had. This is the closure write (TASK-171 / D5): when a ride ends, the
+ * session's lifetime is re-scoped to the trip — see computeClosureTtlSeconds
+ * in lib/tripExpiry.ts — rather than left to run out a duration chosen before
+ * the trip was over.
+ *
+ * Same contract as setPreservingExpiry: the key must already exist (a closure
+ * for an expired session would resurrect it), and callers MUST branch on `ok`
+ * and never report success when it is false.
+ */
+export async function setWithScopedExpiry(
+  redis: any,
+  key: string,
+  value: string,
+  ttlSeconds: number,
+): Promise<RedisWriteResult> {
+  if (!Number.isFinite(ttlSeconds) || ttlSeconds < 1) {
+    return { ok: false, reason: 'write_failed', ttl: Number.NaN };
+  }
+
+  let ttl: number;
+  try {
+    ttl = await redis.ttl(key);
+  } catch (error) {
+    return { ok: false, reason: 'write_failed', ttl: Number.NaN, error };
+  }
+
+  if (ttl === -2) {
+    return { ok: false, reason: 'key_missing', ttl };
+  }
+
+  try {
+    const result = await redis.set(key, value, { EX: Math.ceil(ttlSeconds) });
+    if (result === null) {
+      return { ok: false, reason: 'write_failed', ttl };
+    }
+    return { ok: true, ttl };
+  } catch (error) {
+    return { ok: false, reason: 'write_failed', ttl, error };
+  }
 }
 
 export async function redisMGet(redis: any, keys: string[]): Promise<Array<string | null>> {
