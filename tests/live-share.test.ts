@@ -33,7 +33,8 @@ import {
 const authModule: any = require('../lib/auth');
 authModule.requireUser = async () => ({ uid: 'test-owner-uid', email: 'owner@example.com' });
 
-import locationHandler from '../api/track/[sessionId]/location';
+import locationHandler, { VIEWER_VISIBLE_FIELDS } from '../api/track/[sessionId]/location';
+import pingHandler from '../api/track/[sessionId]/ping';
 import startHandler from '../api/track/start';
 import stopHandler from '../api/track/[sessionId]/stop';
 
@@ -210,6 +211,92 @@ async function run() {
     await locationHandler(mockReq({ query: { sessionId: 'nope' }, body: { lat: 1, lng: 2 } }), res);
     assert.equal(res.statusCode, 404);
     assert.notEqual(res.body?.success, true);
+  });
+
+  // --- the public GET must not leak owner identity ---------------------------
+  // The share link is public and unauthenticated. The stored blob carries
+  // ownerUid and ownerEmail (written by start.ts), so returning it wholesale
+  // handed the rider's account email to anyone ever sent the link.
+  await test('GET location returns exactly the fields rendered by the public viewer', async () => {
+    const { sessionId } = await seedSession({
+      ownerEmail: 'owner@example.com',
+      stopReason: 'manual_stop',
+      futureSensitiveField: 'must stay private until explicitly published',
+      status: 'stopped',
+      endReason: 'marked_safe',
+      endedAt: '2026-08-01T10:30:00.000Z',
+      expiresAt: '2026-08-01T11:00:00.000Z',
+      destination: { lat: 12.97, lng: 77.59, label: "Ivy's place" },
+      etaAt: '2026-08-01T10:15:00.000Z',
+      deadlineAt: '2026-08-01T10:45:00.000Z',
+      lastLocation: { lat: 12.9, lng: 77.6, batteryLevel: 42, timestamp: '2026-08-01T10:00:00.000Z' },
+    });
+    const res = mockRes();
+    await locationHandler(mockReq({ method: 'GET', query: { sessionId } }), res);
+    assert.equal(res.statusCode, 200);
+
+    // This contract mirrors every tracker.html data read that comes from the
+    // location response. A change here therefore requires an explicit review
+    // of both the viewer and the public API surface.
+    assert.deepEqual([...VIEWER_VISIBLE_FIELDS], [
+      'username',
+      'status',
+      'endReason',
+      'endedAt',
+      'initialDuration',
+      'destination',
+      'etaAt',
+      'deadlineAt',
+      'lastLocation',
+    ]);
+    assert.deepEqual(Object.keys(res.body), [...VIEWER_VISIBLE_FIELDS]);
+
+    // Everything the viewer page renders must survive the whitelist.
+    assert.equal(res.body.username, 'Alex');
+    assert.equal(res.body.status, 'stopped');
+    assert.equal(res.body.endReason, 'marked_safe');
+    assert.equal(res.body.endedAt, '2026-08-01T10:30:00.000Z');
+    assert.equal(res.body.initialDuration, 60);
+    assert.deepEqual(res.body.destination, { lat: 12.97, lng: 77.59, label: "Ivy's place" });
+    assert.equal(res.body.etaAt, '2026-08-01T10:15:00.000Z');
+    assert.equal(res.body.deadlineAt, '2026-08-01T10:45:00.000Z');
+    assert.deepEqual(res.body.lastLocation, {
+      lat: 12.9,
+      lng: 77.6,
+      batteryLevel: 42,
+      timestamp: '2026-08-01T10:00:00.000Z',
+    });
+  });
+
+  await test('a session written by start.ts exposes no owner identity on GET', async () => {
+    // Full path: start.ts stores the blob with the authenticated owner's uid
+    // and email, then the public GET serves that same blob.
+    const startRes = mockRes();
+    await startHandler(mockReq({ body: { username: 'Alex' }, headers: {} }), startRes);
+    assert.equal(startRes.statusCode, 200, JSON.stringify(startRes.body));
+
+    const res = mockRes();
+    await locationHandler(mockReq({ method: 'GET', query: { sessionId: startRes.body.sessionId } }), res);
+    assert.equal(res.statusCode, 200);
+    assert.ok(!('ownerEmail' in res.body), 'ownerEmail leaked to the public share link');
+    assert.ok(!('ownerUid' in res.body), 'ownerUid leaked to the public share link');
+  });
+
+  await test('public viewer-count ping exposes no stored session fields', async () => {
+    // Sibling-endpoint audit: ping is the only other unauthenticated reader of
+    // session:{id}. It may test existence, but must never parse or echo the
+    // stored owner identity or any viewer-visible location data.
+    const { sessionId } = await seedSession({
+      ownerEmail: 'owner@example.com',
+      lastLocation: { lat: 12.9, lng: 77.6 },
+    });
+    const res = mockRes();
+    await pingHandler(
+      mockReq({ method: 'POST', query: { sessionId }, body: { viewerId: 'viewer-146' } }),
+      res,
+    );
+    assert.equal(res.statusCode, 200);
+    assert.deepEqual(res.body, { success: true, viewers: 0 });
   });
 
   // --- TASK-172 closure reasons --------------------------------------------

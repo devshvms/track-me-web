@@ -2,6 +2,24 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { expectsDurableStore, getRedisClient, isDurableStore, setPreservingExpiry } from '../../../lib/redis';
 import { AuthError, requireUser, sendAuthError } from '../../../lib/auth';
 
+/**
+ * The share link is public; the stored session blob is not. It carries the
+ * owner's account identity (ownerUid, ownerEmail — written by start.ts) and
+ * internal fields (stopReason, startedAt) that anyone holding the link must
+ * never see. The GET response is built from this whitelist; adding a field
+ * here publishes it to every viewer.
+ */
+export const VIEWER_VISIBLE_FIELDS = [
+  'username',
+  'status',
+  'endReason',
+  'endedAt',
+  'initialDuration',
+  'destination',
+  'etaAt',
+  'deadlineAt',
+  'lastLocation',
+] as const;
 
 export default async function handler(
   request: VercelRequest,
@@ -28,8 +46,12 @@ export default async function handler(
       // If 10k users poll every 5s, the edge cache absorbs 99.9% of the traffic.
       response.setHeader('Cache-Control', 's-maxage=2, stale-while-revalidate');
 
-      return response.status(200).json(sessionData);
-    } 
+      const viewerPayload: Record<string, unknown> = {};
+      for (const field of VIEWER_VISIBLE_FIELDS) {
+        if (field in sessionData) viewerPayload[field] = sessionData[field];
+      }
+      return response.status(200).json(viewerPayload);
+    }
     
     if (request.method === 'POST') {
       const decoded = await requireUser(request);

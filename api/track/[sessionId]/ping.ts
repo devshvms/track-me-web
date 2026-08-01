@@ -25,7 +25,9 @@ export default async function handler(
   try {
     const redis = await getRedisClient();
     
-    // Quick check if session exists
+    // This endpoint is public, so the session blob is used only as an
+    // existence check. Never parse or return any of its fields: it also holds
+    // the owner's account identity for authenticated writer authorization.
     const sessionExists = await redis.get(`session:${sessionId}`);
     if (!sessionExists) {
       return response.status(404).json({ error: 'Session not found or expired' });
