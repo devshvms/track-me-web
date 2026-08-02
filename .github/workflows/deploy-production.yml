@@ -45,4 +45,6 @@ jobs:
         run: vercel build --prod --token="$VERCEL_TOKEN"
 
       - name: Deploy production artifacts
-        run: vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN"
+        # The prebuilt output (function bundles + assets) exceeds Vercel's 15000
+        # per-deploy file limit; upload it as a single tarball instead.
+        run: vercel deploy --prebuilt --prod --archive=tgz --token="$VERCEL_TOKEN"
