@@ -34,6 +34,14 @@ jobs:
         run: vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
 
       - name: Build production artifacts
+        # `vercel build` runs off-Vercel here, so Vercel does not inject the
+        # project env vars — and FIREBASE_WEB_CONFIG / POSTHOG_DASHBOARD_URL are
+        # marked Sensitive, so `vercel pull` never downloads them. Both are public
+        # client-side config; supply them from GitHub secrets so the build's
+        # write-*-config scripts can generate the public config files.
+        env:
+          FIREBASE_WEB_CONFIG: ${{ secrets.FIREBASE_WEB_CONFIG }}
+          POSTHOG_DASHBOARD_URL: ${{ secrets.POSTHOG_DASHBOARD_URL }}
         run: vercel build --prod --token="$VERCEL_TOKEN"
 
       - name: Deploy production artifacts
