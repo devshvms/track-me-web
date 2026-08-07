@@ -56,6 +56,21 @@ tokenHash = lowercase_hex( SHA-256( utf8_bytes(token_string) ) )
 
 ---
 
+### The join code is key material too
+
+Under the wrapped-token design (§2b) the 6-character join code feeds HKDF, so its canonical form
+is part of this contract, not a UI detail.
+
+| | |
+|---|---|
+| Alphabet | Crockford base32 — `0123456789ABCDEFGHJKMNPQRSTVWXYZ`. No `I`, `L`, `O`, `U`. |
+| Length | 6 → 32⁶ ≈ 1.07e9, matching §5.2's stated space |
+| Generation | **client-side**, rejection-sampled. `% 32` on a raw byte over-represents the first eight symbols by 25%, which is now weaker key material, not just a uglier code. |
+| Canonical form | upper case, no spaces or dashes, `I`/`L` → `1`, `O` → `0` |
+
+`normalizeJoinCode` must run on anything a human typed **before** derivation. A platform that
+skips it derives a different key from the same six characters and decrypts nothing, silently.
+
 ## 2. Key derivation
 
 ```
@@ -72,6 +87,47 @@ key must be derivable before a `groupId` exists (see step 3 above) — so there 
 non-secret value available to salt with. This is standard HKDF; `tests/group-crypto.test.ts`
 pins RFC 5869 test cases 1 and 3 so the configuration is verifiable against the public standard
 rather than only against us.
+
+### 2b. Code key — wrapping the token for join-by-code
+
+```
+codeKey = HKDF-SHA256(
+            IKM  = utf8(normalisedJoinCode),
+            salt = <empty>,
+            info = utf8("trackme:group-code:v1"),   // NOT the same info as above
+            L    = 32
+          )
+
+wrappedToken = seal(codeKey, inviteToken, "v1:code")
+```
+
+**Why this exists.** §2.4 makes the join code the guaranteed join path and §15.1 defers
+join-by-link to 1.7.1, so in 1.7.x the code is the only path a customer has — but the group key
+comes from the invite *token*, which a code-joiner never sees. Without this, a code-joiner is
+authorised by the relay and can decrypt nothing: no group name, no roster, no positions.
+
+**The flow.** The creating client mints both the token and the code, wraps the token under the
+code key, and sends the relay `{ tokenHash, joinCode, wrappedToken, … }`. A joiner types the
+code, `GET /api/group/resolve?c=<code>` returns the wrapper, they unwrap it to recover the invite
+token, and from there they are an ordinary link-joiner. **The relay holds neither the code nor
+the token — only ciphertext it cannot open.**
+
+**What this costs, stated plainly: the join code is now a security boundary.** §5.2 says it is
+"a convenience, never the security boundary" and that sentence is no longer true — anyone who
+learns a live code can join and see everyone. Three things make 30 bits acceptable:
+
+- **There is no offline attack.** A wrapper cannot be obtained without already knowing its code,
+  so the only route is `resolve?c=`, one guess at a time, against the server.
+- **That endpoint is rate-limited** to 5/min per client. Exhausting 1.07e9 at that rate is
+  geological.
+- **The code dies after 30 minutes**, and §5.2 also invalidates it once the group goes `LIVE`.
+
+> ⚠️ **`§5.2` and the eviction-on-LIVE rule need a product decision.** Evicting the code when the
+> group starts directly contradicts §8's "Joining a group that is already `LIVE` — allowed,
+> latecomers are the common case", because in 1.7.x the code is the *only* path. Either
+> latecomers cannot join at all this release, or the code lives out its 30 minutes regardless of
+> state. Recommendation: keep it for the 30 minutes; the TTL is the real bound and §8 is a
+> product promise.
 
 **Android note.** There is no HKDF primitive below API 33 and `minSdk = 24`, so `GroupCrypto.kt`
 must hand-roll extract/expand over `javax.crypto.Mac("HmacSHA256")`. Validate it against the
@@ -125,6 +181,7 @@ mechanism that stops an untrusted relay moving ciphertext between slots.
 | Purpose | Context | Where it lives |
 |---|---|---|
 | Group metadata | `v1:meta` | `group:{groupId}` → `meta` |
+| Wrapped invite token | `v1:code` | `group:code:{joinCode}` → `wrappedToken` |
 | Roster entry | `v1:roster:{uid}` | `group:{groupId}` → `roster[uid]` |
 | Position | `v1:pos:{uid}` | `group:{groupId}:pos` → field `uid` |
 
@@ -156,10 +213,10 @@ Being explicit, so nobody over-claims in store copy or a launch post. The relay 
 - `state`, `createdAt`, `expiresAt`, `maxMembers`, `syncIntervalSec`, `rev`
 - the server-stamped `ts` per member, kept outside the envelope so staleness can be computed
   without a key and a skewed client clock cannot poison freshness for the group
-- `tokenHash`, the join code, and request metadata (IP, user agent)
+- `tokenHash`, the join code, the wrapped token, and request metadata (IP, user agent)
 
 It does **not** hold: any coordinate, speed, heading, battery level, group name, display name,
-photo URL, or destination.
+photo URL, destination, or the invite token in any readable form.
 
 So the honest claim is *"the relay cannot read where anyone is"* — not *"the relay knows
 nothing"*. It knows that a set of uids were in a group together, and for how long. Eliminating

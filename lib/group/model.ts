@@ -9,6 +9,7 @@
  */
 
 import crypto from 'crypto';
+import { JOIN_CODE_PATTERN } from './crypto';
 
 // --- Keys -------------------------------------------------------------------------------------
 //
@@ -68,6 +69,9 @@ export const JOIN_CODE_TTL_SECONDS = 30 * 60;
 export const MAX_META_ENVELOPE_CHARS = 2048;
 export const MAX_ROSTER_ENVELOPE_CHARS = 1024;
 export const MAX_POSITION_ENVELOPE_CHARS = 512;
+
+/** A wrapped invite token is 22 chars sealed: `v1.` + 16 + `.` + 51 ≈ 71. 128 is ample headroom. */
+export const MAX_WRAPPED_TOKEN_CHARS = 128;
 
 // --- Types ------------------------------------------------------------------------------------
 
@@ -133,45 +137,21 @@ export function isValidEnvelope(v: unknown, maxChars: number): v is string {
 }
 
 // --- Join codes -------------------------------------------------------------------------------
+//
+// Generation and normalisation live in `crypto.ts`, not here: under the wrapped-token design the
+// join code is key material, and anything that decides the bytes fed to HKDF belongs in the file
+// the other platforms port and the shared fixture pins. Re-exported so callers have one import.
 
-/**
- * Crockford base32: no I, L, O or U. 32^6 ≈ 1.07e9, matching §5.2's stated space, and the
- * excluded letters are exactly the ones people mistype as 1/0 when reading a code aloud.
- */
-const CROCKFORD_ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
-export const JOIN_CODE_LENGTH = 6;
+export {
+  CROCKFORD_ALPHABET,
+  JOIN_CODE_LENGTH,
+  generateJoinCode,
+  normalizeJoinCode,
+} from './crypto';
 
-export function generateJoinCode(): string {
-  // Rejection-sampled so every symbol is equally likely; `% 32` on a byte would bias 0–7.
-  let code = '';
-  while (code.length < JOIN_CODE_LENGTH) {
-    for (const byte of crypto.randomBytes(JOIN_CODE_LENGTH)) {
-      if (byte < 256 - (256 % CROCKFORD_ALPHABET.length)) {
-        code += CROCKFORD_ALPHABET[byte % CROCKFORD_ALPHABET.length];
-        if (code.length === JOIN_CODE_LENGTH) break;
-      }
-    }
-  }
-  return code;
-}
-
-/**
- * Accepts what a human actually types: lower case, spaces, dashes, and the confusable letters
- * Crockford's alphabet omits. Returns null if it still isn't a code, so the caller 404s rather
- * than probing Redis with junk.
- */
-export function normalizeJoinCode(raw: unknown): string | null {
-  if (typeof raw !== 'string') return null;
-  const cleaned = raw
-    .toUpperCase()
-    .replace(/[\s-]/g, '')
-    .replace(/[IL]/g, '1')
-    .replace(/O/g, '0');
-  if (cleaned.length !== JOIN_CODE_LENGTH) return null;
-  for (const ch of cleaned) {
-    if (!CROCKFORD_ALPHABET.includes(ch)) return null;
-  }
-  return cleaned;
+/** True only for an already-normalised code. Use `normalizeJoinCode` on anything user-typed. */
+export function isValidJoinCode(v: unknown): v is string {
+  return typeof v === 'string' && JOIN_CODE_PATTERN.test(v);
 }
 
 // --- Duration and size ------------------------------------------------------------------------

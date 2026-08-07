@@ -10,8 +10,8 @@ import {
   JOIN_CODE_TTL_SECONDS,
   MAX_META_ENVELOPE_CHARS,
   MAX_ROSTER_ENVELOPE_CHARS,
+  MAX_WRAPPED_TOKEN_CHARS,
   decideJoin,
-  generateJoinCode,
   isValidEnvelope,
   isValidGroupId,
   isValidTokenHash,
@@ -27,52 +27,43 @@ import {
   joinGroup,
   readGroup,
   readMemberCount,
-  resolveGroupIdByCode,
+  resolveCodeEntry,
   resolveGroupIdByToken,
 } from '../../lib/group/store';
 
 /**
  * Every Group Ride route, as one catch-all function.
  *
- * §4.5: `track-me-web/api/` was at 10 functions against a Hobby cap of 12. Shipping six routes
- * as six files would blow it, and would duplicate auth, membership and TTL logic six ways.
+ * §4.5 says `api/` holds 10 functions. It held 11, so this file is #12 — **exactly the Hobby
+ * cap**, confirmed by the 2026-08-08 architecture audit. Shipping six routes as six files would
+ * have blown it outright, and would have duplicated auth, membership and TTL logic six ways.
  * Same shape as `api/export/[...action].ts`.
  *
- * ⚠️ THE VERCEL PLAN IS STILL UNVERIFIED (§4.5, H10). This adds function #11. If the project is
- * on Hobby, one more new function anywhere breaks the deployment.
+ * `sync`, `state` and `leave` land in this same file and add no functions, so Group Ride is
+ * complete within the cap. But there is now **zero headroom**: the next new endpoint anywhere in
+ * the project needs `api/admin/*.ts` collapsed into `api/admin/[...action].ts` first, which
+ * frees three slots.
  */
 
 // GR-03 ships create/resolve/join. sync, state and leave land in GR-04/GR-05.
 
 /**
- * ⚠️ OPEN DECISION — join-by-code cannot complete, and it is not an implementation gap.
+ * Join-by-code and E2E encryption, reconciled (architecture decision, 2026-08-08).
  *
- * §2.4 makes the 6-character code the *guaranteed* join path, and §15.1 defers join-by-link to
- * 1.7.1 — so in 1.7.x the code is the only path a customer has. But §5.3 derives the group's
- * encryption key from the **invite token**, and the code is not the token. Someone who joins by
- * typing a code can be authorised by the relay and still decrypt nothing: no group name, no
- * roster, no positions. The two sections are individually sound and jointly impossible.
+ * §2.4 makes the 6-character code the guaranteed join path and §15.1 defers join-by-link to
+ * 1.7.1, so in 1.7.x the code is the only path a customer has — but §5.3 derives the group key
+ * from the invite *token*, which a code-joiner never sees. Left alone, a code-joiner would be
+ * authorised by the relay and able to decrypt nothing.
  *
- * Nothing below papers over it. `create` mints and stores the code, `resolve?c=` looks it up,
- * and `join` requires the token hash — so the link path works end to end today and the code path
- * stops at a clear 400 rather than half-working.
+ * Resolution: the creating client mints the code as well as the token, and stores the token
+ * sealed under a key derived from the code. The relay holds ciphertext for which it has neither
+ * input. `resolve?c=` hands that wrapper back; only someone who knows the code can open it.
  *
- * The options, for the sign-off that has to happen before GR-07 builds Android's crypto against
- * whichever it is:
- *
- *   (a) Wrap the token under the code. `group:code:{code}` stores AES-GCM(HKDF(code), token);
- *       the relay holds ciphertext it cannot open, and only someone holding the code can unwrap
- *       it. Costs: the client must mint the code as well as the token (so the server stops
- *       generating it), the envelope contract and the shared fixture both grow a case, and §5.2
- *       needs rewriting — under (a) the code *is* a security boundary, which §5.2 currently
- *       denies. 30 bits, but rate-limited to 5/min/IP, dead after 30 minutes, and invalid once
- *       the group goes LIVE.
- *   (b) Pull App Links forward into 1.7.x and let the link be the only path, accepting that
- *       Digital Asset Links verification is an external dependency that can slip (§6.1 B5 is
- *       explicit that this is why the code exists).
- *   (c) Drop E2E to the §5.3 fallback — plaintext, same TTL, same delete-on-end — and change the
- *       public claim from "cannot read" to "does not retain". §15.4 calls this genuinely
- *       acceptable for a first release; it is also the largest product loss of the three.
+ * The honest consequence: **the join code is now a security boundary**, which §5.2 currently
+ * denies and needs updating for. 30 bits is weak in the abstract. What makes it acceptable is
+ * that there is no offline attack — a wrapper cannot be obtained without already knowing its
+ * code — so the only route is `resolve?c=`, which is rate-limited to 5/min per client and stops
+ * working when the code expires after 30 minutes.
  */
 
 const GONE_MESSAGE = 'This invite has expired.';
@@ -118,6 +109,16 @@ async function handleCreate(request: VercelRequest, response: VercelResponse) {
       return response.status(400).json({ error: 'roster must be a v1 envelope.' });
     }
 
+    // The client mints the join code too, because the wrapper below is keyed on it — the server
+    // cannot generate a code the client has already wrapped a token under.
+    const joinCode = normalizeJoinCode(body.joinCode);
+    if (!joinCode) {
+      return response.status(400).json({ error: 'joinCode must be 6 Crockford base32 characters.' });
+    }
+    if (!isValidEnvelope(body.wrappedToken, MAX_WRAPPED_TOKEN_CHARS)) {
+      return response.status(400).json({ error: 'wrappedToken must be a v1 envelope.' });
+    }
+
     const duration = resolveDurationMinutes(body.durationMinutes);
     if (!duration.ok) return response.status(400).json({ error: duration.error });
 
@@ -135,28 +136,31 @@ async function handleCreate(request: VercelRequest, response: VercelResponse) {
       roster: body.roster,
     };
 
-    // A join-code collision is ~1 in 1e9 per attempt, but it is silent corruption if unhandled:
-    // the loser's code would point at the winner's group. Three attempts makes it impossible in
-    // practice; failing loudly after that is better than issuing a code that resolves elsewhere.
-    let record: GroupRecord | null = null;
-    let outcome: string = 'CODE_TAKEN';
-    for (let attempt = 0; attempt < 3 && outcome === 'CODE_TAKEN'; attempt++) {
-      record = {
-        v: 1,
-        groupId: newGroupId(),
-        ownerUid: decoded.uid,
-        state: 'PREPARING',
-        createdAt: now,
-        expiresAt,
-        maxMembers: size.value,
-        syncIntervalSec: DEFAULT_SYNC_INTERVAL_SEC,
-        tokenHash: body.tokenHash,
-        joinCode: generateJoinCode(),
-        meta: body.meta,
-      };
-      outcome = await createGroup(record, owner, codeExpiresAt);
-    }
+    const record: GroupRecord = {
+      v: 1,
+      groupId: newGroupId(),
+      ownerUid: decoded.uid,
+      state: 'PREPARING',
+      createdAt: now,
+      expiresAt,
+      maxMembers: size.value,
+      syncIntervalSec: DEFAULT_SYNC_INTERVAL_SEC,
+      tokenHash: body.tokenHash,
+      joinCode,
+      meta: body.meta,
+    };
 
+    const outcome = await createGroup(record, owner, codeExpiresAt, body.wrappedToken);
+
+    if (outcome === 'CODE_TAKEN') {
+      // ~1 in 1e9, but silent corruption if unhandled — the loser's code would resolve to the
+      // winner's group. The client retries with a fresh code, which means a fresh wrapper; the
+      // server cannot do that retry on its behalf any more.
+      return response.status(409).json({
+        error: 'That join code is already in use.',
+        code: 'CODE_IN_USE',
+      });
+    }
     if (outcome === 'TOKEN_TAKEN') {
       // The client reused a token. Retrying with the same one cannot succeed, and silently
       // attaching them to someone else's group would be a serious visibility bug.
@@ -165,8 +169,8 @@ async function handleCreate(request: VercelRequest, response: VercelResponse) {
         code: 'TOKEN_IN_USE',
       });
     }
-    if (outcome !== 'CREATED' || !record) {
-      console.error('Group create failed after retries', { outcome });
+    if (outcome !== 'CREATED') {
+      console.error('Group create failed', { outcome });
       return response.status(500).json({ error: 'Could not create the group. Please try again.' });
     }
 
@@ -206,6 +210,10 @@ async function handleResolve(request: VercelRequest, response: VercelResponse) {
     const joinCode = normalizeJoinCode(Array.isArray(rawCode) ? rawCode[0] : rawCode);
 
     let groupId: string | null = null;
+    // Returned on the code path only. A caller resolving by token already holds the token, so
+    // handing them a wrapper of it would be noise; a caller resolving by code needs it to derive
+    // the group key at all.
+    let wrappedToken: string | null = null;
 
     if (tokenHash) {
       // `t` is the token *hash*, computed client-side — never the token. A raw token in a query
@@ -220,7 +228,9 @@ async function handleResolve(request: VercelRequest, response: VercelResponse) {
         // forcer that they had found the right endpoint and were merely going too fast.
         return sendGone(response);
       }
-      groupId = await resolveGroupIdByCode(joinCode);
+      const entry = await resolveCodeEntry(joinCode);
+      groupId = entry?.groupId ?? null;
+      wrappedToken = entry?.wrappedToken ?? null;
     } else {
       return response.status(400).json({ error: 'Provide either t (token hash) or c (join code).' });
     }
@@ -237,7 +247,8 @@ async function handleResolve(request: VercelRequest, response: VercelResponse) {
     response.setHeader('Cache-Control', 'no-store');
 
     const memberCount = await readMemberCount(groupId);
-    return response.status(200).json(toPublicView(record, memberCount));
+    const view = toPublicView(record, memberCount);
+    return response.status(200).json(wrappedToken ? { ...view, wrappedToken } : view);
   } catch (error) {
     return sendError(response, error, 'resolve');
   }
@@ -258,10 +269,10 @@ async function handleJoin(request: VercelRequest, response: VercelResponse) {
       return response.status(400).json({ error: 'A valid groupId is required.' });
     }
     if (!isValidTokenHash(body.tokenHash)) {
-      // See the OPEN DECISION block above: a code-only joiner has no token hash, and giving them
-      // one would not help — they would still hold no key. Say so rather than 400ing blankly.
+      // A code-joiner reaches this point too: they unwrap the token from `resolve?c=` first and
+      // then arrive here with a real hash. There is no separate code path through join.
       return response.status(400).json({
-        error: 'A valid tokenHash is required. Joining by code alone is not supported yet.',
+        error: 'A valid tokenHash is required.',
         code: 'TOKEN_HASH_REQUIRED',
       });
     }

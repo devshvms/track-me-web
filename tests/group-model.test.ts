@@ -8,14 +8,12 @@ import {
   FREE_MAX_DURATION_MINUTES,
   FREE_MAX_MEMBERS,
   GroupRecord,
-  JOIN_CODE_LENGTH,
   MAX_META_ENVELOPE_CHARS,
   MAX_ROSTER_ENVELOPE_CHARS,
   MIN_MAX_MEMBERS,
   PUBLIC_VIEW_FIELDS,
   allGroupKeys,
   decideJoin,
-  generateJoinCode,
   groupCodeKey,
   groupKey,
   groupMembersKey,
@@ -24,9 +22,9 @@ import {
   groupTokenKey,
   isValidEnvelope,
   isValidGroupId,
+  isValidJoinCode,
   isValidTokenHash,
   newGroupId,
-  normalizeJoinCode,
   resolveDurationMinutes,
   resolveMaxMembers,
   toPublicView,
@@ -95,65 +93,6 @@ test('the token key is derived from the hash, never a raw token', () => {
   assert.strictEqual(groupTokenKey(TOKEN_HASH), `group:tok:${TOKEN_HASH}`);
 });
 
-// --- Join codes -------------------------------------------------------------------------------
-
-test('generated join codes use the Crockford alphabet at the stated length', () => {
-  for (let i = 0; i < 500; i++) {
-    const code = generateJoinCode();
-    assert.strictEqual(code.length, JOIN_CODE_LENGTH);
-    assert.match(code, /^[0-9ABCDEFGHJKMNPQRSTVWXYZ]{6}$/, `bad code: ${code}`);
-  }
-});
-
-test('generated codes exclude I, L, O and U', () => {
-  // The whole point of Crockford here is manual entry: those four are what people mistype.
-  let seen = '';
-  for (let i = 0; i < 2000; i++) seen += generateJoinCode();
-  for (const ch of 'ILOU') {
-    assert.ok(!seen.includes(ch), `alphabet leaked "${ch}"`);
-  }
-});
-
-test('generated codes are well spread across the alphabet', () => {
-  // A `% 32` on a raw byte would over-represent the first 8 symbols by 25%. This is the guard
-  // for the rejection sampling that avoids it.
-  const counts = new Map<string, number>();
-  for (let i = 0; i < 4000; i++) {
-    for (const ch of generateJoinCode()) counts.set(ch, (counts.get(ch) || 0) + 1);
-  }
-  assert.strictEqual(counts.size, 32, 'not every symbol was produced');
-  const values = [...counts.values()];
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  assert.ok(max / min < 1.5, `symbol distribution too skewed: ${min}..${max}`);
-});
-
-test('normalizeJoinCode accepts what a human actually types', () => {
-  assert.strictEqual(normalizeJoinCode('abc123'), 'ABC123');
-  assert.strictEqual(normalizeJoinCode('ABC 123'), 'ABC123');
-  assert.strictEqual(normalizeJoinCode('ABC-123'), 'ABC123');
-  assert.strictEqual(normalizeJoinCode(' abc-1 23 '), 'ABC123');
-});
-
-test('normalizeJoinCode maps the confusable letters onto their digits', () => {
-  assert.strictEqual(normalizeJoinCode('IBC123'), '1BC123');
-  assert.strictEqual(normalizeJoinCode('lBC123'), '1BC123');
-  assert.strictEqual(normalizeJoinCode('OBC123'), '0BC123');
-});
-
-test('normalizeJoinCode rejects anything that is not a code', () => {
-  for (const bad of ['', 'ABC12', 'ABC1234', 'ABC12!', 'UUUUUU', null, undefined, 42, {}]) {
-    assert.strictEqual(normalizeJoinCode(bad as any), null, `accepted ${JSON.stringify(bad)}`);
-  }
-});
-
-test('a generated code always survives its own normalizer', () => {
-  for (let i = 0; i < 500; i++) {
-    const code = generateJoinCode();
-    assert.strictEqual(normalizeJoinCode(code), code, `round-trip failed for ${code}`);
-  }
-});
-
 // --- Validation -------------------------------------------------------------------------------
 
 test('token hash validation requires 64 lowercase hex', () => {
@@ -167,6 +106,15 @@ test('group id validation requires a UUID', () => {
   assert.ok(isValidGroupId(newGroupId()));
   for (const bad of ['', 'not-a-uuid', '11111111-2222-3333-4444', null, 42]) {
     assert.ok(!isValidGroupId(bad as any), `accepted ${String(bad)}`);
+  }
+});
+
+test('join code validation accepts only an already-normalised code', () => {
+  // The wire validator is strict on purpose: the code is the HKDF input, so accepting "abc-123"
+  // here would mean storing a key the joiner's derivation can never reproduce.
+  assert.ok(isValidJoinCode('ABC123'));
+  for (const bad of ['abc123', 'ABC-123', 'ABC12', 'ABCI23', 'ABCO23', '', null, 42]) {
+    assert.ok(!isValidJoinCode(bad as any), `accepted ${String(bad)}`);
   }
 });
 

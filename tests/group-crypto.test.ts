@@ -3,19 +3,26 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
+  CROCKFORD_ALPHABET,
   CryptoVectorFile,
   ENVELOPE_VERSION,
   EnvelopeError,
   KEY_LENGTH_BYTES,
   NONCE_LENGTH_BYTES,
+  JOIN_CODE_LENGTH,
+  deriveCodeKey,
   deriveGroupKey,
   envelopeContext,
   generateInviteToken,
+  generateJoinCode,
   groupTokenHash,
+  normalizeJoinCode,
   open,
   openFor,
   seal,
   sealFor,
+  unwrapTokenWithCode,
+  wrapTokenForCode,
 } from '../lib/group/crypto';
 
 let passed = 0;
@@ -65,6 +72,139 @@ for (const v of vectors.cases) {
     assert.strictEqual(open(key, v.envelope, v.context), v.plaintext);
   });
 }
+
+// --- Join codes and token wrapping ---
+//
+// The code is key material under the wrapped-token design, so everything that decides its exact
+// bytes is pinned here rather than treated as a UI nicety.
+
+test('fixture code vectors reproduce the code key and the wrapper byte-for-byte', () => {
+  assert.ok(vectors.codeCases.length > 0, 'fixture has no code cases');
+  for (const v of vectors.codeCases) {
+    assert.strictEqual(deriveCodeKey(v.joinCode).toString('hex'), v.codeKeyHex, v.name);
+    assert.strictEqual(envelopeContext('code'), v.context, v.name);
+    const nonce = Buffer.from(v.nonceB64Url, 'base64url');
+    assert.strictEqual(
+      seal(Buffer.from(v.codeKeyHex, 'hex'), v.inviteToken, v.context, nonce),
+      v.wrappedToken,
+      v.name,
+    );
+    assert.strictEqual(unwrapTokenWithCode(v.joinCode, v.wrappedToken), v.inviteToken, v.name);
+  }
+});
+
+test('the code key and the group key are never the same', () => {
+  // Domain separation via the HKDF info string. If these ever collided, knowing a join code
+  // would hand you the group key directly rather than via the wrapper.
+  const token = generateInviteToken();
+  const code = generateJoinCode();
+  assert.notStrictEqual(deriveGroupKey(token).toString('hex'), deriveCodeKey(code).toString('hex'));
+  // And the same six characters used as both inputs still derive differently.
+  assert.notStrictEqual(
+    deriveCodeKey('ABC123').toString('hex'),
+    hkdfWithGroupInfo('ABC123'),
+    'info string is not separating the two derivations',
+  );
+});
+
+function hkdfWithGroupInfo(input: string): string {
+  return Buffer.from(
+    crypto.hkdfSync('sha256', Buffer.from(input, 'utf8'), Buffer.alloc(0),
+      Buffer.from('trackme:group:v1', 'utf8'), 32),
+  ).toString('hex');
+}
+
+test('a wrapped token round-trips through a fresh code', () => {
+  const token = generateInviteToken();
+  const code = generateJoinCode();
+  assert.strictEqual(unwrapTokenWithCode(code, wrapTokenForCode(code, token)), token);
+});
+
+test('the wrong code cannot unwrap the token', () => {
+  const token = generateInviteToken();
+  const wrapped = wrapTokenForCode('ABC123', token);
+  assert.throws(() => unwrapTokenWithCode('ABC124', wrapped), EnvelopeError);
+});
+
+test('a wrapper cannot be opened as any other envelope purpose', () => {
+  // The relay holds both the wrapper and the meta envelope. Swapping them must fail rather than
+  // produce something that parses.
+  const code = generateJoinCode();
+  const wrapped = wrapTokenForCode(code, generateInviteToken());
+  assert.throws(() => openFor(deriveCodeKey(code), wrapped, 'meta'), EnvelopeError);
+});
+
+test('unwrapping rejects a payload that authenticates but is not a token', () => {
+  // Guards the format drifting: feeding junk into deriveGroupKey would produce a blank map with
+  // no error rather than a clear failure.
+  const code = generateJoinCode();
+  const notAToken = seal(deriveCodeKey(code), 'hello', envelopeContext('code'));
+  assert.throws(() => unwrapTokenWithCode(code, notAToken), EnvelopeError);
+});
+
+test('deriveCodeKey refuses anything that is not an already-normalised code', () => {
+  for (const bad of ['abc123', 'ABC-123', 'ABC12', 'ABCI23', 'ABCO23', 'ABCU23', '', 'ABC 123']) {
+    assert.throws(() => deriveCodeKey(bad), EnvelopeError, `accepted "${bad}"`);
+  }
+});
+
+test('generated join codes use the Crockford alphabet at the stated length', () => {
+  for (let i = 0; i < 500; i++) {
+    const code = generateJoinCode();
+    assert.strictEqual(code.length, JOIN_CODE_LENGTH);
+    assert.match(code, /^[0-9ABCDEFGHJKMNPQRSTVWXYZ]{6}$/, `bad code: ${code}`);
+  }
+});
+
+test('generated codes exclude I, L, O and U', () => {
+  let seen = '';
+  for (let i = 0; i < 2000; i++) seen += generateJoinCode();
+  for (const ch of 'ILOU') assert.ok(!seen.includes(ch), `alphabet leaked "${ch}"`);
+});
+
+test('generated codes are evenly spread across the alphabet', () => {
+  // A `% 32` on a raw byte would over-represent the first eight symbols by 25%. This is the
+  // guard for the rejection sampling that avoids it — and biased codes are weaker key material
+  // now, not just uglier.
+  const counts = new Map<string, number>();
+  for (let i = 0; i < 4000; i++) {
+    for (const ch of generateJoinCode()) counts.set(ch, (counts.get(ch) || 0) + 1);
+  }
+  assert.strictEqual(counts.size, CROCKFORD_ALPHABET.length, 'not every symbol was produced');
+  const values = [...counts.values()];
+  assert.ok(Math.max(...values) / Math.min(...values) < 1.5, 'symbol distribution too skewed');
+});
+
+test('normalizeJoinCode canonicalises what a human actually types', () => {
+  for (const raw of ['abc123', 'ABC 123', 'ABC-123', ' abc-1 23 ']) {
+    assert.strictEqual(normalizeJoinCode(raw), 'ABC123', `failed on "${raw}"`);
+  }
+  assert.strictEqual(normalizeJoinCode('IBC123'), '1BC123');
+  assert.strictEqual(normalizeJoinCode('lBC123'), '1BC123');
+  assert.strictEqual(normalizeJoinCode('OBC123'), '0BC123');
+});
+
+test('normalizeJoinCode rejects anything that is not a code', () => {
+  for (const bad of ['', 'ABC12', 'ABC1234', 'ABC12!', 'UUUUUU', null, undefined, 42, {}]) {
+    assert.strictEqual(normalizeJoinCode(bad as any), null, `accepted ${JSON.stringify(bad)}`);
+  }
+});
+
+test('a generated code survives its own normalizer unchanged', () => {
+  // If it did not, the creator and the joiner would derive different code keys from the same
+  // six characters — a silent failure, which is the whole class this fixture exists to prevent.
+  for (let i = 0; i < 500; i++) {
+    const code = generateJoinCode();
+    assert.strictEqual(normalizeJoinCode(code), code, `round-trip failed for ${code}`);
+  }
+});
+
+test('a typed code that normalises to the creator code derives the same key', () => {
+  const key = deriveCodeKey('ABC123').toString('hex');
+  for (const typed of ['abc123', 'ABC-123', 'abc 123']) {
+    assert.strictEqual(deriveCodeKey(normalizeJoinCode(typed)!).toString('hex'), key, typed);
+  }
+});
 
 // --- HKDF is standard, not Node-specific ---
 

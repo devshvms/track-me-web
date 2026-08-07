@@ -1,6 +1,6 @@
 # Group Ride relay — API contract
 
-**Status:** GR-03 ships `create`, `resolve`, `join`. `sync`, `state` and `leave` follow in GR-04/GR-05.
+**Status:** GR-03 + GR-03b ship `create`, `resolve`, `join`. `sync`, `state` and `leave` follow in GR-04/GR-05.
 **Implements:** `SCOPE_1.7.0.md` §4.4, §4.5. Crypto: [group-crypto-contract.md](group-crypto-contract.md).
 
 All routes live in one function, `api/group/[...action].ts`, following `api/export/[...action].ts`.
@@ -22,7 +22,7 @@ group:{groupId}:members    HASH    field = uid, value = { role, joinedAt, roster
 group:{groupId}:rev        STRING  roster revision counter (INCR)
 group:{groupId}:pos        HASH    field = uid, value = encrypted position envelope   (GR-04)
 group:tok:{tokenHash}      STRING  → groupId
-group:code:{joinCode}      STRING  → groupId       (TTL = min(session TTL, 30 min))
+group:code:{joinCode}      STRING  → { groupId, wrappedToken }   (TTL = min(session TTL, 30 min))
 ```
 
 §4.4 sketches four keys. The two extra are `:members` and `:rev`, and they earn their place:
@@ -43,12 +43,18 @@ Auth: member.
 ```jsonc
 {
   "tokenHash": "<64 lowercase hex>",   // sha256(inviteToken). The token itself NEVER comes here.
+  "joinCode": "ABC123",                // client-minted, 6 Crockford base32, already normalised
+  "wrappedToken": "v1.<nonce>.<body>", // seal(HKDF(joinCode), inviteToken, "v1:code")
   "durationMinutes": 240,              // optional, default 240, max 240
   "maxMembers": 5,                     // optional, default 5, min 2, max 5
   "meta": "v1.<nonce>.<body>",         // envelope, context `v1:meta`
   "roster": "v1.<nonce>.<body>"        // envelope, context `v1:roster:{yourUid}`
 }
 ```
+
+**The client mints the join code, not the server.** It has to: the wrapper is keyed on the code,
+so the server cannot invent a code the client has already wrapped a token under. That also moves
+collision handling client-side — see `409 CODE_IN_USE` below.
 
 ```jsonc
 {
@@ -71,6 +77,7 @@ step, and a create that half-succeeded would present to a joiner as a group that
 |---|---|
 | `400` | Bad `tokenHash`, malformed envelope, or a duration/size over the free cap. The body names the cap — §11.2 wants limits stated, not silently clamped. |
 | `409 TOKEN_IN_USE` | That token hash already maps to a group. The client must mint a **new** token, not retry. |
+| `409 CODE_IN_USE` | Join-code collision (~1 in 1e9). The client retries with a fresh code, which means a **fresh wrapper** — the code key changed. |
 | `503 REDIS_UNAVAILABLE` | See §6. |
 
 ---
@@ -86,7 +93,17 @@ every access log, and §10 requires that the token never appears in one.
 { "groupId": "<uuid>", "state": "PREPARING", "memberCount": 3, "maxMembers": 5, "expiresAt": 1785014400000 }
 ```
 
-Exactly those five fields — no name, no roster, no ciphertext, no owner — so an enumerated token or
+On the **`?c=` path only**, one extra field:
+
+```jsonc
+{ ..., "wrappedToken": "v1.<nonce>.<body>" }
+```
+
+That is the invite token sealed under the code the caller just supplied — useless to anyone who
+does not already know that code, and the only way a code-joiner can obtain the group key. A
+caller resolving by token already holds the token, so the `?t=` path never returns it.
+
+Otherwise exactly those five fields — no name, no roster, no owner — so an enumerated token or
 a guessed code leaks nothing. `Cache-Control: no-store`: a stale member count is the difference
 between "3 people are here" and joining a group that is already full.
 
@@ -136,45 +153,50 @@ Auth: member.
 
 | Status | Meaning |
 |---|---|
-| `400 TOKEN_HASH_REQUIRED` | See §5 — the open decision. |
+| `400 TOKEN_HASH_REQUIRED` | No valid hash supplied. A code-joiner reaches `join` with a real hash too — they unwrap it from `resolve?c=` first (§5). There is no separate code path through this route. |
 | `404 GROUP_NOT_FOUND` | Missing, wrong token, ended, or expired — all one body (§8). |
 | `409 GROUP_FULL` | Body carries `memberCount` and `maxMembers` so the client can say "This group is full (5 of 5)". |
 
 ---
 
-## 5. ⚠️ Open decision — join-by-code cannot complete
+## 5. Join-by-code, resolved
 
-§2.4 makes the 6-character code the guaranteed join path and §15.1 defers join-by-link to 1.7.1,
-so in 1.7.x the code is the **only** path a customer has. But §5.3 derives the group key from the
-**invite token**, and the code is not the token. Someone who joins by typing a code can be
-authorised by the relay and still decrypt nothing — no group name, no roster, no positions.
+**Decision (2026-08-08): option (a), token wrapped under the code.**
 
-The two sections are individually sound and jointly impossible. Nothing in GR-03 papers over it:
-`create` mints and stores the code, `resolve?c=` looks it up, and `join` requires the token hash,
-so the link path works end to end and the code path stops at a clear `400`.
+§2.4 makes the code the guaranteed join path and §15.1 defers join-by-link to 1.7.1, so in 1.7.x
+the code is the only path a customer has. But §5.3 derives the group key from the invite *token*,
+which a code-joiner never sees — so without this they would be authorised by the relay and able
+to decrypt nothing.
 
-Options, in the order I'd rank them:
+The full client flow:
 
-**(a) Wrap the token under the code.** `group:code:{code}` stores `AES-GCM(HKDF(code), token)`
-alongside the groupId. The relay holds ciphertext it has no key for; only someone holding the code
-can unwrap it. Costs: the **client** must mint the code as well as the token (the server stops
-generating it), the envelope contract and shared fixture each grow a case, and §5.2 needs
-rewriting — under (a) the code *is* a security boundary, which §5.2 currently denies. 30 bits is
-weak in the abstract, but it is rate-limited to 5/min/IP, dead after 30 minutes, and invalidated
-once the group goes `LIVE`.
+1. **Create.** Mint `inviteToken` (22 base64url) and `joinCode` (6 Crockford). Derive
+   `codeKey = HKDF(joinCode, info="trackme:group-code:v1")`. Compute
+   `wrappedToken = seal(codeKey, inviteToken, "v1:code")` and `tokenHash = sha256(inviteToken)`.
+   `POST create` with `{ tokenHash, joinCode, wrappedToken, meta, roster }`.
+2. **Join by code.** Normalise the typed code. `GET resolve?c=<code>` → `{ …, wrappedToken }`.
+   Derive `codeKey` from the same normalised code, `unwrapTokenWithCode` → `inviteToken`. From
+   here it is identical to a link join: derive the group key, compute `tokenHash`, `POST join`.
+3. **Join by link** (1.7.1). The token arrives in the URL fragment; skip straight to step 2's
+   second half.
 
-**(b) Pull App Links forward into 1.7.x** and make the link the only path — accepting that Digital
-Asset Links verification is an external dependency that can slip a release. §6.1 B5 is explicit
-that avoiding exactly this is why the code exists.
+The relay holds neither the code nor the token — only ciphertext for which it has neither input.
 
-**(c) Drop E2E to the §5.3 fallback** — plaintext, same TTL, same delete-on-end — and change the
-public claim from "we cannot read it" to "we do not retain it". §15.4 calls this genuinely
-acceptable for a first release; it is also the largest product loss of the three.
+**The cost, stated plainly: the join code is now a security boundary.** §5.2 currently says it is
+"a convenience, never the security boundary", and that sentence needs replacing. What makes 30
+bits acceptable: there is **no offline attack** (a wrapper cannot be obtained without already
+knowing its code), the only route is `resolve?c=` at **5/min per client**, and the code **dies
+after 30 minutes**.
 
-**This needs deciding before GR-07**, because Android's `GroupCrypto.kt` is built against whichever
-answer wins.
+### ⚠️ Still open: evicting the code when the group goes LIVE
 
----
+§5.2 says the code is invalidated once the group goes `LIVE`. Under this design that directly
+contradicts §8's *"Joining a group that is already `LIVE` — allowed. Latecomers are the common
+case, not an error"*, because the code is the only join path in 1.7.x. Either latecomers cannot
+join at all this release, or the code lives out its 30 minutes regardless of state.
+
+**Recommendation: keep it for the 30 minutes.** The TTL is the real bound, and §8 is a product
+promise. Needs settling before GR-05 implements `state`.
 
 ## 6. Failure contract
 
@@ -197,8 +219,9 @@ affect the user's own ride.
 is not** — its Lua scripts need a live Redis, and there is none in this environment.
 
 Specifically unverified: the `create` and `join` scripts' Redis syntax, `PEXPIREAT` on every key,
-the atomic capacity check, the `EXISTS` guard that stops a join resurrecting an ended group, and
-the `NOSCRIPT` → `EVAL` reload path.
+the JSON code entry round-tripping through `group:code:{joinCode}`, the atomic capacity check,
+the `EXISTS` guard that stops a join resurrecting an ended group, and the `NOSCRIPT` → `EVAL`
+reload path.
 
 §12 Phase 1 requires an integration pass driven by a simulated multi-member client. **That pass is
 a release gate, not a nicety** — everything above is unexercised code until it runs.

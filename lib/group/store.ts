@@ -86,7 +86,7 @@ redis.call('PEXPIREAT', KEYS[3], ARGV[4])
 redis.call('SET', KEYS[4], ARGV[6])
 redis.call('PEXPIREAT', KEYS[4], ARGV[4])
 
-redis.call('SET', KEYS[5], ARGV[6])
+redis.call('SET', KEYS[5], ARGV[7])
 redis.call('PEXPIREAT', KEYS[5], ARGV[5])
 
 return 1
@@ -98,6 +98,7 @@ export async function createGroup(
   record: GroupRecord,
   owner: GroupMember,
   codeExpiresAtMs: number,
+  wrappedToken: string,
 ): Promise<CreateOutcome> {
   const result = await runScript(
     'group:create',
@@ -116,6 +117,10 @@ export async function createGroup(
       String(record.expiresAt),
       String(codeExpiresAtMs),
       record.groupId,
+      // The code key holds the groupId *and* the token wrapped under the code, so a joiner who
+      // only typed a code can recover the group key. The relay cannot: it has neither the code
+      // nor the token, only this ciphertext.
+      JSON.stringify({ groupId: record.groupId, wrappedToken } satisfies CodeEntry),
     ],
   );
 
@@ -210,9 +215,23 @@ export async function resolveGroupIdByToken(tokenHash: string): Promise<string |
   return redis.get(groupTokenKey(tokenHash));
 }
 
-export async function resolveGroupIdByCode(joinCode: string): Promise<string | null> {
+/** Value stored at `group:code:{joinCode}`. */
+export interface CodeEntry {
+  groupId: string;
+  wrappedToken: string;
+}
+
+export async function resolveCodeEntry(joinCode: string): Promise<CodeEntry | null> {
   const redis = await getStrictRedisClient();
-  return redis.get(groupCodeKey(joinCode));
+  const raw = await redis.get(groupCodeKey(joinCode));
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as CodeEntry;
+    return parsed?.groupId && parsed?.wrappedToken ? parsed : null;
+  } catch {
+    console.error('Unparseable group code entry');
+    return null;
+  }
 }
 
 export async function readMemberCount(groupId: string): Promise<number> {
