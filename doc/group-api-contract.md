@@ -1,6 +1,6 @@
 # Group Ride relay — API contract
 
-**Status:** GR-03 + GR-03b ship `create`, `resolve`, `join`. `sync`, `state` and `leave` follow in GR-04/GR-05.
+**Status:** `create`, `resolve`, `join`, `sync` are live. `state` and `leave` follow in GR-05.
 **Implements:** `SCOPE_1.7.0.md` §4.4, §4.5. Crypto: [group-crypto-contract.md](group-crypto-contract.md).
 
 All routes live in one function, `api/group/[...action].ts`, following `api/export/[...action].ts`.
@@ -157,6 +157,93 @@ Auth: member.
 | `404 GROUP_NOT_FOUND` | Missing, wrong token, ended, or expired — all one body (§8). |
 | `409 GROUP_FULL` | Body carries `memberCount` and `maxMembers` so the client can say "This group is full (5 of 5)". |
 
+The response includes `meta` — the group-metadata envelope. It is the only place the group's
+name exists, and a joiner has no other way to obtain it.
+
+---
+
+## 4b. `POST /api/group/sync` — the hot path
+
+Auth: member.
+
+```jsonc
+{
+  "groupId": "<uuid>",
+  "pos": "v1.<nonce>.<body>",   // OPTIONAL — envelope, context `v1:pos:{yourUid}`
+  "moving": true,               // from the device motion sensor
+  "foreground": true,           // is the user actually looking at the map
+  "rev": 7                      // the roster revision you last saw
+}
+```
+
+```jsonc
+{
+  "groupId": "<uuid>",
+  "state": "LIVE",
+  "expiresAt": 1785014400000,
+  "rev": 7,
+  "maxMembers": 5,
+  "positions": {
+    "uid-alice": { "e": "v1.<nonce>.<body>", "ts": 1785000000000 },
+    "uid-bob":   { "e": "v1.<nonce>.<body>", "ts": 1785000000000 }
+  },
+  "nextSyncInSec": 10,
+  "roster": { "uid-alice": "v1.<nonce>.<body>" },   // ONLY when your `rev` was stale
+  "meta":   "v1.<nonce>.<body>"                     // sent alongside `roster`
+}
+```
+
+**One call, both directions** (§4.3). Half the invocations of a push endpoint plus a polled pull,
+one round trip to see a change, and worst-case staleness bounded by the push interval alone
+rather than push + poll + cache TTL.
+
+**`pos` is optional.** §8: when location permission is revoked mid-session the member stops
+pushing but stays in the group as a viewer, and the app says so — *"You're not sharing your
+location. Others can't see you."* Symmetry made visible rather than hidden.
+
+**`ts` is server-stamped, always.** §4.4 and §8: staleness must be computable without decrypting,
+and a client with a skewed clock must not be able to poison freshness for the group. The client
+sends no timestamp and should ignore its own clock when rendering ages.
+
+**Your own entry is included in `positions`.** §4.1 has the client filter itself out — one
+`filter` is free. Leaving it in is deliberate beyond that: the relay is opaque to us by
+construction (§15.4), so this is the only way a client can confirm its own push landed. That
+diagnostic has to exist before the first support ticket, not after.
+
+**`roster` and `meta` are sent only when your `rev` is stale.** On most syncs they are absent,
+which is what keeps the response near §7.3's ~1.5 KB budget.
+
+**Obey `nextSyncInSec`.** §7.1, server-computed:
+
+| Member state | Interval |
+|---|---|
+| group is `PREPARING` | 30s — the lobby needs a heartbeat, not a stream |
+| stationary (checked before foreground) | 60s |
+| foreground **and** moving | 10s |
+| backgrounded, moving | 20s |
+
+The server decides so cadence is a lever with no client release (§4.3) — the single most
+important cost control in the design. `state: "ENDED"` returns `nextSyncInSec: 0`, meaning stop.
+
+**Ghost sweep.** A position not refreshed for 10 minutes is deleted server-side and disappears
+from `positions` — §2.6's "they drop off the map but stay in the roster". The roster is
+untouched, because *vanished* and *stopped moving* mean very different things to someone waiting
+at a junction.
+
+| Status | Meaning |
+|---|---|
+| `403 NOT_A_MEMBER` | §5.2, "departed member keeps polling": they still hold the derived key, so authorisation is the enforcement point, not crypto. Treat as "you are out of this group". |
+| `404 GROUP_NOT_FOUND` | The group is gone entirely. |
+| `429 SYNC_TOO_FAST` | Position writes are floored at 1s. Only reachable by ignoring `nextSyncInSec`. |
+| `503 REDIS_UNAVAILABLE` | See §6. |
+
+An expired-but-not-yet-swept group reads as `state: "ENDED"` with empty positions, never as an
+error — §8 wants Group Mode off cleanly while **the ride keeps recording**.
+
+**Cost.** Modelled at 228 syncs/member-hour on §7.2's 40/40/20 blend, ~1,140 per group-hour for
+five people. `modelledSyncsPerMemberHour()` computes that from the constants the server actually
+serves, and a test asserts it against §7.2's figures, so the doc cannot drift from the code.
+
 ---
 
 ## 5. Join-by-code, resolved
@@ -218,7 +305,15 @@ affect the user's own ride.
 `lib/group/model.ts` is pure and fully unit-tested (`npm run test:group-model`). **`lib/group/store.ts`
 is not** — its Lua scripts need a live Redis, and there is none in this environment.
 
-Specifically unverified: the `create` and `join` scripts' Redis syntax, `PEXPIREAT` on every key,
+`tests/group-store-scripts.test.ts` statically checks what can be checked without a Redis:
+declared vs. referenced `KEYS[n]`/`ARGV[n]` arity (the silent-nil bug — an out-of-range `ARGV[n]`
+reads as `nil`, so a renumbering slip makes a capacity check always pass with no error), balanced
+`if`/`end`, known command names, no key literals built inside Lua, ordering invariants
+(membership before read, capacity before write), and that every key written is also given an
+expiry. `runScript` re-checks the arity at runtime. Both guards are mutation-tested.
+
+That replaces a class of typo, not the integration pass. Specifically still unverified: the
+scripts' actual Redis behaviour, `PEXPIREAT` on every key,
 the JSON code entry round-tripping through `group:code:{joinCode}`, the atomic capacity check,
 the `EXISTS` guard that stops a join resurrecting an ended group, and the `NOSCRIPT` → `EVAL`
 reload path.

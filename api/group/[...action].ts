@@ -4,14 +4,22 @@ import { sendRedisError } from '../../lib/redis';
 import { captureTelemetryEvent } from '../../lib/posthog';
 import { checkCodeLookupLimit } from '../../lib/group/rate-limit';
 import {
+  GHOST_TTL_MS,
+  MIN_WRITE_INTERVAL_MS,
+  nextSyncIntervalSec,
+} from '../../lib/group/cadence';
+import {
   DEFAULT_SYNC_INTERVAL_SEC,
   GroupMember,
   GroupRecord,
   JOIN_CODE_TTL_SECONDS,
   MAX_META_ENVELOPE_CHARS,
+  MAX_POSITION_ENVELOPE_CHARS,
   MAX_ROSTER_ENVELOPE_CHARS,
   MAX_WRAPPED_TOKEN_CHARS,
   decideJoin,
+  decodePositionField,
+  encodePositionField,
   isValidEnvelope,
   isValidGroupId,
   isValidTokenHash,
@@ -29,6 +37,7 @@ import {
   readMemberCount,
   resolveCodeEntry,
   resolveGroupIdByToken,
+  syncGroup,
 } from '../../lib/group/store';
 
 /**
@@ -45,7 +54,7 @@ import {
  * frees three slots.
  */
 
-// GR-03 ships create/resolve/join. sync, state and leave land in GR-04/GR-05.
+// create / resolve / join / sync are live. state and leave land in GR-05.
 
 /**
  * Join-by-code and E2E encryption, reconciled (architecture decision, 2026-08-08).
@@ -348,9 +357,146 @@ async function handleJoin(request: VercelRequest, response: VercelResponse) {
       memberCount: result.memberCount,
       rev: result.rev,
       rejoined: result.outcome === 'REJOINED',
+      // Without this the joiner has no group name to show — `meta` is the only place it exists,
+      // and they cannot read it from anywhere else. It is immutable after create, so this is the
+      // one time they need it (sync re-sends it if their rev goes stale after a crash).
+      meta: record!.meta,
     });
   } catch (error) {
     return sendError(response, error, 'join');
+  }
+}
+
+// --- POST /api/group/sync ---------------------------------------------------------------------
+
+/**
+ * The hot path. One call, both directions (§4.3): the member posts their own encrypted position
+ * and the response carries the whole group's. That beats a separate push endpoint plus a polled
+ * pull on every axis — half the invocations, one round trip to see a change, and worst-case
+ * staleness bounded by the push interval alone rather than push + poll + cache TTL.
+ *
+ * Everything below is one `EVALSHA`. See `syncGroup` for why.
+ */
+async function handleSync(request: VercelRequest, response: VercelResponse) {
+  if (request.method !== 'POST') {
+    return response.status(405).json({ error: 'Method Not Allowed' });
+  }
+
+  try {
+    const decoded = await requireUser(request);
+    const body = request.body || {};
+
+    if (!isValidGroupId(body.groupId)) {
+      return response.status(400).json({ error: 'A valid groupId is required.' });
+    }
+
+    // `pos` is optional on purpose. §8: when location permission is revoked mid-session the
+    // member stops pushing but stays in the group as a viewer, and the app says so plainly —
+    // "You're not sharing your location. Others can't see you." Symmetry made visible rather
+    // than hidden. A member with nothing to send simply syncs without a position.
+    let positionField = '';
+    if (body.pos !== undefined && body.pos !== null) {
+      if (!isValidEnvelope(body.pos, MAX_POSITION_ENVELOPE_CHARS)) {
+        return response.status(400).json({ error: 'pos must be a v1 envelope.' });
+      }
+      // Server-stamped, always. §4.4 and §8: staleness must be computable without decrypting,
+      // and a client with a skewed clock must not be able to poison freshness for the group.
+      positionField = encodePositionField(Date.now(), body.pos);
+    }
+
+    const now = Date.now();
+    const clientRev = Number.isFinite(Number(body.rev)) ? Number(body.rev) : -1;
+
+    const result = await syncGroup({
+      groupId: body.groupId,
+      uid: decoded.uid,
+      positionField,
+      nowMs: now,
+      ghostCutoffMs: now - GHOST_TTL_MS,
+      clientRev,
+      minWriteIntervalMs: MIN_WRITE_INTERVAL_MS,
+    });
+
+    if (result.code === 'GONE' || !result.record) return sendGone(response);
+
+    // §5.2, "departed member keeps polling": they still hold the derived key, so authorisation
+    // is the enforcement point, not crypto. A removed uid gets 403 regardless of what they can
+    // decrypt — defence in depth, and the client treats it as "you are out of this group".
+    if (result.code === 'NOT_A_MEMBER') {
+      return response.status(403).json({
+        error: 'You are no longer in this group.',
+        code: 'NOT_A_MEMBER',
+      });
+    }
+
+    if (result.code === 'TOO_FAST') {
+      response.setHeader('Retry-After', '1');
+      return response.status(429).json({
+        error: 'Slow down.',
+        code: 'SYNC_TOO_FAST',
+        nextSyncInSec: result.record.syncIntervalSec,
+      });
+    }
+
+    const record = result.record;
+
+    // The TTL is the backstop and it always fires (§5.2). A record that outlives its expiry —
+    // a sweep that has not run yet — must still read as ended to every client.
+    const expired = record.expiresAt <= now;
+    const state = expired ? 'ENDED' : record.state;
+
+    if (state === 'ENDED') {
+      // §8: Group Mode switches off cleanly and **the ride keeps recording**. The client needs a
+      // definite answer here, not an error it might retry.
+      return response.status(200).json({
+        groupId: record.groupId,
+        state: 'ENDED',
+        expiresAt: record.expiresAt,
+        rev: result.rev,
+        positions: {},
+        nextSyncInSec: 0,
+      });
+    }
+
+    const positions: Record<string, { e: string; ts: number }> = {};
+    for (const [uid, raw] of Object.entries(result.positions)) {
+      const decoded_ = decodePositionField(raw);
+      // §8: a member we cannot read is skipped and logged, never a failed response. Here that
+      // means a malformed field costs one absent marker, not everyone's map.
+      if (decoded_) positions[uid] = { e: decoded_.e, ts: decoded_.ts };
+      else console.error('Unparseable position field', { groupId: record.groupId });
+    }
+
+    // §4.1: the caller's own entry is left in. One filter client-side is free, and because the
+    // relay is opaque to us by construction (§15.4) it is the only way a client can confirm its
+    // own push landed — which is the diagnostic that has to exist before the first support
+    // ticket, not after.
+    const payload: Record<string, unknown> = {
+      groupId: record.groupId,
+      state,
+      expiresAt: record.expiresAt,
+      rev: result.rev,
+      maxMembers: record.maxMembers,
+      positions,
+      nextSyncInSec: nextSyncIntervalSec({
+        state,
+        foreground: body.foreground === true,
+        moving: body.moving === true,
+      }),
+    };
+
+    // Only when the caller's revision is stale — §4.5. On most syncs this is absent, which is
+    // what keeps the response near §7.3's 1.5 KB budget.
+    if (result.roster) {
+      payload.roster = Object.fromEntries(
+        Object.entries(result.roster).map(([uid, m]) => [uid, m.roster]),
+      );
+      payload.meta = record.meta;
+    }
+
+    return response.status(200).json(payload);
+  } catch (error) {
+    return sendError(response, error, 'sync');
   }
 }
 
@@ -372,6 +518,7 @@ export default async function handler(request: VercelRequest, response: VercelRe
     case 'create': return handleCreate(request, response);
     case 'resolve': return handleResolve(request, response);
     case 'join': return handleJoin(request, response);
+    case 'sync': return handleSync(request, response);
     default:
       console.error('Unmatched group action route', { url: request.url, query: request.query });
       return response.status(404).json({ error: 'Not Found' });

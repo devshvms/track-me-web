@@ -205,6 +205,38 @@ export function resolveMaxMembers(raw: unknown): LimitResult<number> {
   return { ok: true, value: Math.floor(parsed) };
 }
 
+// --- Position field encoding --------------------------------------------------------------------
+
+/**
+ * A position hash field is `"<serverMillis>.<envelope>"`.
+ *
+ * §4.4 requires the timestamp to sit **outside** the envelope so the server can compute
+ * staleness and sweep ghosts without decrypting, and so a client with a skewed clock cannot
+ * poison freshness for the whole group (§8). A parallel hash field would work too; one field
+ * halves the writes and keeps the sweep to a single scan.
+ *
+ * Splitting on the *first* dot is safe: the timestamp is digits, and the envelope always begins
+ * `v1.`, so the boundary is unambiguous.
+ */
+export function encodePositionField(serverMillis: number, envelope: string): string {
+  return `${serverMillis}.${envelope}`;
+}
+
+export interface DecodedPosition {
+  ts: number;
+  e: string;
+}
+
+export function decodePositionField(value: unknown): DecodedPosition | null {
+  if (typeof value !== 'string') return null;
+  const dot = value.indexOf('.');
+  if (dot <= 0) return null;
+  const ts = Number(value.slice(0, dot));
+  if (!Number.isFinite(ts) || !Number.isInteger(ts) || ts <= 0) return null;
+  const e = value.slice(dot + 1);
+  return isValidEnvelope(e, MAX_POSITION_ENVELOPE_CHARS) ? { ts, e } : null;
+}
+
 // --- Join eligibility -------------------------------------------------------------------------
 
 /**
