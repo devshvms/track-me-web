@@ -8,7 +8,7 @@
     "test": "npm run check:theme && npm run check:landing && npm run test:unit",
     "check:theme": "node scripts/check-theme-contrast.js",
     "check:landing": "node scripts/check-landing-structure.js",
-    "test:unit": "npm run test:waitlist && npm run test:notify && npm run test:admin-config && npm run test:posthog-state && npm run test:location && npm run test:group-crypto && npm run test:redis-strict",
+    "test:unit": "npm run test:waitlist && npm run test:notify && npm run test:admin-config && npm run test:posthog-state && npm run test:location && npm run test:group-crypto && npm run test:redis-strict && npm run test:group-model",
     "test:waitlist": "ts-node --project tests/tsconfig.json tests/waitlist.test.ts",
     "test:notify": "ts-node --project tests/tsconfig.json tests/notify.test.ts",
     "test:admin-config": "ts-node --project tests/tsconfig.json tests/admin-config.test.ts",
@@ -16,7 +16,8 @@
     "test:location": "ts-node --project tests/tsconfig.json tests/location.test.ts",
     "test:group-crypto": "ts-node --project tests/tsconfig.json tests/group-crypto.test.ts",
     "test:redis-strict": "ts-node --project tests/tsconfig.json tests/redis-strict.test.ts",
-    "gen:group-crypto-vectors": "ts-node --project tests/tsconfig.json scripts/generate-group-crypto-vectors.ts"
+    "gen:group-crypto-vectors": "ts-node --project tests/tsconfig.json scripts/generate-group-crypto-vectors.ts",
+    "test:group-model": "ts-node --project tests/tsconfig.json tests/group-model.test.ts"
   },
   "keywords": [],
   "author": "",
