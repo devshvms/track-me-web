@@ -110,6 +110,29 @@ if (!globalAny._mockRedis) {
 
 let cachedClient: any = null;
 
+/**
+ * `reconnectStrategy: false` makes a failed connect *reject* rather than retry in the
+ * background. Without it node-redis keeps retrying with backoff, so `connect()` never settles:
+ * on Vercel that is an invocation billed by duration for a Redis that is already down, and it
+ * defeats the whole point of the strict path below — you cannot fail loudly on a promise that
+ * never resolves. `connectTimeout` bounds the same hang for a host that accepts the TCP
+ * connection and then goes quiet.
+ *
+ * This also fixes the legacy path, which previously hung instead of falling back to the mock.
+ */
+const SOCKET_OPTIONS = { connectTimeout: 5000, reconnectStrategy: false as const };
+
+async function connectRealClient(redisUrl: string) {
+  if (!cachedClient || cachedClient.isMock) {
+    cachedClient = createClient({ url: redisUrl, socket: SOCKET_OPTIONS });
+    cachedClient.on('error', (err: any) => console.error('Redis Client Error:', err));
+  }
+  if (!cachedClient.isOpen) {
+    await cachedClient.connect();
+  }
+  return cachedClient;
+}
+
 export async function getRedisClient() {
   if (cachedClient && cachedClient.isOpen) {
     return cachedClient;
@@ -118,14 +141,7 @@ export async function getRedisClient() {
   const redisUrl = process.env.REDIS_URL;
   if (redisUrl && redisUrl !== 'redis://localhost:6379') {
     try {
-      if (!cachedClient || cachedClient.isMock) {
-        cachedClient = createClient({ url: redisUrl });
-        cachedClient.on('error', (err: any) => console.error('Redis Client Error:', err));
-      }
-      if (!cachedClient.isOpen) {
-        await cachedClient.connect();
-      }
-      return cachedClient;
+      return await connectRealClient(redisUrl);
     } catch (err) {
       console.warn("Real Redis connection failed, falling back to mock:", err);
       return globalAny._mockRedis;
@@ -134,6 +150,86 @@ export async function getRedisClient() {
 
   // If no REDIS_URL provided or pointing to localhost in Vercel, use mock cleanly
   return globalAny._mockRedis;
+}
+
+/** True for the process-local in-memory stand-in, false for a real connection. */
+export function isMockRedis(client: any): boolean {
+  return client?.isMock === true;
+}
+
+/**
+ * Thrown instead of handing back the in-memory mock. Carries a machine-readable `code` so a
+ * client can tell "the relay is down, back off and retry" apart from "you did something wrong".
+ */
+export class RedisUnavailableError extends Error {
+  readonly statusCode = 503;
+  readonly code = 'REDIS_UNAVAILABLE';
+  readonly retryable = true;
+
+  constructor(reason: string) {
+    super(`Redis is unavailable: ${reason}`);
+    this.name = 'RedisUnavailableError';
+  }
+}
+
+/**
+ * Redis for callers that cannot tolerate the mock — currently everything under `/api/group/*`.
+ *
+ * `getRedisClient()` degrades to a per-instance `Map` when `REDIS_URL` is missing or the
+ * connection fails. For rate counters that is a survivable degradation. For Group Ride it is
+ * SCOPE §6.1 B2, the audit's highest-severity finding: serverless instances share no memory, so
+ * members would land on different instances, each see an empty group, and get **no error at
+ * all**. A silent, unreproducible total failure is worse than an outage — an outage at least
+ * tells you what happened.
+ *
+ * So this throws where `getRedisClient()` degrades. Callers surface it as a 503 via
+ * `sendRedisError()`; §8 has the client back off with jitter, hold the group in DEGRADED, and
+ * keep the user's own ride recording completely unaffected.
+ *
+ * The `redis://localhost:6379` sentinel is deliberately **not** special-cased here. That
+ * heuristic is half of what makes B2 dangerous, and a real local Redis is exactly what group
+ * development against a staging relay needs (§6.2 H7). If something is listening, we use it;
+ * if nothing is, the connect fails and we say so.
+ */
+export async function getStrictRedisClient() {
+  const redisUrl = process.env.REDIS_URL;
+  if (!redisUrl) {
+    throw new RedisUnavailableError('REDIS_URL is not configured');
+  }
+
+  let client: any;
+  try {
+    client = await connectRealClient(redisUrl);
+  } catch (err) {
+    console.error('Strict Redis connection failed:', err);
+    throw new RedisUnavailableError('connection failed');
+  }
+
+  // Belt and braces. `connectRealClient` cannot return the mock today, but the mock is a global
+  // singleton shared by every route in the process — if it ever leaked in here, group traffic
+  // would read another feature's keys. Cheap assertion, unbounded downside without it.
+  if (isMockRedis(client)) {
+    throw new RedisUnavailableError('refusing to serve group traffic from the in-memory mock');
+  }
+
+  return client;
+}
+
+/**
+ * Mirrors `sendAuthError` in `lib/auth.ts`. Returns true when it handled the error, so route
+ * handlers can chain the two guards before falling through to a 500.
+ */
+export function sendRedisError(response: any, error: unknown): boolean {
+  if (error instanceof RedisUnavailableError) {
+    response.setHeader('Retry-After', '5');
+    response.status(error.statusCode).json({
+      error: 'Group sharing is temporarily unavailable.',
+      code: error.code,
+      retryable: error.retryable,
+    });
+    return true;
+  }
+  return false;
 }
 
 export async function redisMGet(redis: any, keys: string[]): Promise<Array<string | null>> {
