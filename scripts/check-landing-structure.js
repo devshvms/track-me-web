@@ -13,7 +13,7 @@ function requireText(name, document, pattern) {
 requireText("dependency-free landing controls", landing, /app\.js/);
 requireText("Android release panel", landing, /id="android-releases"[^>]*role="tabpanel"/);
 requireText("iOS release panel", landing, /id="ios-releases"[^>]*role="tabpanel"/);
-requireText("iOS default release state", landing, /iOS preparation/);
+requireText("iOS default release state", landing, /iOS is in preparation|iOS preparation/);
 requireText("scrollable release archive", landing, /class="release-history"/);
 requireText("privacy data inventory", privacy, /id="data-we-handle"/);
 requireText("privacy service providers", privacy, /Firebase[\s\S]*PostHog/);
