@@ -1,6 +1,6 @@
 # Group Ride relay — API contract
 
-**Status:** `create`, `resolve`, `join`, `sync` are live. `state` and `leave` follow in GR-05.
+**Status:** all six routes are live — `create`, `resolve`, `join`, `sync`, `state`, `leave`.
 **Implements:** `SCOPE_1.7.0.md` §4.4, §4.5. Crypto: [group-crypto-contract.md](group-crypto-contract.md).
 
 All routes live in one function, `api/group/[...action].ts`, following `api/export/[...action].ts`.
@@ -243,6 +243,75 @@ error — §8 wants Group Mode off cleanly while **the ride keeps recording**.
 **Cost.** Modelled at 228 syncs/member-hour on §7.2's 40/40/20 blend, ~1,140 per group-hour for
 five people. `modelledSyncsPerMemberHour()` computes that from the constants the server actually
 serves, and a test asserts it against §7.2's figures, so the doc cannot drift from the code.
+
+---
+
+## 4c. `POST /api/group/state`
+
+Auth: **leader only** (`403 NOT_THE_LEADER` otherwise). Body `{ groupId, state }` where `state`
+is `LIVE` or `ENDED`.
+
+- **`PREPARING → LIVE`** flips every member's Home into Group Mode. Idempotent — a retried
+  "Start group" after a dropped response returns `200`, not an error.
+- **`→ ENDED`** deletes **every** server-side key for the group immediately (§2.7), then answers.
+  By the time the client gets `200`, nothing is left.
+
+**A group of one never enters `LIVE`** (§8) — `409 GROUP_OF_ONE`. Enforced server-side so it is a
+property of the feature rather than of one client.
+
+The `LIVE` swap is a compare-and-swap against the exact bytes Redis held, and it re-applies the
+key's remaining TTL: Redis `SET` clears an expiry, so without that, "Start group" would silently
+turn a 4-hour session into a permanent one and break §5.1.2 in the least visible way available.
+
+## 4d. `POST /api/group/leave`
+
+Auth: member. Body `{ groupId }`. Returns `{ left: true, endedGroup: bool }`.
+
+> ### The exit is sacred and silent
+>
+> §5.1.3 — the single most important line in the spec. Leaving is one tap, always reachable, and
+> **emits no notification to anyone**. The member simply ceases to appear. A person who needs to
+> go dark must be able to, without escalation.
+>
+> **This route must never gain a broadcast.** §5.1.3 names "engagement reasons" as the argument
+> that will eventually be made for adding one. `tests/group-store-scripts.test.ts` reads the
+> handler source and fails on any notification call or on a response body carrying a roster,
+> member count, or position — both cases are mutation-tested. A reviewer can miss a push call
+> added to a long route file; by the time anyone notices, the harm has already reached the person
+> the invariant exists to protect.
+
+- The `rev` bump is **not** a notification. It tells other clients the roster changed, which is
+  unavoidable — the leaver must stop appearing. Nobody is told that anyone left, or who. §5.2
+  already accepts this: "a silent lurker is not achievable without also being visibly absent."
+- The analytics event is **not** a broadcast. §9 requires leave-rate and time-to-first-leave to be
+  tracked with equal seriousness to the growth funnel, and is explicit that heavy use of the exit
+  is a *healthy* signal — nobody should ever be tasked with reducing it.
+- **The leader leaving ends the group for everyone** (§8), and the client's confirm dialog must
+  say exactly that before calling. Response carries `endedGroup: true`.
+- **The last member leaving deletes the group**, in the same script. An empty group is not a
+  group, and waiting for the TTL would leave real session state alive for hours.
+- Leaving a group that is already gone returns `200`, not an error. The caller is out, which is
+  what they asked for; leaving must never fail in a way that leaves someone stuck visible.
+
+---
+
+## 4e. Rate limits (§5.2)
+
+| Surface | Limit | Keyed on |
+|---|---|---|
+| `resolve?c=` | 5 / minute | truncated SHA-256 of the caller's IP |
+| `join` | 20 / hour | uid |
+| `sync` position writes | 1 / second floor | uid, inside the script |
+
+`resolve?c=` is unauthenticated so it can only be limited by IP; `join` is where a per-account
+bound can exist, and it caps how far a guessed code actually gets. 20/hour is deliberately
+generous — a client recovering from repeated crashes re-joins its own group, and §8 requires that
+never be blocked.
+
+**Rate-limit keys live under `rl:gride:`, not `group:`.** §10's privacy acceptance is verified by
+inspecting Redis for keys matching `group:*` after a session ends; a counter in that namespace
+would make a passing system look like a failing one, or worse, train whoever runs the check to
+ignore hits. `group:*` means group session state and nothing else.
 
 ---
 

@@ -15,6 +15,7 @@ import { getStrictRedisClient } from '../redis';
 import {
   GroupMember,
   GroupRecord,
+  allGroupKeys,
   groupCodeKey,
   groupKey,
   groupMembersKey,
@@ -396,7 +397,146 @@ function parseRecord(raw: string, groupId: string): GroupRecord | null {
   }
 }
 
+// --- state ------------------------------------------------------------------------------------
+
+/**
+ * Compare-and-swap on the record, so a state change cannot lose to a concurrent write.
+ *
+ * The comparison is against the **raw string Redis returned**, not a re-serialised object.
+ * `JSON.stringify(JSON.parse(x)) === x` happens to hold for records we wrote, but relying on it
+ * would make every state change fail the day a field is reordered — a total feature failure with
+ * a very indirect cause.
+ *
+ * `SET` clears a key's TTL. Re-applying the remaining `PTTL` is what stops "Start group" quietly
+ * turning a 4-hour session into an immortal one, which would break §5.1.2 — the invariant that
+ * every group expires — in the least visible way possible.
+ *
+ * Returns 1 swapped, 0 group gone, 2 changed underneath us.
+ */
+const STATE_SCRIPT_BODY = `
+local current = redis.call('GET', KEYS[1])
+if not current then return 0 end
+if current ~= ARGV[1] then return 2 end
+
+local ttl = redis.call('PTTL', KEYS[1])
+redis.call('SET', KEYS[1], ARGV[2])
+if ttl > 0 then
+  redis.call('PEXPIRE', KEYS[1], ttl)
+end
+return 1
+`;
+
+export const STATE_SCRIPT: GroupScript = {
+  name: 'group:state', body: STATE_SCRIPT_BODY, keys: 1, args: 2,
+};
+
+export type StateSwapOutcome = 'SWAPPED' | 'GONE' | 'CONFLICT';
+
+export async function swapGroupState(
+  groupId: string,
+  expectedRaw: string,
+  next: GroupRecord,
+): Promise<StateSwapOutcome> {
+  const result = await runScript(
+    STATE_SCRIPT,
+    [groupKey(groupId)],
+    [expectedRaw, JSON.stringify(next)],
+  );
+  if (result === 0) return 'GONE';
+  if (result === 2) return 'CONFLICT';
+  return 'SWAPPED';
+}
+
+/**
+ * §2.7 and §5.1.5: ending a group deletes every server-side key for it, immediately.
+ *
+ * One `DEL` over `allGroupKeys()`, which is unit-tested to cover everything the store writes —
+ * so §10's "after a group ends, no key matching `group:*` remains" is verified by construction
+ * rather than by remembering to add each new key here.
+ */
+export async function endGroup(record: GroupRecord): Promise<number> {
+  const redis = await getStrictRedisClient();
+  return redis.del(allGroupKeys(record.groupId, record.tokenHash, record.joinCode));
+}
+
+// --- leave ------------------------------------------------------------------------------------
+
+/**
+ * §5.1.3, the single most important line in the spec: *the exit is sacred and silent.*
+ *
+ * This removes the caller and **emits nothing to anyone**. There is no notification, no event,
+ * no "X left the group" — a person who needs to go dark must be able to, without escalation.
+ * Any future change that adds a broadcast here for engagement reasons is a safety regression,
+ * not a feature.
+ *
+ * When the last member leaves, the whole group is deleted in the same script rather than left
+ * to the TTL: an empty group is not a group, and nothing should outlive it (§5.1.5).
+ *
+ * Returns { code, remaining, rev } — code 0 left, 1 not a member, 2 group gone.
+ */
+const LEAVE_SCRIPT_BODY = `
+if redis.call('EXISTS', KEYS[1]) == 0 then
+  return { 2, 0, 0 }
+end
+if redis.call('HEXISTS', KEYS[2], ARGV[1]) == 0 then
+  return { 1, 0, 0 }
+end
+
+redis.call('HDEL', KEYS[2], ARGV[1])
+redis.call('HDEL', KEYS[4], ARGV[1])
+
+local remaining = redis.call('HLEN', KEYS[2])
+if remaining == 0 then
+  redis.call('DEL', KEYS[1], KEYS[2], KEYS[3], KEYS[4], KEYS[5], KEYS[6])
+  return { 0, 0, 0 }
+end
+
+local rev = redis.call('INCR', KEYS[3])
+-- INCR preserves an existing TTL, and the rev key is always created with one -- but if it ever
+-- expired ahead of the group, INCR would recreate it unbounded and leave a group: key behind
+-- forever, breaking the "nothing outlives the session" invariant in the least visible way there
+-- is. Re-derive it from the group key. (No backticks in Lua comments: these bodies are TS
+-- template literals, and a backtick ends the string.)
+local ttl = redis.call('PTTL', KEYS[1])
+if ttl > 0 then
+  redis.call('PEXPIRE', KEYS[3], ttl)
+end
+return { 0, remaining, rev }
+`;
+
+export const LEAVE_SCRIPT: GroupScript = {
+  name: 'group:leave', body: LEAVE_SCRIPT_BODY, keys: 6, args: 1,
+};
+
+export interface LeaveResult {
+  outcome: 'LEFT' | 'NOT_A_MEMBER' | 'GONE';
+  remaining: number;
+  rev: number;
+}
+
+export async function leaveGroup(record: GroupRecord, uid: string): Promise<LeaveResult> {
+  const [code, remaining, rev] = (await runScript(
+    LEAVE_SCRIPT,
+    allGroupKeys(record.groupId, record.tokenHash, record.joinCode),
+    [uid],
+  )) as [number, number, number];
+
+  const outcome = code === 0 ? 'LEFT' : code === 1 ? 'NOT_A_MEMBER' : 'GONE';
+  return { outcome, remaining: Number(remaining), rev: Number(rev) };
+}
+
 // --- reads ------------------------------------------------------------------------------------
+
+/** The record plus the exact bytes Redis held, for the compare-and-swap above. */
+export async function readGroupRaw(
+  groupId: string,
+): Promise<{ raw: string; record: GroupRecord } | null> {
+  const redis = await getStrictRedisClient();
+  const raw = await redis.get(groupKey(groupId));
+  if (!raw) return null;
+  const record = parseRecord(raw, groupId);
+  return record ? { raw, record } : null;
+}
 
 export async function readGroup(groupId: string): Promise<GroupRecord | null> {
   const redis = await getStrictRedisClient();
@@ -445,4 +585,10 @@ export async function readRev(groupId: string): Promise<number> {
 }
 
 /** Every Lua script in this file, so the arity guard can walk them all. */
-export const ALL_GROUP_SCRIPTS: readonly GroupScript[] = [CREATE_SCRIPT, JOIN_SCRIPT, SYNC_SCRIPT];
+export const ALL_GROUP_SCRIPTS: readonly GroupScript[] = [
+  CREATE_SCRIPT,
+  JOIN_SCRIPT,
+  SYNC_SCRIPT,
+  STATE_SCRIPT,
+  LEAVE_SCRIPT,
+];

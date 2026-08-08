@@ -14,6 +14,16 @@ export const CODE_LOOKUP_LIMIT = Number(process.env.GROUP_CODE_RATE_LIMIT || 5);
 export const CODE_LOOKUP_WINDOW_SEC = 60;
 
 /**
+ * Deliberately **not** under `group:`.
+ *
+ * §10's privacy acceptance is verified by inspecting Redis for keys matching `group:*` after a
+ * session ends. A rate-limit counter living in that namespace would show up in that check and
+ * make a passing system look like a failing one — or worse, train whoever runs the check to
+ * ignore hits. `group:*` means group session state and nothing else.
+ */
+export const RATE_LIMIT_PREFIX = 'rl:gride';
+
+/**
  * INCR then EXPIRE is the classic broken counter: if the process dies between them the key
  * never expires and that client is limited forever. One script, one round trip, no window.
  */
@@ -49,9 +59,27 @@ export function clientFingerprint(request: VercelRequest): string {
 }
 
 export async function checkCodeLookupLimit(request: VercelRequest): Promise<RateLimitResult> {
+  return check(`${RATE_LIMIT_PREFIX}:code:${clientFingerprint(request)}`, CODE_LOOKUP_LIMIT, CODE_LOOKUP_WINDOW_SEC);
+}
+
+/**
+ * §5.2's second limb: 20 join attempts per hour per uid. The unauthenticated `resolve?c=` path
+ * cannot be keyed on a uid, so this is where the per-account bound lives — even if someone does
+ * guess a code, one account cannot walk its way into group after group.
+ *
+ * Generous enough not to catch the legitimate case it could: a client recovering from repeated
+ * crashes re-joins its own group, and §8 requires that never be blocked.
+ */
+export const JOIN_ATTEMPT_LIMIT = Number(process.env.GROUP_JOIN_RATE_LIMIT || 20);
+export const JOIN_ATTEMPT_WINDOW_SEC = 60 * 60;
+
+export async function checkJoinAttemptLimit(uid: string): Promise<RateLimitResult> {
+  return check(`${RATE_LIMIT_PREFIX}:join:${uid}`, JOIN_ATTEMPT_LIMIT, JOIN_ATTEMPT_WINDOW_SEC);
+}
+
+async function check(key: string, limit: number, windowSec: number): Promise<RateLimitResult> {
   const redis = await getStrictRedisClient();
-  const key = `group:rl:code:${clientFingerprint(request)}`;
-  const args: [string[], string[]] = [[key], [String(CODE_LOOKUP_WINDOW_SEC)]];
+  const args: [string[], string[]] = [[key], [String(windowSec)]];
 
   let count: number;
   try {
@@ -63,9 +91,5 @@ export async function checkCodeLookupLimit(request: VercelRequest): Promise<Rate
     count = Number(await redis.eval(RATE_LIMIT_SCRIPT, { keys: args[0], arguments: args[1] }));
   }
 
-  return {
-    allowed: count <= CODE_LOOKUP_LIMIT,
-    count,
-    retryAfterSec: CODE_LOOKUP_WINDOW_SEC,
-  };
+  return { allowed: count <= limit, count, retryAfterSec: windowSec };
 }

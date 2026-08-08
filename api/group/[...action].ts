@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { requireUser, sendAuthError } from '../../lib/auth';
 import { sendRedisError } from '../../lib/redis';
 import { captureTelemetryEvent } from '../../lib/posthog';
-import { checkCodeLookupLimit } from '../../lib/group/rate-limit';
+import { checkCodeLookupLimit, checkJoinAttemptLimit } from '../../lib/group/rate-limit';
 import {
   GHOST_TTL_MS,
   MIN_WRITE_INTERVAL_MS,
@@ -12,6 +12,7 @@ import {
   DEFAULT_SYNC_INTERVAL_SEC,
   GroupMember,
   GroupRecord,
+  GroupState,
   JOIN_CODE_TTL_SECONDS,
   MAX_META_ENVELOPE_CHARS,
   MAX_POSITION_ENVELOPE_CHARS,
@@ -35,8 +36,12 @@ import {
   joinGroup,
   readGroup,
   readMemberCount,
+  endGroup,
+  leaveGroup,
+  readGroupRaw,
   resolveCodeEntry,
   resolveGroupIdByToken,
+  swapGroupState,
   syncGroup,
 } from '../../lib/group/store';
 
@@ -54,7 +59,7 @@ import {
  * frees three slots.
  */
 
-// create / resolve / join / sync are live. state and leave land in GR-05.
+// All six routes are live: create, resolve, join, sync, state, leave.
 
 /**
  * Join-by-code and E2E encryption, reconciled (architecture decision, 2026-08-08).
@@ -289,6 +294,17 @@ async function handleJoin(request: VercelRequest, response: VercelResponse) {
       return response.status(400).json({ error: 'roster must be a v1 envelope.' });
     }
 
+    // §5.2's per-account bound. `resolve?c=` is unauthenticated so it can only be limited by IP;
+    // this is where a uid limit can exist, and it caps how far a guessed code can actually get.
+    const attempts = await checkJoinAttemptLimit(decoded.uid);
+    if (!attempts.allowed) {
+      response.setHeader('Retry-After', String(attempts.retryAfterSec));
+      return response.status(429).json({
+        error: 'Too many join attempts. Try again later.',
+        code: 'JOIN_RATE_LIMITED',
+      });
+    }
+
     const record = await readGroup(body.groupId);
     const existing = record ? await isMember(body.groupId, decoded.uid) : false;
     const memberCount = record ? await readMemberCount(body.groupId) : 0;
@@ -500,6 +516,155 @@ async function handleSync(request: VercelRequest, response: VercelResponse) {
   }
 }
 
+// --- POST /api/group/state --------------------------------------------------------------------
+
+/**
+ * Leader-only lifecycle. `PREPARING → LIVE` starts Group Mode for everyone; `→ ENDED` deletes
+ * every server-side key for the group immediately (§2.7).
+ */
+async function handleState(request: VercelRequest, response: VercelResponse) {
+  if (request.method !== 'POST') {
+    return response.status(405).json({ error: 'Method Not Allowed' });
+  }
+
+  try {
+    const decoded = await requireUser(request);
+    const body = request.body || {};
+
+    if (!isValidGroupId(body.groupId)) {
+      return response.status(400).json({ error: 'A valid groupId is required.' });
+    }
+    const next: GroupState | undefined =
+      body.state === 'LIVE' || body.state === 'ENDED' ? body.state : undefined;
+    if (!next) {
+      return response.status(400).json({ error: 'state must be LIVE or ENDED.' });
+    }
+
+    const current = await readGroupRaw(body.groupId);
+    if (!current) return sendGone(response);
+    const { raw, record } = current;
+
+    if (record.ownerUid !== decoded.uid) {
+      return response.status(403).json({
+        error: 'Only the group leader can do that.',
+        code: 'NOT_THE_LEADER',
+      });
+    }
+
+    if (next === 'ENDED') {
+      const deleted = await endGroup(record);
+      await captureTelemetryEvent(record.groupId, 'group_ended', {
+        reason: 'leader',
+        durationSec: Math.round((Date.now() - record.createdAt) / 1000),
+        keysDeleted: deleted,
+      });
+      // §2.7: an honest confirmation, and every key already gone by the time we answer.
+      return response.status(200).json({ groupId: record.groupId, state: 'ENDED' });
+    }
+
+    if (record.state === 'ENDED' || record.expiresAt <= Date.now()) return sendGone(response);
+    if (record.state === 'LIVE') {
+      // Idempotent: a retried "Start group" after a dropped response must not be an error.
+      return response.status(200).json({ groupId: record.groupId, state: 'LIVE' });
+    }
+
+    // §8: "A group of one never enters LIVE; there is nothing to be co-present with." Enforced
+    // here rather than only in the UI so it is a property of the feature, not of one client.
+    const memberCount = await readMemberCount(record.groupId);
+    if (memberCount < 2) {
+      return response.status(409).json({
+        error: "You're the only one here.",
+        code: 'GROUP_OF_ONE',
+        memberCount,
+      });
+    }
+
+    const outcome = await swapGroupState(record.groupId, raw, { ...record, state: 'LIVE' });
+    if (outcome === 'GONE') return sendGone(response);
+    if (outcome === 'CONFLICT') {
+      return response.status(409).json({
+        error: 'The group changed. Try again.',
+        code: 'STATE_CONFLICT',
+      });
+    }
+
+    await captureTelemetryEvent(record.groupId, 'group_started', { memberCount });
+
+    return response.status(200).json({ groupId: record.groupId, state: 'LIVE', memberCount });
+  } catch (error) {
+    return sendError(response, error, 'state');
+  }
+}
+
+// --- POST /api/group/leave --------------------------------------------------------------------
+
+/**
+ * §5.1.3 — **the exit is sacred and silent.**
+ *
+ * One tap, always reachable, and it **emits no notification to anyone**. The member simply
+ * ceases to appear. This is the single most important line in the spec: a person who needs to go
+ * dark must be able to, without escalation. If a future change proposes broadcasting "X left the
+ * group" for engagement reasons, this is the paragraph to point at — it is a safety regression,
+ * not a feature.
+ *
+ * The `rev` bump is not a notification. It tells other clients the roster changed, which is
+ * unavoidable — the leaver must stop appearing — but nobody is told that anyone left, or who.
+ * §5.2 already accepts that absence is visible: "a silent lurker is not achievable without also
+ * being visibly absent."
+ *
+ * The analytics event is likewise not a broadcast. §9 requires leave-rate and time-to-first-leave
+ * to be tracked *with equal seriousness* to the growth funnel, and is explicit that heavy use of
+ * the exit is a healthy signal — nobody should ever be tasked with reducing it.
+ */
+async function handleLeave(request: VercelRequest, response: VercelResponse) {
+  if (request.method !== 'POST') {
+    return response.status(405).json({ error: 'Method Not Allowed' });
+  }
+
+  try {
+    const decoded = await requireUser(request);
+    const body = request.body || {};
+
+    if (!isValidGroupId(body.groupId)) {
+      return response.status(400).json({ error: 'A valid groupId is required.' });
+    }
+
+    const record = await readGroup(body.groupId);
+    // Already gone, or never there. Either way the caller is out, which is what they asked for —
+    // 200, not an error. Leaving must never fail in a way that leaves someone stuck visible.
+    if (!record) return response.status(200).json({ left: true, endedGroup: false });
+
+    const secondsInGroup = Math.round((Date.now() - record.createdAt) / 1000);
+
+    // §8: "The leader leaves their own group → ends the group for everyone, and the confirm
+    // dialog says exactly that." The client is responsible for having said so before calling.
+    if (record.ownerUid === decoded.uid) {
+      await endGroup(record);
+      await captureTelemetryEvent(record.groupId, 'group_ended', {
+        reason: 'leader_left',
+        durationSec: secondsInGroup,
+      });
+      return response.status(200).json({ left: true, endedGroup: true });
+    }
+
+    const result = await leaveGroup(record, decoded.uid);
+
+    await captureTelemetryEvent(record.groupId, 'member_left', {
+      secondsInGroup,
+      remaining: result.remaining,
+    });
+
+    // Deliberately minimal. The response says only what happened to *you* — no roster, no member
+    // count, nothing that would let a departing client tell the group anything on its way out.
+    return response.status(200).json({
+      left: true,
+      endedGroup: result.remaining === 0,
+    });
+  } catch (error) {
+    return sendError(response, error, 'leave');
+  }
+}
+
 // --- Routing ----------------------------------------------------------------------------------
 
 /**
@@ -519,6 +684,8 @@ export default async function handler(request: VercelRequest, response: VercelRe
     case 'resolve': return handleResolve(request, response);
     case 'join': return handleJoin(request, response);
     case 'sync': return handleSync(request, response);
+    case 'state': return handleState(request, response);
+    case 'leave': return handleLeave(request, response);
     default:
       console.error('Unmatched group action route', { url: request.url, query: request.query });
       return response.status(404).json({ error: 'Not Found' });

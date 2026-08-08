@@ -1,4 +1,6 @@
 import assert from 'node:assert';
+import fs from 'node:fs';
+import path from 'node:path';
 import { ALL_GROUP_SCRIPTS, assertScriptArity } from '../lib/group/store';
 
 /**
@@ -27,6 +29,18 @@ function test(name: string, fn: () => void) {
   }
 }
 
+/**
+ * Lua line comments, removed before any structural check.
+ *
+ * Without this, prose counts as code: a comment containing the word "if" broke the balance
+ * check, and a comment mentioning a key name would break the key-literal check. Comments in
+ * these scripts carry the reasoning, so they are long and they will keep tripping naive
+ * pattern matching.
+ */
+function code(body: string): string {
+  return body.replace(/--.*$/gm, '');
+}
+
 function maxIndex(body: string, token: 'KEYS' | 'ARGV'): number {
   const matches = [...body.matchAll(new RegExp(`${token}\\[(\\d+)\\]`, 'g'))];
   return matches.reduce((max, m) => Math.max(max, Number(m[1])), 0);
@@ -48,7 +62,7 @@ test('every script declares an arity', () => {
 for (const script of ALL_GROUP_SCRIPTS) {
   test(`${script.name}: declared key count matches the highest KEYS[n] used`, () => {
     assert.strictEqual(
-      maxIndex(script.body, 'KEYS'),
+      maxIndex(code(script.body), 'KEYS'),
       script.keys,
       'declared keys and the body disagree — one of them was edited without the other',
     );
@@ -56,7 +70,7 @@ for (const script of ALL_GROUP_SCRIPTS) {
 
   test(`${script.name}: declared arg count matches the highest ARGV[n] used`, () => {
     assert.strictEqual(
-      maxIndex(script.body, 'ARGV'),
+      maxIndex(code(script.body), 'ARGV'),
       script.args,
       'declared args and the body disagree — this is the silent-nil bug',
     );
@@ -66,7 +80,7 @@ for (const script of ALL_GROUP_SCRIPTS) {
     // A gap means either a caller is passing something nothing reads, or an index was skipped
     // when renumbering — and the second one shifts every argument after it.
     for (const token of ['KEYS', 'ARGV'] as const) {
-      const used = referencedIndexes(script.body, token);
+      const used = referencedIndexes(code(script.body), token);
       const count = token === 'KEYS' ? script.keys : script.args;
       for (let i = 1; i <= count; i++) {
         assert.ok(used.has(i), `${token}[${i}] is declared but never read`);
@@ -76,13 +90,13 @@ for (const script of ALL_GROUP_SCRIPTS) {
 
   test(`${script.name}: uses no zero index`, () => {
     // Lua is 1-indexed. KEYS[0]/ARGV[0] is always nil and never an error.
-    assert.ok(!/KEYS\[0\]|ARGV\[0\]/.test(script.body), 'zero index in a 1-indexed language');
+    assert.ok(!/KEYS\[0\]|ARGV\[0\]/.test(code(script.body)), 'zero index in a 1-indexed language');
   });
 
   test(`${script.name}: if/end are balanced`, () => {
-    const opens = (script.body.match(/\bif\b/g) || []).length
-      + (script.body.match(/\bfor\b/g) || []).length;
-    const ends = (script.body.match(/\bend\b/g) || []).length;
+    const body = code(script.body);
+    const opens = (body.match(/\bif\b/g) || []).length + (body.match(/\bfor\b/g) || []).length;
+    const ends = (body.match(/\bend\b/g) || []).length;
     assert.strictEqual(ends, opens, `${opens} if/for vs ${ends} end`);
   });
 
@@ -93,7 +107,7 @@ for (const script of ALL_GROUP_SCRIPTS) {
       'HGET', 'HSET', 'HDEL', 'HLEN', 'HEXISTS', 'HGETALL',
       'EXPIRE', 'PEXPIRE', 'PEXPIREAT', 'PTTL', 'TTL',
     ]);
-    for (const m of script.body.matchAll(/redis\.call\('([A-Z]+)'/g)) {
+    for (const m of code(script.body).matchAll(/redis\.call\('([A-Z]+)'/g)) {
       assert.ok(known.has(m[1]), `unknown command "${m[1]}"`);
     }
   });
@@ -103,7 +117,7 @@ for (const script of ALL_GROUP_SCRIPTS) {
     // immediately here, would escape `allGroupKeys` — so it would survive the DEL at group end
     // and break §10's "no key matching group:* remains".
     assert.ok(
-      !/redis\.call\('[A-Z]+',\s*['"]group:/.test(script.body),
+      !/redis\.call\('[A-Z]+',\s*['"]group:/.test(code(script.body)),
       'script builds a key literal instead of taking it in KEYS',
     );
   });
@@ -114,22 +128,22 @@ test('sync writes a position only when one was supplied', () => {
   // viewer. The script must treat an empty position as "nothing to write", not as a write of
   // an empty value, which would show every other member a marker that decrypts to nothing.
   const sync = ALL_GROUP_SCRIPTS.find((s) => s.name === 'group:sync')!;
-  assert.match(sync.body, /if ARGV\[2\] ~= ''/, 'sync unconditionally writes the position field');
+  assert.match(code(sync.body), /if ARGV\[2\] ~= ''/, 'sync unconditionally writes the position field');
 });
 
 test('sync checks membership before it reads anything', () => {
   // §5.2, "departed member keeps polling": authorisation is the enforcement point, and it has
   // to run before the group's positions are read, not after.
   const sync = ALL_GROUP_SCRIPTS.find((s) => s.name === 'group:sync')!;
-  const authAt = sync.body.indexOf('HEXISTS');
-  const readAt = sync.body.indexOf('HGETALL');
+  const authAt = code(sync.body).indexOf('HEXISTS');
+  const readAt = code(sync.body).indexOf('HGETALL');
   assert.ok(authAt > 0 && readAt > authAt, 'positions are read before membership is verified');
 });
 
 test('join checks capacity before it writes', () => {
   const join = ALL_GROUP_SCRIPTS.find((s) => s.name === 'group:join')!;
-  const capacityAt = join.body.indexOf('HLEN');
-  const writeAt = join.body.indexOf("HSET");
+  const capacityAt = code(join.body).indexOf('HLEN');
+  const writeAt = code(join.body).indexOf('HSET');
   assert.ok(capacityAt > 0 && writeAt > capacityAt, 'member is written before capacity is checked');
 });
 
@@ -137,8 +151,8 @@ test('create refuses to overwrite an existing token or code key', () => {
   // Without both EXISTS guards, a colliding create would silently repoint someone else's invite
   // at a new group.
   const create = ALL_GROUP_SCRIPTS.find((s) => s.name === 'group:create')!;
-  assert.match(create.body, /EXISTS', KEYS\[4\]/, 'no guard on the token key');
-  assert.match(create.body, /EXISTS', KEYS\[5\]/, 'no guard on the code key');
+  assert.match(code(create.body), /EXISTS', KEYS\[4\]/, 'no guard on the token key');
+  assert.match(code(create.body), /EXISTS', KEYS\[5\]/, 'no guard on the code key');
 });
 
 test('every key a script writes gets an expiry in the same script', () => {
@@ -146,11 +160,11 @@ test('every key a script writes gets an expiry in the same script', () => {
   // ends, which is the one failure this feature cannot have.
   for (const script of ALL_GROUP_SCRIPTS) {
     const written = new Set<number>();
-    for (const m of script.body.matchAll(/redis\.call\('(SET|HSET|INCR)',\s*KEYS\[(\d+)\]/g)) {
+    for (const m of code(script.body).matchAll(/redis\.call\('(SET|HSET|INCR)',\s*KEYS\[(\d+)\]/g)) {
       written.add(Number(m[2]));
     }
     const expired = new Set<number>();
-    for (const m of script.body.matchAll(/redis\.call\('(PEXPIREAT|PEXPIRE|EXPIRE)',\s*KEYS\[(\d+)\]/g)) {
+    for (const m of code(script.body).matchAll(/redis\.call\('(PEXPIREAT|PEXPIRE|EXPIRE)',\s*KEYS\[(\d+)\]/g)) {
       expired.add(Number(m[2]));
     }
     for (const k of written) {
@@ -160,6 +174,83 @@ test('every key a script writes gets an expiry in the same script', () => {
 });
 
 // --- The runtime guard itself ---
+
+test('leave deletes every group key when the last member goes', () => {
+  // §5.1.5, nothing outlives the session. An empty group is not a group, and waiting for the TTL
+  // would leave real session state alive for hours after the last person left.
+  const leave = ALL_GROUP_SCRIPTS.find((s) => s.name === 'group:leave')!;
+  const del = code(leave.body).match(/redis\.call\('DEL'[^)]*\)/);
+  assert.ok(del, 'leave never deletes the group');
+  for (let i = 1; i <= leave.keys; i++) {
+    assert.ok(del![0].includes(`KEYS[${i}]`), `DEL omits KEYS[${i}] — that key would survive`);
+  }
+});
+
+test('leave removes the position as well as the membership', () => {
+  // Leaving must not leave a marker on everyone else's map. §5.1.3.
+  const leave = ALL_GROUP_SCRIPTS.find((s) => s.name === 'group:leave')!;
+  const body = code(leave.body);
+  assert.match(body, /HDEL', KEYS\[2\]/, 'membership is not removed');
+  assert.match(body, /HDEL', KEYS\[4\]/, 'position is not removed');
+});
+
+test('the state swap re-applies the TTL it just cleared', () => {
+  // Redis SET drops a key's expiry. Without the PTTL/PEXPIRE pair, "Start group" would turn a
+  // 4-hour session into a permanent one — §5.1.2 broken invisibly.
+  const state = ALL_GROUP_SCRIPTS.find((s) => s.name === 'group:state')!;
+  const body = code(state.body);
+  const setAt = body.indexOf("call('SET'");
+  const ttlAt = body.indexOf("call('PTTL'");
+  const expireAt = body.indexOf("call('PEXPIRE'");
+  assert.ok(ttlAt > 0 && ttlAt < setAt, 'TTL is read after the SET has already cleared it');
+  assert.ok(expireAt > setAt, 'expiry is never re-applied after the SET');
+});
+
+test('the state swap is a compare-and-swap, not a blind write', () => {
+  const state = ALL_GROUP_SCRIPTS.find((s) => s.name === 'group:state')!;
+  assert.match(code(state.body), /if current ~= ARGV\[1\] then/, 'no CAS guard on the record');
+});
+
+// --- §5.1.3: the exit is sacred and silent ---
+
+test('the leave route emits nothing to other members', () => {
+  // The single most important line in the spec: a person who needs to go dark must be able to,
+  // without escalation. §5.1.3 says outright that POST /api/group/leave must never gain a
+  // broadcast, and names "engagement reasons" as the argument that will eventually be made for
+  // adding one.
+  //
+  // So this reads the handler source. It is a blunt test, deliberately: a reviewer can miss a
+  // push call added to a 400-line route file, and by the time anyone notices, the harm has
+  // already reached the person the invariant exists to protect.
+  const source = fs.readFileSync(
+    path.join(__dirname, '..', 'api', 'group', '[...action].ts'),
+    'utf8',
+  );
+  const start = source.indexOf('async function handleLeave');
+  assert.ok(start > 0, 'handleLeave not found — did the route move?');
+  const end = source.indexOf('\n// ---', start);
+  const handler = source.slice(start, end > start ? end : undefined);
+
+  for (const forbidden of [
+    'sendNotification', 'notify', 'fcm', 'FCM', 'push(', 'broadcast',
+    'sendEmail', 'webhook', 'messaging',
+  ]) {
+    assert.ok(
+      !handler.includes(forbidden),
+      `handleLeave references "${forbidden}" — leaving must notify nobody (§5.1.3)`,
+    );
+  }
+
+  // The response body must say only what happened to the caller. Returning a roster or a member
+  // count would let a departing client hand the group information on its way out.
+  const returned = handler.match(/response\.status\(200\)\.json\(\{[^}]*\}/g) || [];
+  assert.ok(returned.length > 0, 'no 200 response found in handleLeave');
+  for (const body of returned) {
+    for (const leak of ['roster', 'positions', 'memberCount', 'members']) {
+      assert.ok(!body.includes(leak), `leave response exposes "${leak}"`);
+    }
+  }
+});
 
 test('assertScriptArity rejects a caller passing the wrong number of keys or args', () => {
   const script = ALL_GROUP_SCRIPTS[0];
