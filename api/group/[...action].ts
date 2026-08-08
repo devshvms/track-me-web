@@ -39,6 +39,7 @@ import {
   endGroup,
   leaveGroup,
   removeMember,
+  bumpRev,
   readGroupRaw,
   resolveCodeEntry,
   resolveGroupIdByToken,
@@ -683,6 +684,67 @@ async function handleLeave(request: VercelRequest, response: VercelResponse) {
   }
 }
 
+// --- POST /api/group/meta ---------------------------------------------------------------------
+
+/**
+ * Leader updates the group's metadata — destination and scheduled start.
+ *
+ * Closes what the amendments log recorded as O4. §8 requires *"Destination changed mid-ride |
+ * Visible to all, never silent"*, and until now `meta` was immutable after create, so that row was
+ * unimplementable rather than merely unimplemented.
+ *
+ * "Never silent" is the `rev` bump: sync returns `meta` alongside `roster` whenever the caller's
+ * revision is stale, so every member picks up the change on their next sync without a push channel
+ * (D8 — there is no FCM anywhere in this project).
+ *
+ * The relay still cannot read any of it. `meta` arrives as a sealed envelope and is stored as one;
+ * a destination is a strong personal signal (§2.9) and the whole point is that the server never
+ * learns where a group is going.
+ */
+async function handleMeta(request: VercelRequest, response: VercelResponse) {
+  if (request.method !== 'POST') {
+    return response.status(405).json({ error: 'Method Not Allowed' });
+  }
+
+  try {
+    const decoded = await requireUser(request);
+    const body = request.body || {};
+
+    if (!isValidGroupId(body.groupId)) {
+      return response.status(400).json({ error: 'A valid groupId is required.' });
+    }
+    if (!isValidEnvelope(body.meta, MAX_META_ENVELOPE_CHARS)) {
+      return response.status(400).json({ error: 'meta must be a v1 envelope.' });
+    }
+
+    const current = await readGroupRaw(body.groupId);
+    if (!current) return sendGone(response);
+    const { raw, record } = current;
+
+    if (record.ownerUid !== decoded.uid) {
+      return response.status(403).json({
+        error: 'Only the group leader can do that.',
+        code: 'NOT_THE_LEADER',
+      });
+    }
+    if (record.state === 'ENDED' || record.expiresAt <= Date.now()) return sendGone(response);
+
+    const outcome = await swapGroupState(record.groupId, raw, { ...record, meta: body.meta });
+    if (outcome === 'GONE') return sendGone(response);
+    if (outcome === 'CONFLICT') {
+      return response.status(409).json({ error: 'The group changed. Try again.', code: 'STATE_CONFLICT' });
+    }
+
+    // Bump the revision so every member's next sync refetches meta. Without this the leader would
+    // be the only one who knew, which is precisely the "silent" §8 forbids.
+    const rev = await bumpRev(record.groupId);
+
+    return response.status(200).json({ groupId: record.groupId, rev });
+  } catch (error) {
+    return sendError(response, error, 'meta');
+  }
+}
+
 // --- POST /api/group/remove -------------------------------------------------------------------
 
 /**
@@ -767,6 +829,7 @@ export default async function handler(request: VercelRequest, response: VercelRe
     case 'state': return handleState(request, response);
     case 'leave': return handleLeave(request, response);
     case 'remove': return handleRemove(request, response);
+    case 'meta': return handleMeta(request, response);
     default:
       console.error('Unmatched group action route', { url: request.url, query: request.query });
       return response.status(404).json({ error: 'Not Found' });

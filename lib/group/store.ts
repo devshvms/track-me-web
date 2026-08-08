@@ -604,6 +604,22 @@ export async function isMember(groupId: string, uid: string): Promise<boolean> {
   return (await redis.hExists(groupMembersKey(groupId), uid)) === true;
 }
 
+/**
+ * Bumps the roster revision so every member refetches meta and roster on their next sync.
+ *
+ * `INCR` rather than a read-modify-write, so two concurrent edits cannot lose one another — the
+ * same reason `:rev` is its own key rather than a field in the record (deviation A8).
+ */
+export async function bumpRev(groupId: string): Promise<number> {
+  const redis = await getStrictRedisClient();
+  const rev = Number(await redis.incr(groupRevKey(groupId)));
+  // INCR preserves an existing TTL, but a rev key that had somehow expired ahead of the group
+  // would come back unbounded — the same hazard the leave script guards against.
+  const ttl = Number(await redis.pTTL(groupKey(groupId)));
+  if (ttl > 0) await redis.pExpire(groupRevKey(groupId), ttl);
+  return rev;
+}
+
 export async function readRev(groupId: string): Promise<number> {
   const redis = await getStrictRedisClient();
   return Number((await redis.get(groupRevKey(groupId))) || 0);
