@@ -71,7 +71,10 @@ if (!ok) failures++;
 // --- The rewrite has to exist or the link 404s ---
 const vercel = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'vercel.json'), 'utf8'));
 const rewrites = vercel.rewrites || [];
-for (const source of ['/g', '/g/:token']) {
+// `/g/` is the path the browser actually requests for the canonical `/g/#<token>` share link —
+// a fragment is never sent. `/g/:token` does not match it and `/g` does not either, so the
+// trailing-slash form needs `:path*` or the entire growth loop 404s. Found in production.
+for (const source of ['/g', '/g/:path*']) {
   const found = rewrites.some((r) => r.source === source && r.destination === '/group.html');
   process.stdout.write(`  ${found ? '✓' : '✗'} vercel.json rewrites ${source} → /group.html\n`);
   if (!found) failures++;

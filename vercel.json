@@ -6,11 +6,11 @@
       "destination": "/tracker.html"
     },
     {
-      "source": "/g/:token",
+      "source": "/g",
       "destination": "/group.html"
     },
     {
-      "source": "/g",
+      "source": "/g/:path*",
       "destination": "/group.html"
     },
     {
