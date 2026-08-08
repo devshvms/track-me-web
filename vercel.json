@@ -10,6 +10,10 @@
       "destination": "/group.html"
     },
     {
+      "source": "/g/",
+      "destination": "/group.html"
+    },
+    {
       "source": "/g/:path*",
       "destination": "/group.html"
     },

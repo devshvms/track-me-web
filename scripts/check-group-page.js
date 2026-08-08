@@ -74,7 +74,7 @@ const rewrites = vercel.rewrites || [];
 // `/g/` is the path the browser actually requests for the canonical `/g/#<token>` share link —
 // a fragment is never sent. `/g/:token` does not match it and `/g` does not either, so the
 // trailing-slash form needs `:path*` or the entire growth loop 404s. Found in production.
-for (const source of ['/g', '/g/:path*']) {
+for (const source of ['/g', '/g/', '/g/:path*']) {
   const found = rewrites.some((r) => r.source === source && r.destination === '/group.html');
   process.stdout.write(`  ${found ? '✓' : '✗'} vercel.json rewrites ${source} → /group.html\n`);
   if (!found) failures++;
