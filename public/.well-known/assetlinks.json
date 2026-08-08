@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "in.shvms.trackme",
+      "sha256_cert_fingerprints": [
+        "6D:C1:65:92:25:20:40:8E:EA:C3:CA:74:97:DD:FB:F3:5A:29:9E:7B:D1:E6:B0:7C:E2:65:EA:A4:30:73:93:D2"
+      ]
+    }
+  }
+]

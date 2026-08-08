@@ -95,6 +95,10 @@
     font-weight: 700; padding: 14px 18px; border-radius: 10px; margin-top: 4px;
   }
   .cta:hover, .cta:focus-visible { filter: brightness(1.08); }
+  .cta.secondary {
+    background: none; color: var(--cyan); border: 1px solid var(--line); margin-top: 10px;
+  }
+  .cta.secondary:hover, .cta.secondary:focus-visible { border-color: var(--cyan); filter: none; }
   .steps { text-align: left; color: var(--muted); font-size: .9rem; line-height: 1.65; margin: 18px 0 0; padding-left: 20px; }
 
   .promise {
@@ -124,7 +128,21 @@
         <button class="copy" id="copyBtn" type="button">Copy code</button>
       </div>
 
-      <a class="cta" id="storeLink"
+      <!--
+        One button, two outcomes. `intent://` opens the app when it is installed and falls back to
+        the Play Store when it is not — the browser decides, so the page does not have to guess
+        whether an install exists (it cannot).
+
+        Deliberately NOT relying on the App Link alone: that needs Digital Asset Links to have
+        verified, which is an external dependency that can slip (§6.1 B5, and the reason §15.1
+        deferred join-by-link at all). The custom scheme in this intent needs no verification, so
+        the button works the moment the app is installed.
+
+        The token travels as an intent EXTRA (S.token), never as a URL — so it is not in a path, a
+        query, or anything a server could log (A6, §10).
+      -->
+      <a class="cta" id="openApp" href="#">Open in TrackMe</a>
+      <a class="cta secondary" id="storeLink"
          href="https://play.google.com/store/apps/details?id=in.shvms.trackme"
          rel="noopener noreferrer">Get TrackMe on Google Play</a>
 
@@ -263,6 +281,22 @@ async function main() {
     });
   } else {
     el('joinCode').closest('.code-block').hidden = true;
+  }
+
+  // Android only: `intent://` is a Chrome-on-Android construct, and on any other platform it
+  // would be a button that visibly does nothing. iOS has no app yet (D1), so the Play Store link
+  // is the honest single option everywhere else.
+  const isAndroid = /android/i.test(navigator.userAgent);
+  if (isAndroid) {
+    const extras = [`S.token=${encodeURIComponent(token)}`];
+    if (data.joinCode) extras.push(`S.code=${encodeURIComponent(data.joinCode)}`);
+    const fallback = encodeURIComponent('https://play.google.com/store/apps/details?id=in.shvms.trackme');
+    el('openApp').setAttribute(
+      'href',
+      `intent://group#Intent;scheme=trackme;package=in.shvms.trackme;${extras.join(';')};S.browser_fallback_url=${fallback};end`,
+    );
+  } else {
+    el('openApp').hidden = true;
   }
 
   el('liveRow').hidden = false;
