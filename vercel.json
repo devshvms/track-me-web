@@ -6,6 +6,14 @@
       "destination": "/tracker.html"
     },
     {
+      "source": "/g/:token",
+      "destination": "/group.html"
+    },
+    {
+      "source": "/g",
+      "destination": "/group.html"
+    },
+    {
       "source": "/api/telemetry/:route",
       "destination": "/api/telemetry?route=:route"
     }

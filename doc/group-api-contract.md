@@ -1,6 +1,7 @@
 # Group Ride relay — API contract
 
-**Status:** all six routes are live — `create`, `resolve`, `join`, `sync`, `state`, `leave`.
+**Status:** all six routes are live — `create`, `resolve`, `join`, `sync`, `state`, `leave` — plus
+the `/g` invite landing page.
 **Implements:** `SCOPE_1.7.0.md` §4.4, §4.5. Crypto: [group-crypto-contract.md](group-crypto-contract.md).
 
 All routes live in one function, `api/group/[...action].ts`, following `api/export/[...action].ts`.
@@ -93,11 +94,23 @@ every access log, and §10 requires that the token never appears in one.
 { "groupId": "<uuid>", "state": "PREPARING", "memberCount": 3, "maxMembers": 5, "expiresAt": 1785014400000 }
 ```
 
-On the **`?c=` path only**, one extra field:
+Plus `meta` on **both** paths, and one path-specific extra:
 
 ```jsonc
-{ ..., "wrappedToken": "v1.<nonce>.<body>" }
+{ ..., "meta": "v1.<nonce>.<body>",       // always — the group's encrypted name
+       "wrappedToken": "v1.<nonce>.<body>", // ?c= only — the token sealed under the code
+       "joinCode": "ABC123" }               // ?t= only — so the landing page can show it
 ```
+
+**Why `meta` is here despite §4.5 saying "no ciphertext".** That rule is right against
+*enumeration*, and enumeration is not on the table: a 64-hex token hash is unreachable by
+guessing, and the code is rate-limited to 5/min. Every caller who gets a `200` can already
+decrypt `meta` — by token on one path, by unwrapping the code on the other — so returning it adds
+no exposure, and it is the only way any client ever learns the group's name.
+
+`joinCode` on the token path is likewise not a downgrade: a valid token hash proves possession of
+the token, which is the *stronger* credential. The landing page needs it because without App
+Links (1.7.1) typing the code is the only way into the app.
 
 That is the invite token sealed under the code the caller just supplied — useless to anyone who
 does not already know that code, and the only way a code-joiner can obtain the group key. A
@@ -159,6 +172,49 @@ Auth: member.
 
 The response includes `meta` — the group-metadata envelope. It is the only place the group's
 name exists, and a joiner has no other way to obtain it.
+
+---
+
+## 3b. `GET /g` — the invite landing page
+
+`public/group.html`, rewritten from `/g` and `/g/:token` in `vercel.json`, mirroring
+`/live/:sessionId → tracker.html`.
+
+**The share link is `https://trackme.shvms.in/g/#<token>` — token in the fragment.**
+
+§2.4 writes it as `/g/<token>` and §4.8 requires the fragment; **§4.8 is the one to follow**, and
+§2.4 should be corrected. Browsers never transmit a fragment, which is the entire trick: the page
+decrypts the group's name while the server it fetches from cannot. A token in the *path* is sent
+and logged, which breaks §10's "the invite token never appears in a server access log" for that
+group — permanently, since the log is already written.
+
+The page therefore **refuses** a path token rather than joining anyway, and says the link was
+altered in transit. Using it would work, and would quietly teach everyone that the leaky form is
+fine.
+
+What it does, in order: read the token from the fragment → `groupTokenHash` → `resolve?t=<hash>`
+→ decrypt `meta` with the fragment key → show the group. Per research §7 it leads with the
+**group**, not the app — the share flatters the group, and that is what gets it forwarded.
+
+- **`noindex` + `no-referrer`.** An indexed invite, or a token leaked through a `Referer` header
+  on the next click, would undo the fragment design silently.
+- **No destination, ever** (§2.9). "Everyone meet at Ravi's place" would put Ravi's home in front
+  of anyone the invite was forwarded to.
+- **It shows the join code**, because in 1.7.x that is the only way into the app.
+- **A `meta` that will not decrypt still leaves a usable page** — count, code and install path all
+  work. Falling over entirely would waste the acquisition event the page exists for.
+- **Read-only landing, not the live viewer.** §15.1 defers the viewer to 1.7.1 rather than make
+  fragment-key crypto load-bearing on a third platform in the same release.
+
+`public/js/group-crypto.mjs` is the **third implementation** of the envelope contract and is
+verified against the shared fixture by `tests/group-crypto-web.test.mjs`, which runs the exact
+file the browser loads on Node's Web Crypto — the same standard API. It decrypts only; sealing
+and the code path are deliberately absent rather than written and unused (§2.9's dead-code
+hazard).
+
+`scripts/check-group-page.js` guards the properties that are invisible when broken — `noindex`,
+`no-referrer`, hash-not-token in the URL, no destination, no third-party assets, and the
+`vercel.json` rewrites.
 
 ---
 

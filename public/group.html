@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Join a group ride · TrackMe</title>
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<meta name="description" content="Someone invited you to ride together on TrackMe.">
+<!--
+  Group Ride invite landing page. SCOPE_1.7.0 §4.8.
+
+  The invite token lives in the URL **fragment** (/g/#<token>), which browsers never transmit.
+  That is the whole trick: this page decrypts the group's name while the server it fetches from
+  still cannot. `noindex` and `no-referrer` back that up — an indexed invite or a token leaked
+  through a Referer header would undo it.
+
+  Read-only landing, not the live viewer: §15.1 defers the viewer to 1.7.1 rather than make
+  fragment-key crypto load-bearing on a third platform in the same release.
+
+  Per research §7 the page leads with the GROUP, not the app — "Sunday Riders, 4 riding now" —
+  because the share flatters the group, and that is what makes it get sent on.
+
+  No destination is shown, ever (§2.9): "everyone meet at Ravi's place" would put Ravi's home in
+  front of anyone the invite was forwarded to.
+-->
+<style>
+  :root {
+    --ink: #f8fafc;
+    --muted: #94a3b8;
+    --muted-strong: #e2e8f0;
+    --night: #12161c;
+    --panel: #23272f;
+    --line: #475569;
+    --cyan: #29b6f6;
+    --green: #16a34a;
+    --radius: 14px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px 20px;
+    background: var(--night);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  main { width: 100%; max-width: 420px; }
+  .card {
+    background: var(--panel);
+    border: 1px solid rgba(148, 163, 184, .18);
+    border-radius: var(--radius);
+    padding: 28px 24px;
+    text-align: center;
+  }
+  .eyebrow {
+    font-size: .75rem; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--muted); margin: 0 0 14px;
+  }
+  h1 { font-size: 1.65rem; line-height: 1.25; margin: 0 0 10px; overflow-wrap: anywhere; }
+  .live {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-size: .95rem; color: var(--muted-strong); margin: 0 0 4px;
+  }
+  .dot {
+    width: 8px; height: 8px; border-radius: 50%; background: var(--green);
+    box-shadow: 0 0 0 4px rgba(22, 163, 74, .18);
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .dot { animation: breathe 3s ease-in-out infinite; }
+  }
+  @keyframes breathe { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
+  .sub { color: var(--muted); font-size: .95rem; margin: 6px 0 0; }
+
+  .code-block { margin: 26px 0 20px; }
+  .code-label { font-size: .8rem; color: var(--muted); margin: 0 0 10px; }
+  .code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 2rem; font-weight: 700; letter-spacing: .28em;
+    color: var(--cyan); padding-left: .28em;
+    word-break: break-all;
+  }
+  .copy {
+    margin-top: 12px; background: none; border: 1px solid var(--line); color: var(--muted-strong);
+    border-radius: 8px; padding: 8px 14px; font-size: .85rem; cursor: pointer;
+  }
+  .copy:hover, .copy:focus-visible { border-color: var(--cyan); color: var(--ink); }
+
+  .cta {
+    display: block; background: var(--cyan); color: #05121b; text-decoration: none;
+    font-weight: 700; padding: 14px 18px; border-radius: 10px; margin-top: 4px;
+  }
+  .cta:hover, .cta:focus-visible { filter: brightness(1.08); }
+  .steps { text-align: left; color: var(--muted); font-size: .9rem; line-height: 1.65; margin: 18px 0 0; padding-left: 20px; }
+
+  .promise {
+    margin-top: 22px; padding-top: 18px; border-top: 1px solid rgba(148, 163, 184, .18);
+    color: var(--muted); font-size: .84rem; line-height: 1.6; text-align: left;
+  }
+  .promise strong { color: var(--muted-strong); font-weight: 600; }
+  .foot { text-align: center; color: var(--muted); font-size: .78rem; margin-top: 18px; }
+  .foot a { color: var(--muted-strong); }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <div class="card" id="card">
+    <p class="eyebrow" id="eyebrow">TrackMe</p>
+    <h1 id="headline">Loading the invite…</h1>
+    <!-- The live count leads, ahead of the duration: research §7 — the page sells the group
+         ("Sunday Riders, 4 riding now"), and that is what makes the invite get forwarded. -->
+    <p class="live" id="liveRow" hidden><span class="dot"></span><span id="liveText"></span></p>
+    <p class="sub" id="sub"></p>
+
+    <div id="detail" hidden>
+      <div class="code-block">
+        <p class="code-label">Open TrackMe and enter this code</p>
+        <div class="code" id="joinCode"></div>
+        <button class="copy" id="copyBtn" type="button">Copy code</button>
+      </div>
+
+      <a class="cta" id="storeLink"
+         href="https://play.google.com/store/apps/details?id=in.shvms.trackme"
+         rel="noopener noreferrer">Get TrackMe on Google Play</a>
+
+      <ol class="steps">
+        <li>Install TrackMe and sign in.</li>
+        <li>Open <strong>Community</strong> and tap <strong>Join with a code</strong>.</li>
+        <li>Enter the code above.</li>
+      </ol>
+
+      <p class="promise">
+        <strong>Everyone in the group sees everyone else, for as long as the group is live.</strong>
+        Nobody sees where you've been. Nothing is saved. You can leave at any time and nobody is
+        told. TrackMe's servers can't read anyone's location — the group's key never leaves the
+        people in it.
+      </p>
+    </div>
+  </div>
+
+  <p class="foot">
+    <a href="/privacy.html" rel="noopener">Privacy</a> · <a href="/">About TrackMe</a>
+  </p>
+</main>
+
+<script type="module">
+import { deriveGroupKey, groupTokenHash, openFor, tokenFromFragment } from '/js/group-crypto.mjs';
+
+const el = (id) => document.getElementById(id);
+
+/** One shape for every dead end. The page never says whether a group existed (§8). */
+function showEnded(headline, sub) {
+  el('headline').textContent = headline;
+  el('sub').textContent = sub || '';
+  el('liveRow').hidden = true;
+  el('detail').hidden = true;
+}
+
+function plural(n, one, many) {
+  return `${n} ${n === 1 ? one : many}`;
+}
+
+function remainingText(expiresAt) {
+  const mins = Math.round((expiresAt - Date.now()) / 60000);
+  if (mins <= 0) return null;
+  if (mins < 60) return `Ends in ${plural(mins, 'minute', 'minutes')}`;
+  const hours = Math.floor(mins / 60);
+  const rest = mins % 60;
+  return rest === 0
+    ? `Ends in ${plural(hours, 'hour', 'hours')}`
+    : `Ends in ${hours}h ${rest}m`;
+}
+
+/**
+ * A token-shaped segment in the *path* rather than the fragment.
+ *
+ * §2.4 writes the invite as `/g/<token>` and §4.8 requires the token to live in the fragment;
+ * §4.8 is the one that is right, and the share link we generate is `/g/#<token>`. A path token
+ * is transmitted, so it is already in an access log by the time this page runs — which means the
+ * group's key has been exposed and §10's "the token never appears in a server access log" has
+ * been broken for that group.
+ *
+ * We refuse to use it rather than joining anyway. Using it would work, and would quietly teach
+ * everyone that the leaky form is fine.
+ */
+function pathToken() {
+  const seg = location.pathname.split('/').filter(Boolean).pop();
+  return seg && /^[A-Za-z0-9_-]{22}$/.test(seg) ? seg : null;
+}
+
+async function main() {
+  const token = tokenFromFragment(location.hash);
+  if (!token) {
+    if (pathToken()) {
+      showEnded(
+        'This invite link was altered on its way to you.',
+        'It is not safe to use. Ask whoever invited you for the 6-character join code instead.',
+      );
+      return;
+    }
+    showEnded('This invite link is incomplete.', 'Ask whoever invited you to send it again.');
+    return;
+  }
+
+  let data;
+  try {
+    const hash = await groupTokenHash(token);
+    // The hash, never the token: a query string lands in every access log (§10).
+    const res = await fetch(`/api/group/resolve?t=${encodeURIComponent(hash)}`, {
+      headers: { Accept: 'application/json' },
+    });
+    if (!res.ok) {
+      showEnded('This invite has expired.', 'Group rides only stay open for a few hours.');
+      return;
+    }
+    data = await res.json();
+  } catch {
+    showEnded('Could not load this invite.', 'Check your connection and try again.');
+    return;
+  }
+
+  // The group's name is ciphertext until here. The key comes from the fragment, which the
+  // server never received — so this page can read it and the relay cannot.
+  let name = 'A group ride';
+  let leader = null;
+  try {
+    const key = await deriveGroupKey(token);
+    const meta = JSON.parse(await openFor(key, data.meta, 'meta'));
+    if (meta.name) name = String(meta.name);
+    if (meta.ownerDisplayName) leader = String(meta.ownerDisplayName).split(/\s+/)[0];
+  } catch {
+    // A meta we cannot open still leaves a usable page: the count, the code, and the install
+    // path all work. Falling over entirely would waste the acquisition event this page exists
+    // for (§2.4).
+  }
+
+  el('eyebrow').textContent = leader ? `${leader} invited you` : 'You have been invited';
+  el('headline').textContent = name;
+
+  const joined = plural(data.memberCount, 'person', 'people');
+  el('liveText').textContent = data.state === 'LIVE'
+    ? `${joined} riding now`
+    : `${joined} joined · not started yet`;
+
+  el('sub').textContent = [remainingText(data.expiresAt), `Up to ${data.maxMembers} people`]
+    .filter(Boolean)
+    .join(' · ');
+
+  if (data.joinCode) {
+    el('joinCode').textContent = data.joinCode;
+    el('copyBtn').addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(data.joinCode);
+        el('copyBtn').textContent = 'Copied';
+      } catch {
+        el('copyBtn').textContent = 'Copy failed — type it in';
+      }
+    });
+  } else {
+    el('joinCode').closest('.code-block').hidden = true;
+  }
+
+  el('liveRow').hidden = false;
+  el('detail').hidden = false;
+  document.title = `${name} · TrackMe`;
+}
+
+main();
+
+// A fragment-only navigation does not reload the page, so opening a second invite in the same
+// tab would otherwise leave the first group's name, count and code on screen — showing someone
+// a group they were not invited to. Cheap to handle, ugly to discover.
+window.addEventListener('hashchange', () => {
+  el('liveRow').hidden = true;
+  el('detail').hidden = true;
+  el('headline').textContent = 'Loading the invite…';
+  el('sub').textContent = '';
+  main();
+});
+</script>
+</body>
+</html>

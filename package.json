@@ -5,10 +5,10 @@
   "main": "index.js",
   "scripts": {
     "build": "node scripts/write-firebase-config.js && node scripts/write-posthog-config.js",
-    "test": "npm run check:theme && npm run check:landing && npm run test:unit",
+    "test": "npm run check:theme && npm run check:landing && npm run check:group-page && npm run test:unit",
     "check:theme": "node scripts/check-theme-contrast.js",
     "check:landing": "node scripts/check-landing-structure.js",
-    "test:unit": "npm run test:waitlist && npm run test:notify && npm run test:admin-config && npm run test:posthog-state && npm run test:location && npm run test:group-crypto && npm run test:redis-strict && npm run test:group-model && npm run test:group-cadence && npm run test:group-scripts",
+    "test:unit": "npm run test:waitlist && npm run test:notify && npm run test:admin-config && npm run test:posthog-state && npm run test:location && npm run test:group-crypto && npm run test:redis-strict && npm run test:group-model && npm run test:group-cadence && npm run test:group-scripts && npm run test:group-crypto-web",
     "test:waitlist": "ts-node --project tests/tsconfig.json tests/waitlist.test.ts",
     "test:notify": "ts-node --project tests/tsconfig.json tests/notify.test.ts",
     "test:admin-config": "ts-node --project tests/tsconfig.json tests/admin-config.test.ts",
@@ -19,7 +19,9 @@
     "gen:group-crypto-vectors": "ts-node --project tests/tsconfig.json scripts/generate-group-crypto-vectors.ts",
     "test:group-model": "ts-node --project tests/tsconfig.json tests/group-model.test.ts",
     "test:group-cadence": "ts-node --project tests/tsconfig.json tests/group-cadence.test.ts",
-    "test:group-scripts": "ts-node --project tests/tsconfig.json tests/group-store-scripts.test.ts"
+    "test:group-scripts": "ts-node --project tests/tsconfig.json tests/group-store-scripts.test.ts",
+    "check:group-page": "node scripts/check-group-page.js",
+    "test:group-crypto-web": "node tests/group-crypto-web.test.mjs"
   },
   "keywords": [],
   "author": "",

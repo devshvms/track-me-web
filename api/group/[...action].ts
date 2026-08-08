@@ -221,20 +221,26 @@ async function handleResolve(request: VercelRequest, response: VercelResponse) {
     const rawToken = request.query.t;
     const rawCode = request.query.c;
     const tokenHash = Array.isArray(rawToken) ? rawToken[0] : rawToken;
-    const joinCode = normalizeJoinCode(Array.isArray(rawCode) ? rawCode[0] : rawCode);
+    const queriedCode = normalizeJoinCode(Array.isArray(rawCode) ? rawCode[0] : rawCode);
 
     let groupId: string | null = null;
     // Returned on the code path only. A caller resolving by token already holds the token, so
     // handing them a wrapper of it would be noise; a caller resolving by code needs it to derive
     // the group key at all.
     let wrappedToken: string | null = null;
+    // Returned on the token path only, for the /g/ landing page: without the app installed and
+    // without App Links (deferred to 1.7.1), typing the code is the only way in, so the page has
+    // to be able to show it. Safe because a valid token hash proves possession of the token, and
+    // the token is the stronger credential — the code is a weaker one they already effectively
+    // hold.
+    let joinCode: string | null = null;
 
     if (tokenHash) {
       // `t` is the token *hash*, computed client-side — never the token. A raw token in a query
       // string lands in every access log, which §10 forbids outright.
       if (!isValidTokenHash(tokenHash)) return sendGone(response);
       groupId = await resolveGroupIdByToken(tokenHash);
-    } else if (joinCode) {
+    } else if (queriedCode) {
       const limit = await checkCodeLookupLimit(request);
       if (!limit.allowed) {
         response.setHeader('Retry-After', String(limit.retryAfterSec));
@@ -242,7 +248,7 @@ async function handleResolve(request: VercelRequest, response: VercelResponse) {
         // forcer that they had found the right endpoint and were merely going too fast.
         return sendGone(response);
       }
-      const entry = await resolveCodeEntry(joinCode);
+      const entry = await resolveCodeEntry(queriedCode);
       groupId = entry?.groupId ?? null;
       wrappedToken = entry?.wrappedToken ?? null;
     } else {
@@ -261,8 +267,19 @@ async function handleResolve(request: VercelRequest, response: VercelResponse) {
     response.setHeader('Cache-Control', 'no-store');
 
     const memberCount = await readMemberCount(groupId);
-    const view = toPublicView(record, memberCount);
-    return response.status(200).json(wrappedToken ? { ...view, wrappedToken } : view);
+    // Only on the token path — a caller who typed the code already has it.
+    if (tokenHash) joinCode = record.joinCode;
+
+    // `meta` is ciphertext, and every caller who reaches this point can already decrypt it —
+    // by token on one path, by unwrapping the code on the other. §4.5 says resolve returns no
+    // ciphertext, which is right against *enumeration*: neither a 64-hex token hash nor a
+    // rate-limited 6-character code is reachable by guessing. Returning it costs nothing and
+    // is the only way any client learns the group's name.
+    const payload: Record<string, unknown> = { ...toPublicView(record, memberCount), meta: record.meta };
+    if (wrappedToken) payload.wrappedToken = wrappedToken;
+    if (joinCode) payload.joinCode = joinCode;
+
+    return response.status(200).json(payload);
   } catch (error) {
     return sendError(response, error, 'resolve');
   }
