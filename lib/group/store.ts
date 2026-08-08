@@ -525,6 +525,31 @@ export async function leaveGroup(record: GroupRecord, uid: string): Promise<Leav
   return { outcome, remaining: Number(remaining), rev: Number(rev) };
 }
 
+// --- remove (leader only) ---------------------------------------------------------------------
+
+/**
+ * Removes one member, at the leader's request.
+ *
+ * Not in the scope, and worth being explicit about why it is safe to add. §5.1 governs *visibility*
+ * symmetry — no watching without being watched — and removal does not touch that: a removed member
+ * loses access entirely rather than becoming invisible while still seeing others. §5.2 already
+ * makes the API the enforcement point (*"every sync checks the caller's uid against the plaintext
+ * members set. Removed uid → 403"*), so this is that path, driven deliberately.
+ *
+ * It also closes a real gap. §5.2's threat model includes a brute-forced or leaked join code; until
+ * now the leader's only answer to a stranger in the group was to end it for everybody. Removing one
+ * person is the proportionate tool.
+ *
+ * The removed member learns immediately — their next sync 403s and the client shows "You're no
+ * longer in this group." That matters: silent removal would be its own kind of dishonesty.
+ *
+ * Reuses LEAVE_SCRIPT: removing someone is exactly leaving, performed by another authenticated
+ * caller. Same atomicity, same last-member-deletes-the-group behaviour, no second script to drift.
+ */
+export async function removeMember(record: GroupRecord, uid: string): Promise<LeaveResult> {
+  return leaveGroup(record, uid);
+}
+
 // --- reads ------------------------------------------------------------------------------------
 
 /** The record plus the exact bytes Redis held, for the compare-and-swap above. */

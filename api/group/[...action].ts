@@ -38,6 +38,7 @@ import {
   readMemberCount,
   endGroup,
   leaveGroup,
+  removeMember,
   readGroupRaw,
   resolveCodeEntry,
   resolveGroupIdByToken,
@@ -682,6 +683,68 @@ async function handleLeave(request: VercelRequest, response: VercelResponse) {
   }
 }
 
+// --- POST /api/group/remove -------------------------------------------------------------------
+
+/**
+ * Leader removes a member.
+ *
+ * The one asymmetric power in the feature, and bounded deliberately:
+ * - **Leader only.** Anyone else gets 403.
+ * - **The leader cannot remove themselves.** That is `leave`, which ends the group for everyone
+ *   (§8) — routing it through here would end the group by a path whose confirm dialog never said so.
+ * - **The removed member finds out.** Their next sync 403s and the client says "You're no longer in
+ *   this group." Silent removal would be its own dishonesty, and §5.1's whole posture is that
+ *   people know where they stand.
+ *
+ * §5.2 already anticipates the enforcement — "removed uid → 403, regardless of key possession" —
+ * because a removed member still holds the derived key. Authorisation is the boundary, not crypto.
+ */
+async function handleRemove(request: VercelRequest, response: VercelResponse) {
+  if (request.method !== 'POST') {
+    return response.status(405).json({ error: 'Method Not Allowed' });
+  }
+
+  try {
+    const decoded = await requireUser(request);
+    const body = request.body || {};
+
+    if (!isValidGroupId(body.groupId)) {
+      return response.status(400).json({ error: 'A valid groupId is required.' });
+    }
+    const target = typeof body.uid === 'string' ? body.uid.trim() : '';
+    if (!target) {
+      return response.status(400).json({ error: 'A uid is required.' });
+    }
+
+    const record = await readGroup(body.groupId);
+    if (!record) return sendGone(response);
+
+    if (record.ownerUid !== decoded.uid) {
+      return response.status(403).json({
+        error: 'Only the group leader can do that.',
+        code: 'NOT_THE_LEADER',
+      });
+    }
+    if (target === record.ownerUid) {
+      return response.status(400).json({
+        error: 'The leader cannot remove themselves. Leaving ends the group.',
+        code: 'CANNOT_REMOVE_LEADER',
+      });
+    }
+
+    const result = await removeMember(record, target);
+    if (result.outcome === 'GONE') return sendGone(response);
+
+    await captureTelemetryEvent(record.groupId, 'group_member_removed', {
+      remaining: result.remaining,
+    });
+
+    return response.status(200).json({ removed: true, memberCount: result.remaining, rev: result.rev });
+  } catch (error) {
+    return sendError(response, error, 'remove');
+  }
+}
+
 // --- Routing ----------------------------------------------------------------------------------
 
 /**
@@ -703,6 +766,7 @@ export default async function handler(request: VercelRequest, response: VercelRe
     case 'sync': return handleSync(request, response);
     case 'state': return handleState(request, response);
     case 'leave': return handleLeave(request, response);
+    case 'remove': return handleRemove(request, response);
     default:
       console.error('Unmatched group action route', { url: request.url, query: request.query });
       return response.status(404).json({ error: 'Not Found' });
