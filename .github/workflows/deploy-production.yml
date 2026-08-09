@@ -33,18 +33,8 @@ jobs:
       - name: Pull production configuration
         run: vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
 
-      - name: Build production artifacts
-        # `vercel build` runs off-Vercel here, so Vercel does not inject the
-        # project env vars — and FIREBASE_WEB_CONFIG / POSTHOG_DASHBOARD_URL are
-        # marked Sensitive, so `vercel pull` never downloads them. Both are public
-        # client-side config; supply them from GitHub secrets so the build's
-        # write-*-config scripts can generate the public config files.
-        env:
-          FIREBASE_WEB_CONFIG: ${{ secrets.FIREBASE_WEB_CONFIG }}
-          POSTHOG_DASHBOARD_URL: ${{ secrets.POSTHOG_DASHBOARD_URL }}
-        run: vercel build --prod --token="$VERCEL_TOKEN"
-
-      - name: Deploy production artifacts
-        # The prebuilt output (function bundles + assets) exceeds Vercel's 15000
-        # per-deploy file limit; upload it as a single tarball instead.
-        run: vercel deploy --prebuilt --prod --archive=tgz --token="$VERCEL_TOKEN"
+      - name: Deploy production
+        # Build on Vercel so production env vars are injected there and do not
+        # need to be duplicated in GitHub. Archive the source to stay below the
+        # per-deploy file limit.
+        run: vercel deploy --prod --archive=tgz --token="$VERCEL_TOKEN"
