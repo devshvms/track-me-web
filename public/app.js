@@ -244,71 +244,139 @@ if (exportBtn) {
 }
 
 // --- GitHub Releases Fetching Logic ---
+const pinnedReleases = {
+    'track-me-android': [{
+        tag_name: 'v1.7.1',
+        name: 'TrackMe v1.7.1',
+        published_at: '2026-08-09T00:00:00Z',
+        body: [
+            'Fixed a map crash that could happen when camera views opened before map initialization completed.',
+            'Added an interactive first-run walkthrough covering location access, privacy choices, and GPS tracking.',
+            'Play in-app update notices now match the installed release track and show formatted release notes.'
+        ].join('\n\n')
+    }]
+};
+
+function normalizeReleaseTag(tag) {
+    return String(tag || '').trim().replace(/^v/i, '');
+}
+
+function mergePinnedReleases(repoName, releases) {
+    const pinned = pinnedReleases[repoName] || [];
+    const pinnedTags = new Set(pinned.map(release => normalizeReleaseTag(release.tag_name)));
+    return [...pinned, ...releases.filter(release => !pinnedTags.has(normalizeReleaseTag(release.tag_name)))];
+}
+
+function escapeReleaseText(value) {
+    return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+function setupReleaseTabs() {
+    const tabList = document.querySelector('.tabs[role="tablist"]');
+    if (!tabList) return;
+
+    const tabs = Array.from(tabList.querySelectorAll('[role="tab"]'));
+    const activateTab = (selectedTab, moveFocus = false) => {
+        tabs.forEach(tab => {
+            const isSelected = tab === selectedTab;
+            const panel = document.getElementById(tab.dataset.target);
+            tab.classList.toggle('active', isSelected);
+            tab.setAttribute('aria-selected', String(isSelected));
+            tab.tabIndex = isSelected ? 0 : -1;
+            if (panel) panel.hidden = !isSelected;
+        });
+        if (moveFocus) selectedTab.focus();
+    };
+
+    tabs.forEach((tab, index) => {
+        tab.addEventListener('click', () => activateTab(tab));
+        tab.addEventListener('keydown', event => {
+            const keys = ['ArrowLeft', 'ArrowRight', 'Home', 'End'];
+            if (!keys.includes(event.key)) return;
+            event.preventDefault();
+
+            let nextIndex = index;
+            if (event.key === 'ArrowLeft') nextIndex = (index - 1 + tabs.length) % tabs.length;
+            if (event.key === 'ArrowRight') nextIndex = (index + 1) % tabs.length;
+            if (event.key === 'Home') nextIndex = 0;
+            if (event.key === 'End') nextIndex = tabs.length - 1;
+            activateTab(tabs[nextIndex], true);
+        });
+    });
+
+    activateTab(tabs.find(tab => tab.getAttribute('aria-selected') === 'true') || tabs[0]);
+}
+
 async function fetchReleases(repoName, containerId, emptyMessage = 'No public releases yet.') {
     const container = document.getElementById(containerId);
     if (!container) return;
 
+    let releases = mergePinnedReleases(repoName, []);
     try {
         const res = await fetch(`https://api.github.com/repos/devshvms/${repoName}/releases`);
         if (!res.ok) throw new Error('Failed to fetch releases');
-        const releases = await res.json();
-
-        if (releases.length === 0) {
-            container.innerHTML = `<p class="release-empty">${emptyMessage}</p>`;
-            return;
-        }
-
-        let html = '';
-        releases.forEach((release, index) => {
-            const isActive = index === 0;
-            const version = release.tag_name;
-            const releaseName = release.name || release.tag_name;
-            const date = new Date(release.published_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-            const bodyHtml = release.body
-                ? release.body.split('\n\n').map(p => `<p>${p.replace(/\n/g, '<br>')}</p>`).join('')
-                : '<p>No release notes provided.</p>';
-
-            html += `
-                <article class="release-card ${isActive ? 'active' : ''}">
-                    <button class="release-header" type="button" aria-expanded="${isActive ? 'true' : 'false'}">
-                        <span><strong>${version}</strong><span>${releaseName}</span><small>${date}</small></span>
-                        <span class="release-toggle-icon" aria-hidden="true">&#9662;</span>
-                    </button>
-                    <div class="release-body">
-                        ${bodyHtml}
-                    </div>
-                </article>
-            `;
-        });
-        container.innerHTML = html;
-
-        // Re-attach accordion listeners for new elements
-        const headers = container.querySelectorAll('.release-header');
-        headers.forEach(header => {
-            header.addEventListener('click', () => {
-                const currentCard = header.closest('.release-card');
-                const wasActive = currentCard.classList.contains('active');
-
-                container.querySelectorAll('.release-card').forEach(card => {
-                    card.classList.remove('active');
-                    const cardHeader = card.querySelector('.release-header');
-                    if (cardHeader) cardHeader.setAttribute('aria-expanded', 'false');
-                });
-
-                if (!wasActive) {
-                    currentCard.classList.add('active');
-                    header.setAttribute('aria-expanded', 'true');
-                }
-            });
-        });
-
+        releases = mergePinnedReleases(repoName, await res.json());
     } catch (err) {
         console.warn(`Could not fetch releases for ${repoName}:`, err);
-        container.innerHTML = '<p class="release-empty">Release history is temporarily unavailable.</p>';
+        if (releases.length === 0) {
+            container.innerHTML = '<p class="release-empty">Release history is temporarily unavailable.</p>';
+            return;
+        }
     }
+
+    if (releases.length === 0) {
+        container.innerHTML = `<p class="release-empty">${escapeReleaseText(emptyMessage)}</p>`;
+        return;
+    }
+
+    container.innerHTML = releases.map((release, index) => {
+        const isActive = index === 0;
+        const version = escapeReleaseText(release.tag_name);
+        const releaseName = escapeReleaseText(release.name || release.tag_name);
+        const date = new Date(release.published_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+        const bodyHtml = release.body
+            ? escapeReleaseText(release.body).split('\n\n').map(paragraph => `<p>${paragraph.replace(/\n/g, '<br>')}</p>`).join('')
+            : '<p>No release notes provided.</p>';
+
+        return `
+            <article class="release-card ${isActive ? 'active' : ''}">
+                <button class="release-header" type="button" aria-expanded="${isActive ? 'true' : 'false'}">
+                    <span><strong>${version}</strong><span>${releaseName}</span><small>${date}</small></span>
+                    <span class="release-toggle-icon" aria-hidden="true">&#9662;</span>
+                </button>
+                <div class="release-body">
+                    ${bodyHtml}
+                </div>
+            </article>
+        `;
+    }).join('');
+
+    container.querySelectorAll('.release-header').forEach(header => {
+        header.addEventListener('click', () => {
+            const currentCard = header.closest('.release-card');
+            const wasActive = currentCard.classList.contains('active');
+
+            container.querySelectorAll('.release-card').forEach(card => {
+                card.classList.remove('active');
+                const cardHeader = card.querySelector('.release-header');
+                if (cardHeader) cardHeader.setAttribute('aria-expanded', 'false');
+            });
+
+            if (!wasActive) {
+                currentCard.classList.add('active');
+                header.setAttribute('aria-expanded', 'true');
+            }
+        });
+    });
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+    setupReleaseTabs();
     fetchReleases('track-me-android', 'dynamic-android-releases');
     fetchReleases(
         'track-me-ios',

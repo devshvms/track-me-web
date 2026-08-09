@@ -18,7 +18,7 @@
     <meta name="twitter:title" content="TrackMe | Private outdoor tracking">
     <meta name="twitter:description" content="Record your route offline, share it live when you choose, and export your data any time.">
     <title>TrackMe | Private outdoor tracking</title>
-    <link rel="stylesheet" href="style.css?v=1">
+    <link rel="stylesheet" href="style.css?v=2">
     <script src="/firebase-config.js"></script>
     <script type="module" src="app.js"></script>
 </head>
@@ -277,7 +277,7 @@
         <section id="releases" class="section-shell section-block releases-section" aria-labelledby="releases-title">
             <div class="section-heading section-heading-row">
                 <div><p class="eyebrow">Start where you are</p><h2 id="releases-title">Get the app.</h2></div>
-                <p>Android version 1.6.5 is live on Google Play. iOS is in preparation for App Store launch.</p>
+                <p>Android version 1.7.1 is live on Google Play. iOS is coming soon to the App Store.</p>
             </div>
             <div class="tabs" role="tablist" aria-label="Platform releases">
                 <button class="tab-btn active" id="android-tab" type="button" role="tab" aria-selected="true" aria-controls="android-releases" data-target="android-releases">Android</button>
@@ -287,17 +287,12 @@
                 <div class="download-panel">
                     <div>
                         <span class="status-label status-live">Live in Production</span>
-                        <h3>Google Play Store (v1.7.0)</h3>
+                        <h3>Google Play Store (v1.7.1)</h3>
                         <p>TrackMe for Android is live on Google Play. Download or open the store listing directly.</p>
                     </div>
                     <div class="download-actions">
                         <a class="btn btn-primary download-cta store-btn" href="https://play.google.com/store/apps/details?id=in.shvms.trackme" target="_blank" rel="noreferrer" data-download-platform="android">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" style="margin-right:8px;vertical-align:middle;">
-                                <path d="M3.609 1.814L15.485 12 3.609 22.186A1.85 1.85 0 0 1 3 20.841V3.159c0-.528.225-1.01.609-1.345z" fill="#4285F4"/>
-                                <path d="M19.467 8.563l-3.982 3.437 3.982 3.437a2.21 2.21 0 0 0 0-6.874z" fill="#FBBC05"/>
-                                <path d="M3.609 1.814L15.485 12l-3.982-3.437L3.609 1.814z" fill="#EA4335"/>
-                                <path d="M3.609 22.186L11.503 15.437 15.485 12 3.609 22.186z" fill="#34A853"/>
-                            </svg>
+                            <img class="store-icon" src="assets/store/google-play-48.png" width="48" height="48" alt="" aria-hidden="true">
                             <span>GET IT ON Google Play</span>
                         </a>
                     </div>
@@ -314,12 +309,12 @@
                         <p>TrackMe for iOS is in preparation. App Store availability will open soon.</p>
                     </div>
                     <div class="download-actions">
-                        <button class="btn btn-secondary store-btn disabled-store-badge" type="button" disabled aria-disabled="true" style="opacity: 0.55; cursor: not-allowed; pointer-events: none;" title="App Store release coming soon">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" style="margin-right:8px;vertical-align:middle;">
-                                <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M15.97 6.85c.66-.8 1.11-1.92.99-3.04-.95.04-2.1.64-2.78 1.43-.61.71-1.14 1.86-.99 2.97 1.06.08 2.13-.56 2.78-1.36z"/>
-                            </svg>
-                            <span>Download on the App Store (Coming Soon)</span>
-                        </button>
+                        <span class="store-tooltip" data-tooltip="Coming soon" tabindex="0" aria-label="App Store, coming soon" aria-disabled="true" title="Coming soon">
+                            <span class="btn btn-secondary store-btn store-btn-disabled" aria-hidden="true">
+                                <img class="store-icon" src="assets/store/app-store-48.png" width="48" height="48" alt="">
+                                <span>App Store</span>
+                            </span>
+                        </span>
                     </div>
                 </div>
                 <div class="release-history" id="dynamic-ios-releases" aria-label="iOS release history">

@@ -226,3 +226,36 @@ button, a { -webkit-tap-highlight-color: transparent; }
     .hero h1 { font-size: 2.2rem; }
     .section-heading h2 { font-size: 1.8rem; }
 }
+
+/* Store availability controls */
+.store-btn { gap: 10px; min-height: 48px; }
+.store-icon { width: 28px; height: 28px; flex: 0 0 28px; object-fit: contain; }
+.store-tooltip { position: relative; display: inline-flex; }
+.store-tooltip::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    left: 50%;
+    bottom: calc(100% + 9px);
+    z-index: 5;
+    padding: 7px 10px;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    background: var(--ink);
+    color: var(--night);
+    font-size: .78rem;
+    font-weight: 800;
+    line-height: 1;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transform: translate(-50%, 4px);
+    transition: opacity .15s ease, transform .15s ease;
+}
+.store-tooltip:hover::after, .store-tooltip:focus-visible::after { opacity: 1; transform: translate(-50%, 0); }
+.store-tooltip:focus-visible { outline: 3px solid var(--cyan); outline-offset: 4px; border-radius: 4px; }
+.store-btn-disabled { opacity: .55; cursor: not-allowed; user-select: none; }
+
+@media (max-width: 560px) {
+    .store-tooltip, .store-tooltip .store-btn { width: 100%; }
+    .store-tooltip .store-btn { justify-content: center; }
+}
