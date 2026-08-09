@@ -2,6 +2,14 @@
   "version": 2,
   "rewrites": [
     {
+      "source": "/blogs",
+      "destination": "/blogs.html"
+    },
+    {
+      "source": "/blogs/:slug",
+      "destination": "/blog/:slug.html"
+    },
+    {
       "source": "/live/:sessionId",
       "destination": "/tracker.html"
     },

@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Group Ride lets several riders watch each other move on one live map. The server carrying those positions holds no key to any of them — here is how that works, end to end.">
+    <meta name="theme-color" content="#0b1320">
+    <meta property="og:type" content="article">
+    <meta property="og:title" content="The relay that cannot read its own traffic">
+    <meta property="og:description" content="How TrackMe's live group map works when the server holds no key to anything it stores.">
+    <meta property="og:url" content="https://trackme.shvms.in/blogs/group-ride-architecture">
+    <meta property="og:image" content="https://trackme.shvms.in/assets/blog/group-ride-architecture.svg">
+    <meta property="article:published_time" content="2026-08-09">
+    <link rel="canonical" href="https://trackme.shvms.in/blogs/group-ride-architecture">
+    <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png">
+    <link rel="icon" type="image/png" sizes="48x48" href="/assets/favicon-48.png">
+    <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="The relay that cannot read its own traffic">
+    <meta name="twitter:description" content="How TrackMe's live group map works when the server holds no key to anything it stores.">
+    <title>The relay that cannot read its own traffic | TrackMe Blog</title>
+    <link rel="stylesheet" href="/style.css?v=2">
+    <link rel="stylesheet" href="/blog.css?v=1">
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "BlogPosting",
+      "headline": "The relay that cannot read its own traffic",
+      "datePublished": "2026-08-09",
+      "image": "https://trackme.shvms.in/assets/blog/group-ride-architecture.svg",
+      "url": "https://trackme.shvms.in/blogs/group-ride-architecture",
+      "publisher": { "@type": "Organization", "name": "TrackMe", "url": "https://trackme.shvms.in/" },
+      "mainEntityOfPage": "https://trackme.shvms.in/blogs/group-ride-architecture"
+    }
+    </script>
+</head>
+<body class="blog-page">
+    <div class="read-progress" id="read-progress" aria-hidden="true"></div>
+    <a class="skip-link" href="#main-content">Skip to content</a>
+
+    <header class="site-header">
+        <div class="site-header-inner">
+            <a class="brand" href="/" aria-label="TrackMe home">
+                <img class="brand-mark" src="/assets/trackme-logo.png" width="32" height="32" alt="" aria-hidden="true">
+                <span>TrackMe</span>
+            </a>
+            <nav class="site-nav" aria-label="Primary navigation">
+                <a href="/#features">Features</a>
+                <a href="/#releases">Get the app</a>
+                <a href="/#support">Support</a>
+                <a href="/blogs" style="color:var(--cyan)">Blog</a>
+            </nav>
+        </div>
+    </header>
+
+    <main id="main-content">
+        <div class="section-shell article-head">
+            <a class="back-link" href="/blogs">← All posts</a>
+            <p class="post-meta">
+                <time datetime="2026-08-09">9 August 2026</time>
+                <span class="dot">·</span><span>9 min read</span>
+                <span class="tag">Architecture</span>
+            </p>
+            <h1>The relay that cannot read its own traffic</h1>
+            <p class="article-standfirst">Group Ride lets several riders watch each other move on one live map. The server that carries those positions holds no key to any of them. Everything below — the Redis layout, the Lua scripts, the two-step join, the one deliberately unauthenticated endpoint — follows from that single constraint.</p>
+            <img class="article-cover"
+                 src="/assets/blog/group-ride-architecture.svg"
+                 alt="A key derived on a device seals four envelopes; across a dashed trust boundary the same shapes appear as unreadable blocks."
+                 width="1200" height="630" decoding="async">
+        </div>
+
+        <article class="section-shell article">
+
+            <p>Most "live location sharing" works the obvious way: phones send coordinates to a server, the server keeps them, and everyone reads them back. It is simple, it scales, and it means the operator of that server can watch every user move in real time. For an app whose entire premise is that your routes stay yours, that was not an option.</p>
+
+            <p>So we built the other thing. The relay stores what it needs to route and authorise — and nothing else it could read even if it wanted to. What follows is the whole design, in enough detail to argue with.</p>
+
+            <p class="kicker">1 · Topology</p>
+            <h2>Four parties, one of which is untrusted by design</h2>
+
+            <p>There is no socket, no push channel, and no server-side fan-out. Every client polls the same endpoint on an interval the server itself dictates, and the server keeps no connection state between calls — it is a stateless function in front of Redis.</p>
+
+            <figure class="bleed">
+                <svg viewBox="0 0 900 360" role="img" aria-label="Clients poll a single stateless Vercel function which reads and writes Redis Cloud; Firebase Auth verifies bearer tokens out of band.">
+                    <defs>
+                        <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="currentColor"/></marker>
+                        <marker id="arc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="var(--sealed)"/></marker>
+                    </defs>
+                    <text x="20" y="26" font-size="11" font-weight="700" letter-spacing="1.5" fill="var(--plain)">CLIENTS</text>
+                    <rect x="20" y="42" width="176" height="52" rx="9" fill="none" stroke="var(--sealed)" stroke-width="1.6"/>
+                    <text x="108" y="66" font-size="13" font-weight="600" text-anchor="middle" fill="currentColor">Android app</text>
+                    <text x="108" y="83" font-size="10.5" text-anchor="middle" fill="var(--plain)">holds the group key</text>
+                    <rect x="20" y="106" width="176" height="52" rx="9" fill="none" stroke="var(--sealed)" stroke-width="1.6"/>
+                    <text x="108" y="130" font-size="13" font-weight="600" text-anchor="middle" fill="currentColor">iOS app</text>
+                    <text x="108" y="147" font-size="10.5" text-anchor="middle" fill="var(--plain)">holds the group key</text>
+                    <rect x="20" y="170" width="176" height="52" rx="9" fill="none" stroke="var(--plain)" stroke-width="1.4" stroke-dasharray="5 4"/>
+                    <text x="108" y="194" font-size="13" font-weight="600" text-anchor="middle" fill="currentColor">/g#token page</text>
+                    <text x="108" y="211" font-size="10.5" text-anchor="middle" fill="var(--plain)">landing only — no map</text>
+                    <rect x="330" y="88" width="200" height="118" rx="11" fill="none" stroke="currentColor" stroke-width="1.8"/>
+                    <text x="430" y="118" font-size="13.5" font-weight="700" text-anchor="middle" fill="currentColor">Relay function</text>
+                    <text x="430" y="137" font-size="10.5" text-anchor="middle" fill="var(--plain)">one endpoint, 8 actions</text>
+                    <line x1="350" y1="150" x2="510" y2="150" stroke="var(--rule)" stroke-width="1"/>
+                    <text x="430" y="169" font-size="10.5" text-anchor="middle" fill="var(--plain)">stateless</text>
+                    <text x="430" y="187" font-size="10.5" text-anchor="middle" fill="var(--plain)">no key material</text>
+                    <rect x="672" y="88" width="200" height="118" rx="11" fill="none" stroke="currentColor" stroke-width="1.8"/>
+                    <text x="772" y="118" font-size="13.5" font-weight="700" text-anchor="middle" fill="currentColor">Redis</text>
+                    <text x="772" y="137" font-size="10.5" text-anchor="middle" fill="var(--plain)">6 key shapes</text>
+                    <line x1="692" y1="150" x2="852" y2="150" stroke="var(--rule)" stroke-width="1"/>
+                    <text x="772" y="169" font-size="10.5" text-anchor="middle" fill="var(--plain)">every key carries a TTL</text>
+                    <text x="772" y="187" font-size="10.5" text-anchor="middle" fill="var(--plain)">the group dies on its own</text>
+                    <rect x="330" y="272" width="200" height="56" rx="9" fill="none" stroke="var(--plain)" stroke-width="1.4"/>
+                    <text x="430" y="296" font-size="12.5" font-weight="600" text-anchor="middle" fill="currentColor">Auth provider</text>
+                    <text x="430" y="313" font-size="10.5" text-anchor="middle" fill="var(--plain)">verifies ID token → uid</text>
+                    <line x1="196" y1="68" x2="322" y2="120" stroke="var(--sealed)" stroke-width="1.6" marker-end="url(#arc)"/>
+                    <line x1="196" y1="132" x2="322" y2="140" stroke="var(--sealed)" stroke-width="1.6" marker-end="url(#arc)"/>
+                    <line x1="196" y1="196" x2="322" y2="170" stroke="var(--plain)" stroke-width="1.3" stroke-dasharray="5 4" marker-end="url(#ar)"/>
+                    <text x="258" y="86" font-size="10.5" font-weight="600" text-anchor="middle" fill="var(--sealed)">POST sealed</text>
+                    <text x="258" y="99" font-size="10.5" text-anchor="middle" fill="var(--sealed)">envelopes</text>
+                    <text x="252" y="205" font-size="10.5" text-anchor="middle" fill="var(--plain)">resolve only</text>
+                    <line x1="530" y1="133" x2="664" y2="133" stroke="currentColor" stroke-width="1.6" marker-end="url(#ar)"/>
+                    <line x1="664" y1="163" x2="530" y2="163" stroke="currentColor" stroke-width="1.6" marker-end="url(#ar)"/>
+                    <text x="597" y="124" font-size="10.5" font-weight="600" text-anchor="middle" fill="currentColor">atomic scripts</text>
+                    <text x="597" y="180" font-size="10.5" text-anchor="middle" fill="var(--plain)">opaque blobs</text>
+                    <line x1="430" y1="206" x2="430" y2="264" stroke="var(--plain)" stroke-width="1.4" marker-end="url(#ar)"/>
+                    <text x="440" y="240" font-size="10.5" fill="var(--plain)">7 of 8 actions</text>
+                </svg>
+                <div class="legend">
+                    <span><span class="swatch" style="background:var(--cyan)"></span> holds or carries sealed data</span>
+                    <span><span class="swatch" style="background:var(--muted)"></span> plaintext / no key material</span>
+                    <span><span class="swatch" style="background:transparent;border:1.4px dashed var(--muted)"></span> browser, not an app client</span>
+                </div>
+                <figcaption><b>The web page behind an invite link is a landing page, not a viewer.</b> It confirms the invite is live and then points you at the app. Live group maps exist only in the apps, because only the apps hold the key that makes the positions readable.</figcaption>
+            </figure>
+
+            <p class="kicker">2 · Trust boundary</p>
+            <h2>What the relay can see, and what it provably cannot</h2>
+
+            <p>The invite token is the root secret. It is generated on the creator's device, never transmitted, and every readable field in the system is encrypted under a key derived from it. What the relay receives is a hash of that token — enough to look a group up, useless for reading anything inside it.</p>
+
+            <figure class="bleed">
+                <svg viewBox="0 0 900 430" role="img" aria-label="The invite token stays on the client, where HKDF derives the group key that seals every envelope. The relay receives only a SHA-256 of the token plus plaintext routing fields.">
+                    <defs>
+                        <marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="currentColor"/></marker>
+                        <marker id="ar2c" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="var(--sealed)"/></marker>
+                    </defs>
+                    <line x1="450" y1="16" x2="450" y2="404" stroke="var(--danger)" stroke-width="1.6" stroke-dasharray="7 6"/>
+                    <text x="450" y="422" font-size="10.5" font-weight="700" text-anchor="middle" fill="var(--danger)">TRUST BOUNDARY — nothing left of this line is transmitted</text>
+                    <text x="20" y="26" font-size="11" font-weight="700" letter-spacing="1.5" fill="var(--sealed)">ON THE DEVICE</text>
+                    <text x="482" y="26" font-size="11" font-weight="700" letter-spacing="1.5" fill="var(--plain)">IN REDIS</text>
+                    <rect x="20" y="44" width="200" height="54" rx="9" fill="none" stroke="var(--sealed)" stroke-width="1.8"/>
+                    <text x="120" y="67" font-size="12.5" font-weight="700" text-anchor="middle" fill="currentColor">invite token</text>
+                    <text x="120" y="85" font-size="10.5" text-anchor="middle" fill="var(--plain)">16 random bytes</text>
+                    <line x1="120" y1="98" x2="120" y2="132" stroke="var(--sealed)" stroke-width="1.6" marker-end="url(#ar2c)"/>
+                    <text x="130" y="119" font-size="10.5" fill="var(--sealed)">HKDF-SHA256</text>
+                    <rect x="20" y="132" width="200" height="50" rx="9" fill="none" stroke="var(--sealed)" stroke-width="1.6"/>
+                    <text x="120" y="153" font-size="12.5" font-weight="700" text-anchor="middle" fill="currentColor">group key</text>
+                    <text x="120" y="170" font-size="10.5" text-anchor="middle" fill="var(--plain)">32 bytes, AES-256-GCM</text>
+                    <line x1="120" y1="182" x2="120" y2="216" stroke="var(--sealed)" stroke-width="1.6" marker-end="url(#ar2c)"/>
+                    <text x="130" y="203" font-size="10.5" fill="var(--sealed)">seals</text>
+                    <rect x="20" y="216" width="200" height="122" rx="9" fill="none" stroke="var(--sealed)" stroke-width="1.6"/>
+                    <text x="120" y="238" font-size="11.5" font-weight="700" text-anchor="middle" fill="currentColor">4 envelope purposes</text>
+                    <text x="34" y="260" font-size="10.5" fill="var(--plain)">meta — name, destination, start</text>
+                    <text x="34" y="278" font-size="10.5" fill="var(--plain)">roster — display name, avatar</text>
+                    <text x="34" y="296" font-size="10.5" fill="var(--plain)">pos — lat, lng, speed, bearing</text>
+                    <text x="34" y="314" font-size="10.5" fill="var(--plain)">code — the wrapped token</text>
+                    <text x="34" y="331" font-size="9.5" fill="var(--sealed)">AAD binds purpose + member id</text>
+                    <line x1="220" y1="62" x2="596" y2="62" stroke="var(--plain)" stroke-width="1.5" marker-end="url(#ar2)"/>
+                    <text x="400" y="53" font-size="10.5" font-weight="600" text-anchor="middle" fill="var(--plain)">only sha256(token) crosses</text>
+                    <line x1="220" y1="276" x2="596" y2="276" stroke="var(--sealed)" stroke-width="1.6" marker-end="url(#ar2c)"/>
+                    <text x="408" y="267" font-size="10.5" font-weight="600" text-anchor="middle" fill="var(--sealed)">ciphertext only</text>
+                    <rect x="600" y="40" width="280" height="106" rx="9" fill="none" stroke="var(--plain)" stroke-width="1.5"/>
+                    <text x="740" y="62" font-size="11.5" font-weight="700" text-anchor="middle" fill="currentColor">plaintext the relay uses</text>
+                    <text x="614" y="84" font-size="10.5" fill="var(--plain)">group id · member id · timestamps</text>
+                    <text x="614" y="102" font-size="10.5" fill="var(--plain)">revision · member count · state</text>
+                    <text x="614" y="120" font-size="10.5" fill="var(--plain)">sha256(token) · join code</text>
+                    <text x="614" y="138" font-size="9.5" fill="var(--plain)">enough to route and authorise, no more</text>
+                    <rect x="600" y="228" width="280" height="96" rx="9" fill="none" stroke="var(--sealed)" stroke-width="1.6"/>
+                    <text x="740" y="250" font-size="11.5" font-weight="700" text-anchor="middle" fill="currentColor">opaque to the relay</text>
+                    <text x="614" y="272" font-size="10.5" fill="var(--plain)">every coordinate ever synced</text>
+                    <text x="614" y="290" font-size="10.5" fill="var(--plain)">every name, avatar, destination</text>
+                    <text x="614" y="310" font-size="9.5" fill="var(--sealed)">a full database dump reveals none of it</text>
+                </svg>
+                <figcaption><b>The invite link puts the token in the URL fragment</b> — after the <code>#</code>, not in the path. Fragments are never sent in an HTTP request, so the token cannot appear in a server access log, a proxy, or a referrer header. Putting it in the path would have leaked the root secret of every group into logs, permanently.</figcaption>
+            </figure>
+
+            <p class="kicker">3 · Data model</p>
+            <h2>Six key shapes, two of which are lookup indirections</h2>
+
+            <p>A joiner arrives holding either a token or a six-character code, and neither of those is the group's identifier. Both resolve through a pointer key first. That indirection is what lets the code be short and disposable while the token stays the real secret.</p>
+
+            <figure class="bleed">
+                <svg viewBox="0 0 900 340" role="img" aria-label="Token hash and join code are pointer keys resolving to a group id, which fans out to four keys holding the record, members, revision counter and positions.">
+                    <defs><marker id="ar3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="currentColor"/></marker></defs>
+                    <text x="20" y="24" font-size="11" font-weight="700" letter-spacing="1.5" fill="var(--plain)">POINTERS</text>
+                    <rect x="20" y="40" width="238" height="58" rx="8" fill="none" stroke="currentColor" stroke-width="1.5"/>
+                    <text x="34" y="62" font-size="11.5" font-family="ui-monospace, monospace" fill="currentColor">group:tok:&lt;sha256&gt;</text>
+                    <text x="34" y="80" font-size="10.5" fill="var(--plain)">→ group id · TTL = group lifetime</text>
+                    <rect x="20" y="112" width="238" height="72" rx="8" fill="none" stroke="currentColor" stroke-width="1.5"/>
+                    <text x="34" y="134" font-size="11.5" font-family="ui-monospace, monospace" fill="currentColor">group:code:&lt;6 chars&gt;</text>
+                    <text x="34" y="152" font-size="10.5" fill="var(--plain)">→ group id + token, wrapped</text>
+                    <text x="34" y="169" font-size="10.5" fill="var(--amber)">TTL 30 min — expires early, on purpose</text>
+                    <line x1="258" y1="69" x2="330" y2="120" stroke="currentColor" stroke-width="1.5" marker-end="url(#ar3)"/>
+                    <line x1="258" y1="148" x2="330" y2="140" stroke="currentColor" stroke-width="1.5" marker-end="url(#ar3)"/>
+                    <rect x="334" y="108" width="150" height="46" rx="8" fill="none" stroke="var(--sealed)" stroke-width="1.8"/>
+                    <text x="409" y="136" font-size="13" font-weight="700" text-anchor="middle" fill="currentColor">group id</text>
+                    <text x="556" y="24" font-size="11" font-weight="700" letter-spacing="1.5" fill="var(--plain)">GROUP STATE</text>
+                    <line x1="484" y1="126" x2="548" y2="62" stroke="currentColor" stroke-width="1.4" marker-end="url(#ar3)"/>
+                    <line x1="484" y1="128" x2="548" y2="135" stroke="currentColor" stroke-width="1.4" marker-end="url(#ar3)"/>
+                    <line x1="484" y1="132" x2="548" y2="208" stroke="currentColor" stroke-width="1.4" marker-end="url(#ar3)"/>
+                    <line x1="484" y1="136" x2="548" y2="281" stroke="currentColor" stroke-width="1.4" marker-end="url(#ar3)"/>
+                    <rect x="552" y="40" width="328" height="46" rx="8" fill="none" stroke="currentColor" stroke-width="1.4"/>
+                    <text x="566" y="61" font-size="11.5" font-family="ui-monospace, monospace" fill="currentColor">group:&lt;id&gt;</text>
+                    <text x="566" y="78" font-size="10.5" fill="var(--plain)">record + sealed meta envelope</text>
+                    <rect x="552" y="113" width="328" height="46" rx="8" fill="none" stroke="currentColor" stroke-width="1.4"/>
+                    <text x="566" y="134" font-size="11.5" font-family="ui-monospace, monospace" fill="currentColor">group:&lt;id&gt;:members</text>
+                    <text x="566" y="151" font-size="10.5" fill="var(--plain)">hash: member → sealed roster</text>
+                    <rect x="552" y="186" width="328" height="46" rx="8" fill="none" stroke="currentColor" stroke-width="1.4"/>
+                    <text x="566" y="207" font-size="11.5" font-family="ui-monospace, monospace" fill="currentColor">group:&lt;id&gt;:rev</text>
+                    <text x="566" y="224" font-size="10.5" fill="var(--plain)">roster revision counter</text>
+                    <rect x="552" y="259" width="328" height="46" rx="8" fill="none" stroke="currentColor" stroke-width="1.4"/>
+                    <text x="566" y="280" font-size="11.5" font-family="ui-monospace, monospace" fill="currentColor">group:&lt;id&gt;:pos</text>
+                    <text x="566" y="297" font-size="10.5" fill="var(--plain)">hash: member → sealed position</text>
+                </svg>
+                <figcaption><b>The code key holds the token wrapped under a key derived from the code itself</b>, using a different derivation label so the same input could never produce both keys. Someone who typed six characters can therefore unwrap the real token locally. The relay cannot — it has neither the code-derived key nor the token.</figcaption>
+            </figure>
+
+            <div class="callout callout--warn">
+                <p><b>Every key carries a TTL, and that is the deletion story.</b> There is no cleanup job and no scheduled sweep. A group expires because Redis drops it — which is also why the leave path re-applies the remaining lifetime after any write: setting a value clears the expiry, and a group that quietly lost its TTL would outlive its own end date in the least visible way possible.</p>
+            </div>
+
+            <p class="kicker">4 · API surface</p>
+            <h2>One function, eight actions</h2>
+
+            <p>All eight live behind a single endpoint and dispatch on the path segment. Seven verify a signed ID token and derive the caller's identity from it. One does not, deliberately.</p>
+
+            <div class="table-wrap bleed">
+                <table>
+                    <thead><tr><th>Action</th><th>Auth</th><th>Does</th><th>Guards</th></tr></thead>
+                    <tbody>
+                        <tr><td><code>create</code></td><td><span class="pill pill-auth">signed in</span></td><td>Writes all five keys in one atomic call, returns the group id and code</td><td>Fails if the token hash or code already exists</td></tr>
+                        <tr><td><code>resolve</code></td><td><span class="pill pill-open">open</span></td><td>Token hash → group id; code → group id plus the wrapped token</td><td>Rate limited per hashed IP</td></tr>
+                        <tr><td><code>join</code></td><td><span class="pill pill-auth">signed in</span></td><td>Adds the member and their sealed roster envelope</td><td>Capacity checked atomically; per-account hourly cap</td></tr>
+                        <tr><td><code>sync</code></td><td><span class="pill pill-auth">signed in</span></td><td>Writes your position, returns everyone else's, plus the roster if yours is stale</td><td>Membership re-checked every call; write floor</td></tr>
+                        <tr><td><code>state</code></td><td><span class="pill pill-auth">signed in</span></td><td>Moves the group between preparing, live and ended</td><td>Leader only; re-applies remaining lifetime</td></tr>
+                        <tr><td><code>leave</code></td><td><span class="pill pill-auth">signed in</span></td><td>A member exits — or, if the caller is the leader, the group ends</td><td>Two different paths; see below</td></tr>
+                        <tr><td><code>remove</code></td><td><span class="pill pill-auth">signed in</span></td><td>Leader removes a member</td><td>Leader only; cannot remove the leader</td></tr>
+                        <tr><td><code>meta</code></td><td><span class="pill pill-auth">signed in</span></td><td>Replaces the sealed meta envelope: destination, start time</td><td>Leader only; envelope size capped</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="callout">
+                <p><b><code>leave</code> is two operations behind one name.</b> If the caller owns the group, the handler never runs the leave script at all — it routes to the same end-group path that <code>state</code> uses, and everyone is told the leader left. Any other member runs the script, which removes them and bumps the revision. Only when that leaves <b>zero</b> members does the script delete all six keys outright: an empty group is not a group, and waiting for the TTL would leave one sitting there for hours.</p>
+            </div>
+
+            <div class="callout">
+                <p><b>Why <code>resolve</code> is open.</b> Someone tapping an invite link may not have signed in yet, and putting an account wall in front of "is this invite even real?" would be hostile. The cost is that it cannot be limited per account — so it is limited per IP instead, and the IP is stored as a hash rather than in the clear, because a rate-limit counter is not a reason to keep a log of who looked at what.</p>
+            </div>
+
+            <p class="kicker">5 · Join</p>
+            <h2>Two paths in, and only one of them knows a code</h2>
+
+            <figure class="bleed">
+                <svg viewBox="0 0 900 470" role="img" aria-label="Sequence showing the link path resolving by token hash and the code path resolving by code then unwrapping the token locally, both converging on a single join call.">
+                    <defs>
+                        <marker id="ar4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="currentColor"/></marker>
+                        <marker id="ar4c" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="var(--sealed)"/></marker>
+                    </defs>
+                    <text x="110" y="22" font-size="12" font-weight="700" text-anchor="middle" fill="currentColor">Joiner</text>
+                    <text x="450" y="22" font-size="12" font-weight="700" text-anchor="middle" fill="currentColor">Relay</text>
+                    <text x="790" y="22" font-size="12" font-weight="700" text-anchor="middle" fill="currentColor">Redis</text>
+                    <line x1="110" y1="32" x2="110" y2="440" stroke="var(--rule)" stroke-width="1.4"/>
+                    <line x1="450" y1="32" x2="450" y2="440" stroke="var(--rule)" stroke-width="1.4"/>
+                    <line x1="790" y1="32" x2="790" y2="440" stroke="var(--rule)" stroke-width="1.4"/>
+                    <rect x="16" y="44" width="118" height="20" rx="4" fill="rgba(41,182,246,.14)"/>
+                    <text x="24" y="58" font-size="10.5" font-weight="700" fill="var(--cyan)">LINK PATH</text>
+                    <text x="118" y="84" font-size="10.5" fill="var(--plain)">reads token from the URL fragment</text>
+                    <line x1="110" y1="96" x2="442" y2="96" stroke="currentColor" stroke-width="1.4" marker-end="url(#ar4)"/>
+                    <text x="276" y="90" font-size="10.5" font-weight="600" text-anchor="middle" fill="currentColor">resolve by token hash</text>
+                    <line x1="450" y1="112" x2="782" y2="112" stroke="currentColor" stroke-width="1.3" marker-end="url(#ar4)"/>
+                    <text x="616" y="106" font-size="10" text-anchor="middle" fill="var(--plain)">read pointer key</text>
+                    <line x1="442" y1="132" x2="118" y2="132" stroke="currentColor" stroke-width="1.3" marker-end="url(#ar4)"/>
+                    <text x="280" y="126" font-size="10" text-anchor="middle" fill="var(--plain)">group id (+ code, for re-sharing)</text>
+                    <rect x="16" y="160" width="124" height="20" rx="4" fill="rgba(245,158,11,.16)"/>
+                    <text x="24" y="174" font-size="10.5" font-weight="700" fill="var(--amber)">CODE PATH</text>
+                    <text x="118" y="200" font-size="10.5" fill="var(--plain)">user types six characters</text>
+                    <line x1="110" y1="212" x2="442" y2="212" stroke="currentColor" stroke-width="1.4" marker-end="url(#ar4)"/>
+                    <text x="276" y="206" font-size="10.5" font-weight="600" text-anchor="middle" fill="currentColor">resolve by code</text>
+                    <text x="276" y="228" font-size="10" text-anchor="middle" fill="var(--amber)">rate limited per IP</text>
+                    <line x1="442" y1="248" x2="118" y2="248" stroke="var(--sealed)" stroke-width="1.4" marker-end="url(#ar4c)"/>
+                    <text x="280" y="242" font-size="10" text-anchor="middle" fill="var(--sealed)">group id + token wrapped under the code</text>
+                    <rect x="30" y="264" width="164" height="38" rx="7" fill="none" stroke="var(--sealed)" stroke-width="1.5"/>
+                    <text x="112" y="279" font-size="10.5" font-weight="600" text-anchor="middle" fill="currentColor">unwrap locally</text>
+                    <text x="112" y="294" font-size="9.5" text-anchor="middle" fill="var(--plain)">code → key → token</text>
+                    <line x1="16" y1="322" x2="884" y2="322" stroke="var(--rule)" stroke-width="1" stroke-dasharray="4 4"/>
+                    <text x="24" y="340" font-size="10.5" font-weight="700" fill="currentColor">BOTH PATHS — now holding the token</text>
+                    <line x1="110" y1="360" x2="442" y2="360" stroke="var(--sealed)" stroke-width="1.6" marker-end="url(#ar4c)"/>
+                    <text x="276" y="354" font-size="10.5" font-weight="600" text-anchor="middle" fill="var(--sealed)">join — sealed roster envelope</text>
+                    <text x="276" y="375" font-size="10" text-anchor="middle" fill="var(--plain)">signed ID token → member identity</text>
+                    <line x1="450" y1="392" x2="782" y2="392" stroke="currentColor" stroke-width="1.3" marker-end="url(#ar4)"/>
+                    <text x="616" y="386" font-size="10" text-anchor="middle" fill="var(--plain)">atomic: capacity check, add, bump revision</text>
+                    <line x1="442" y1="420" x2="118" y2="420" stroke="currentColor" stroke-width="1.3" marker-end="url(#ar4)"/>
+                    <text x="280" y="414" font-size="10" text-anchor="middle" fill="var(--plain)">member count, revision, sync interval</text>
+                </svg>
+                <figcaption><b>The relay never sees a token on either path.</b> The link path sends its hash; the code path gets the token back already wrapped, and unwraps it on the device. By the time <code>join</code> is called, a single flag is all that distinguishes the two — which is exactly why that flag has to be threaded honestly. Both paths converge on one handler, and hardcoding it there quietly recorded every link-join as a code-join for a couple of releases.</figcaption>
+            </figure>
+
+            <p class="kicker">6 · The hot path</p>
+            <h2>Sync is the only endpoint that runs in a loop</h2>
+
+            <p>Every other action fires once. <code>sync</code> runs for the life of the group on every member's device, so its cost <em>is</em> the system's cost — and the server, not the client, decides how often it happens.</p>
+
+            <figure class="bleed">
+                <svg viewBox="0 0 900 300" role="img" aria-label="Client conditions map to server-chosen sync intervals, with a failure branch entering exponential backoff.">
+                    <defs><marker id="ar5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="currentColor"/></marker></defs>
+                    <text x="20" y="22" font-size="11" font-weight="700" letter-spacing="1.5" fill="var(--plain)">CLIENT REPORTS</text>
+                    <text x="480" y="22" font-size="11" font-weight="700" letter-spacing="1.5" fill="var(--sealed)">SERVER RETURNS</text>
+                    <rect x="20" y="36" width="220" height="38" rx="7" fill="none" stroke="currentColor" stroke-width="1.4"/>
+                    <text x="34" y="60" font-size="11.5" fill="currentColor">moving · app in foreground</text>
+                    <rect x="20" y="84" width="220" height="38" rx="7" fill="none" stroke="currentColor" stroke-width="1.4"/>
+                    <text x="34" y="108" font-size="11.5" fill="currentColor">moving · app backgrounded</text>
+                    <rect x="20" y="132" width="220" height="38" rx="7" fill="none" stroke="currentColor" stroke-width="1.4"/>
+                    <text x="34" y="156" font-size="11.5" fill="currentColor">stationary</text>
+                    <rect x="20" y="180" width="220" height="38" rx="7" fill="none" stroke="currentColor" stroke-width="1.4"/>
+                    <text x="34" y="204" font-size="11.5" fill="currentColor">group not started yet</text>
+                    <line x1="240" y1="55" x2="466" y2="55" stroke="currentColor" stroke-width="1.4" marker-end="url(#ar5)"/>
+                    <line x1="240" y1="103" x2="466" y2="103" stroke="currentColor" stroke-width="1.4" marker-end="url(#ar5)"/>
+                    <line x1="240" y1="151" x2="466" y2="151" stroke="currentColor" stroke-width="1.4" marker-end="url(#ar5)"/>
+                    <line x1="240" y1="199" x2="466" y2="199" stroke="currentColor" stroke-width="1.4" marker-end="url(#ar5)"/>
+                    <text x="530" y="61" font-size="15" font-weight="700" fill="var(--sealed)">10 s</text>
+                    <text x="530" y="109" font-size="15" font-weight="700" fill="var(--sealed)">20 s</text>
+                    <text x="530" y="157" font-size="15" font-weight="700" fill="var(--sealed)">60 s</text>
+                    <text x="530" y="205" font-size="15" font-weight="700" fill="var(--sealed)">30 s</text>
+                    <text x="600" y="61" font-size="10.5" fill="var(--plain)">the live case</text>
+                    <text x="600" y="109" font-size="10.5" fill="var(--plain)">screen off, still recording</text>
+                    <text x="600" y="157" font-size="10.5" fill="var(--plain)">a parked rider costs little</text>
+                    <text x="600" y="205" font-size="10.5" fill="var(--plain)">nobody is moving yet</text>
+                    <line x1="20" y1="240" x2="880" y2="240" stroke="var(--rule)" stroke-width="1" stroke-dasharray="4 4"/>
+                    <text x="20" y="262" font-size="11.5" font-weight="700" fill="var(--amber)">on failure</text>
+                    <text x="112" y="262" font-size="11.5" fill="var(--plain)">retryable → back off exponentially to a ceiling, with jitter</text>
+                    <text x="112" y="282" font-size="11.5" fill="var(--plain)">not retryable → stop; the group is over for this client</text>
+                </svg>
+                <figcaption><b>The interval is served, not compiled in.</b> Every sync response carries the next interval, clamped server-side, so load can be shed globally by changing one setting instead of shipping a client release. A client that ignores it and writes too fast is told to slow down.</figcaption>
+            </figure>
+
+            <div class="callout">
+                <p><b>Roster transfer is revision-gated.</b> The client sends the revision it last saw; the roster comes back only when the server's counter has moved. Positions are small and change constantly, rosters are larger and change rarely — sending both every ten seconds would spend most of the bandwidth re-sending names nobody changed. A member whose position has gone stale is dropped from the response entirely rather than drawn as a ghost.</p>
+            </div>
+
+            <p class="kicker">7 · Limits</p>
+            <h2>What stops it being abused</h2>
+
+            <div class="table-wrap bleed">
+                <table>
+                    <thead><tr><th>Bound</th><th>Enforced where</th><th>Why it exists</th></tr></thead>
+                    <tbody>
+                        <tr><td>Members per group</td><td>Inside the atomic join script</td><td>Two simultaneous joins cannot both pass a capacity check that runs outside the write</td></tr>
+                        <tr><td>Group lifetime</td><td>Key TTL</td><td>The group's whole existence; expiry <em>is</em> the deletion</td></tr>
+                        <tr><td>Join-code lifetime</td><td>TTL on the code key</td><td>Much shorter than the group — a six-character code is guessable, a token is not</td></tr>
+                        <tr><td>Code lookups</td><td>Per hashed IP</td><td>Makes guessing codes at volume uneconomic</td></tr>
+                        <tr><td>Join attempts</td><td>Per account</td><td>Caps how far a guessed code can actually get</td></tr>
+                        <tr><td>Position writes</td><td>Timestamp compare in the sync script</td><td>A floor on the hot path regardless of what a client believes</td></tr>
+                        <tr><td>Envelope sizes</td><td>Request validation</td><td>Bounds a blob nobody on the server can inspect</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="callout">
+                <p><b>A removed member still holds the key.</b> They can decrypt anything they already have, and nothing can take that back — so authorisation, not cryptography, is the enforcement point. Every sync re-checks membership and refuses the moment the member is gone, which is why that check sits inside the atomic script rather than in a cached session.</p>
+            </div>
+
+            <p class="kicker">8 · Why every mutation is a script</p>
+            <h2>Two problems, one answer</h2>
+
+            <p><b>Atomicity.</b> Creating a group writes five keys. If the token pointer landed and the record did not, the group would be permanently unreachable while still occupying its code — and half-written state in a store with no schema is very hard to detect later. The create script writes all five or none.</p>
+
+            <p><b>Connection safety.</b> The Redis client multiplexes a single connection, and a serverless function can serve several requests concurrently on one instance — so a transaction block from one request can interleave with commands from another. Scripting sidesteps that entire class of bug, at the cost of one round trip.</p>
+
+            <p>There is a smaller lesson in there too. Script arguments are asserted before every call, because the failure mode is silent: an out-of-range argument reads as <code>nil</code> rather than raising, so a miscount does not crash — it writes the wrong thing, quietly, and you find out much later.</p>
+
+            <h2>The part worth stealing</h2>
+
+            <p>None of this is exotic. It is a hash table, some expiry, and a key that never leaves the phone. The only real decision was refusing the easy version at the start — because retrofitting "the server cannot read this" onto a system that already could would have meant rebuilding all of it.</p>
+
+            <div class="article-end">
+                <p>Questions, or think we got something wrong? <a href="mailto:dev.shvms@gmail.com">Tell us</a>.</p>
+                <a class="btn btn-primary" href="/#releases">Get TrackMe</a>
+            </div>
+        </article>
+    </main>
+
+    <footer class="site-footer">
+        <div class="section-shell footer-inner">
+            <a class="brand brand-footer" href="/">
+                <img class="brand-mark" src="/assets/trackme-logo.png" width="32" height="32" alt="" aria-hidden="true">
+                <span>TrackMe</span>
+            </a>
+            <div>
+                <a href="/blogs">Blog</a>
+                <a href="/privacy.html">Privacy policy</a>
+                <a href="/#support">Support</a>
+                <a href="mailto:dev.shvms@gmail.com">Contact</a>
+            </div>
+            <p>&copy; 2026 TrackMe. Built for people who want their routes to stay theirs.</p>
+        </div>
+    </footer>
+
+    <script>
+        (function () {
+            var bar = document.getElementById('read-progress');
+            var article = document.querySelector('.article');
+            if (!bar || !article) return;
+            var ticking = false;
+            function update() {
+                var rect = article.getBoundingClientRect();
+                var total = rect.height - window.innerHeight;
+                var scrolled = total > 0 ? Math.min(1, Math.max(0, -rect.top / total)) : 0;
+                bar.style.transform = 'scaleX(' + scrolled + ')';
+                ticking = false;
+            }
+            addEventListener('scroll', function () {
+                if (!ticking) { ticking = true; requestAnimationFrame(update); }
+            }, { passive: true });
+            addEventListener('resize', update, { passive: true });
+            update();
+        })();
+
+        fetch('/api/telemetry/event', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ event: 'blog_post_viewed', properties: { slug: 'group-ride-architecture' } })
+        }).catch(() => {});
+    </script>
+</body>
+</html>

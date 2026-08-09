@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Engineering and product writing from the team building TrackMe — how a privacy-first GPS tracker is actually built, and the decisions behind it.">
+    <meta name="theme-color" content="#0b1320">
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="TrackMe Blog | Notes from building a private tracker">
+    <meta property="og:description" content="How a privacy-first GPS tracker is actually built, and the decisions behind it.">
+    <meta property="og:url" content="https://trackme.shvms.in/blogs">
+    <meta property="og:image" content="https://trackme.shvms.in/assets/blog/group-ride-architecture.svg">
+    <link rel="canonical" href="https://trackme.shvms.in/blogs">
+    <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png">
+    <link rel="icon" type="image/png" sizes="48x48" href="/assets/favicon-48.png">
+    <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="TrackMe Blog">
+    <meta name="twitter:description" content="How a privacy-first GPS tracker is actually built, and the decisions behind it.">
+    <title>Blog | TrackMe</title>
+    <link rel="stylesheet" href="/style.css?v=2">
+    <link rel="stylesheet" href="/blog.css?v=1">
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "Blog",
+      "name": "TrackMe Blog",
+      "url": "https://trackme.shvms.in/blogs",
+      "description": "Engineering and product writing from the team building TrackMe.",
+      "publisher": { "@type": "Organization", "name": "TrackMe", "url": "https://trackme.shvms.in/" }
+    }
+    </script>
+</head>
+<body class="blog-page">
+    <a class="skip-link" href="#main-content">Skip to content</a>
+
+    <header class="site-header">
+        <div class="site-header-inner">
+            <a class="brand" href="/" aria-label="TrackMe home">
+                <img class="brand-mark" src="/assets/trackme-logo.png" width="32" height="32" alt="" aria-hidden="true">
+                <span>TrackMe</span>
+            </a>
+            <nav class="site-nav" aria-label="Primary navigation">
+                <a href="/#features">Features</a>
+                <a href="/#releases">Get the app</a>
+                <a href="/#support">Support</a>
+                <a href="/blogs" aria-current="page" style="color:var(--cyan)">Blog</a>
+            </nav>
+        </div>
+    </header>
+
+    <main id="main-content">
+        <section class="blog-hero">
+            <div class="section-shell blog-hero-inner">
+                <p class="eyebrow">TrackMe journal</p>
+                <h1>Notes from building a tracker that keeps its mouth shut</h1>
+                <p>Engineering decisions, product arguments, and the occasional thing we got wrong — written by the people building TrackMe. No growth-hacking listicles.</p>
+            </div>
+        </section>
+
+        <section class="section-shell post-list" aria-label="All posts">
+
+            <!-- ===================================================================
+                 NEW POST TEMPLATE — copy this block, put it first, drop the
+                 `post-card--featured` class from the one below it.
+
+                 <a class="post-card post-card--featured" href="/blogs/SLUG">
+                   <img class="post-cover" src="/assets/blog/SLUG.svg" alt="" width="1200" height="630" loading="lazy" decoding="async">
+                   <div class="post-card-body">
+                     <p class="post-meta">
+                       <time datetime="YYYY-MM-DD">D Month YYYY</time>
+                       <span class="dot">·</span><span>N min read</span>
+                       <span class="tag">Tag</span>
+                     </p>
+                     <h2>Title</h2>
+                     <p class="post-excerpt">One or two sentences.</p>
+                     <span class="post-more">Read the post</span>
+                   </div>
+                 </a>
+                 =================================================================== -->
+
+            <div class="post-grid">
+                <a class="post-card post-card--featured" href="/blogs/group-ride-architecture">
+                    <img class="post-cover"
+                         src="/assets/blog/group-ride-architecture.svg"
+                         alt="A key derived on a device seals four envelopes; across a dashed trust boundary the same shapes appear as unreadable blocks."
+                         width="1200" height="630" loading="eager" decoding="async">
+                    <div class="post-card-body">
+                        <p class="post-meta">
+                            <time datetime="2026-08-09">9 August 2026</time>
+                            <span class="dot">·</span><span>9 min read</span>
+                            <span class="tag">Architecture</span>
+                        </p>
+                        <h2>The relay that cannot read its own traffic</h2>
+                        <p class="post-excerpt">Group Ride lets several riders watch each other move on one live map. The server carrying those positions holds no key to any of them — and every other design decision, from the Redis layout to the two-step join, follows from that one constraint.</p>
+                        <span class="post-more">Read the post</span>
+                    </div>
+                </a>
+            </div>
+
+            <p class="post-upcoming">More posts are on the way — offline-first storage, what the battery actually costs, and why the SOS button was removed.</p>
+        </section>
+    </main>
+
+    <footer class="site-footer">
+        <div class="section-shell footer-inner">
+            <a class="brand brand-footer" href="/">
+                <img class="brand-mark" src="/assets/trackme-logo.png" width="32" height="32" alt="" aria-hidden="true">
+                <span>TrackMe</span>
+            </a>
+            <div>
+                <a href="/blogs">Blog</a>
+                <a href="/privacy.html">Privacy policy</a>
+                <a href="/#support">Support</a>
+                <a href="mailto:dev.shvms@gmail.com">Contact</a>
+            </div>
+            <p>&copy; 2026 TrackMe. Built for people who want their routes to stay theirs.</p>
+        </div>
+    </footer>
+
+    <script>
+        fetch('/api/telemetry/event', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ event: 'blog_index_viewed', properties: { page: 'blogs' } })
+        }).catch(() => {});
+    </script>
+</body>
+</html>

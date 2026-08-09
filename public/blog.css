@@ -1,0 +1,524 @@
+/* ---------------------------------------------------------------------------
+   TrackMe blog — layered on style.css, reusing its tokens rather than
+   redefining them. Nothing here overrides a landing-page class; every selector
+   is scoped to .blog-* or .article so the two can evolve independently.
+   --------------------------------------------------------------------------- */
+
+.blog-page {
+    /* Local aliases so diagram SVGs can be authored once and read on this ground.
+       `--sealed` is the encoding used throughout the first post: cyan means the
+       relay cannot read it. */
+    --sealed: var(--cyan);
+    --plain: var(--muted);
+    --rule: rgba(148, 163, 184, .20);
+    --soft: rgba(41, 182, 246, .09);
+    --measure: 70ch;
+}
+
+/* ---- reading progress ---------------------------------------------------- */
+
+.read-progress {
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 30;
+    height: 2px;
+    width: 100%;
+    transform: scaleX(0);
+    transform-origin: 0 50%;
+    background: linear-gradient(90deg, var(--cyan-deep), var(--cyan));
+    will-change: transform;
+}
+
+/* ---- hero ---------------------------------------------------------------- */
+
+.blog-hero {
+    position: relative;
+    overflow: hidden;
+    border-bottom: 1px solid rgba(41, 182, 246, .16);
+    background:
+        radial-gradient(900px 420px at 12% -10%, rgba(41, 182, 246, .13), transparent 62%),
+        var(--night);
+}
+
+.blog-hero::after {
+    /* A faint route line — the product's own mark, not a generic tech texture. */
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1200 320' preserveAspectRatio='none'><path d='M-20 268 C 160 236, 250 96, 420 104 S 720 168, 880 96 S 1120 34, 1220 22' fill='none' stroke='%2329B6F6' stroke-opacity='0.14' stroke-width='2.5' stroke-linecap='round'/></svg>");
+    background-repeat: no-repeat;
+    background-size: 100% 100%;
+    pointer-events: none;
+}
+
+.blog-hero-inner {
+    position: relative;
+    z-index: 1;
+    padding: 72px 0 60px;
+    max-width: 62ch;
+}
+
+.blog-hero h1 {
+    margin: 0 0 16px;
+    font-size: clamp(2.1rem, 5.2vw, 3.3rem);
+    line-height: 1.04;
+    letter-spacing: -.025em;
+    font-weight: 800;
+    text-wrap: balance;
+}
+
+.blog-hero p {
+    margin: 0;
+    color: var(--muted-strong);
+    font-size: 1.08rem;
+    line-height: 1.62;
+}
+
+/* ---- listing ------------------------------------------------------------- */
+
+.post-list {
+    padding: 56px 0 96px;
+    display: grid;
+    gap: 26px;
+}
+
+.post-grid {
+    display: grid;
+    gap: 26px;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+}
+
+.post-card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    background: var(--night-soft);
+    border: 1px solid rgba(148, 163, 184, .16);
+    border-radius: var(--radius);
+    overflow: hidden;
+    text-decoration: none;
+    transition: transform .2s var(--ease), border-color .2s var(--ease), box-shadow .2s var(--ease);
+}
+
+.post-card::before {
+    /* Hairline that lights up on hover — the only motion on the card. */
+    content: "";
+    position: absolute;
+    inset: 0 0 auto;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--cyan), transparent);
+    opacity: 0;
+    transition: opacity .2s var(--ease);
+}
+
+.post-card:hover,
+.post-card:focus-visible {
+    transform: translateY(-3px);
+    border-color: rgba(41, 182, 246, .42);
+    box-shadow: var(--shadow-2);
+}
+
+.post-card:hover::before,
+.post-card:focus-visible::before { opacity: 1; }
+
+.post-cover {
+    display: block;
+    width: 100%;
+    /* The markup keeps width/height attributes so the browser reserves space before the image
+       loads. Those attributes are presentational hints that outrank `aspect-ratio`, so height
+       must be released here or every cover renders 630px tall regardless of its column. */
+    height: auto;
+    aspect-ratio: 1200 / 630;
+    /* `contain`, not `cover`. These covers are diagrams — cropping one does not lose
+       decoration, it loses the meaning. The first post's cover put its key and its label
+       on the left, exactly where a centre crop cuts. */
+    object-fit: contain;
+    background: var(--night);
+    border-bottom: 1px solid rgba(148, 163, 184, .12);
+}
+
+.post-card-body {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 20px 22px 24px;
+    flex: 1;
+}
+
+.post-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    font-size: .72rem;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    font-weight: 700;
+    color: var(--muted);
+}
+
+.post-meta time { font-variant-numeric: tabular-nums; }
+.post-meta .dot { opacity: .5; }
+
+.tag {
+    padding: 3px 9px;
+    border-radius: 100px;
+    background: rgba(41, 182, 246, .13);
+    color: var(--cyan);
+    letter-spacing: .08em;
+}
+
+.post-card h2,
+.post-card h3 {
+    margin: 0;
+    font-family: "Space Grotesk", Inter, sans-serif;
+    font-size: 1.22rem;
+    line-height: 1.24;
+    letter-spacing: -.015em;
+    font-weight: 700;
+    color: var(--ink);
+    text-wrap: balance;
+}
+
+.post-excerpt {
+    margin: 0;
+    color: var(--muted-strong);
+    font-size: .93rem;
+    line-height: 1.58;
+}
+
+.post-more {
+    margin-top: auto;
+    padding-top: 6px;
+    color: var(--cyan);
+    font-weight: 700;
+    font-size: .88rem;
+}
+
+.post-more::after {
+    content: " →";
+    display: inline-block;
+    transition: transform .2s var(--ease);
+}
+
+.post-card:hover .post-more::after { transform: translateX(3px); }
+
+/* Featured — the newest post gets the wide treatment. */
+@media (min-width: 860px) {
+    .post-card--featured {
+        grid-column: 1 / -1;
+        flex-direction: row;
+        align-items: stretch;
+    }
+
+    .post-card--featured .post-cover {
+        /* Keeps its natural ratio and centres in the row, so the card's height comes from the
+           text rather than from a stretched image. Stretching produced a 632px-tall card. */
+        width: 52%;
+        align-self: center;
+        border-bottom: 0;
+        padding: 16px;
+    }
+
+    .post-card--featured .post-card-body {
+        justify-content: center;
+        padding: 34px 38px;
+        gap: 13px;
+        border-left: 1px solid rgba(148, 163, 184, .12);
+    }
+
+    .post-card--featured h2 { font-size: 1.85rem; }
+    .post-card--featured .post-excerpt { font-size: 1rem; }
+}
+
+/* ---- empty / upcoming ---------------------------------------------------- */
+
+.post-upcoming {
+    border: 1px dashed rgba(148, 163, 184, .26);
+    border-radius: var(--radius);
+    padding: 26px 24px;
+    color: var(--muted);
+    font-size: .93rem;
+    text-align: center;
+}
+
+/* ---- article ------------------------------------------------------------- */
+
+.article-head {
+    border-bottom: 1px solid rgba(148, 163, 184, .16);
+    padding: 48px 0 38px;
+}
+
+.back-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    color: var(--muted);
+    text-decoration: none;
+    font-size: .86rem;
+    font-weight: 700;
+    margin-bottom: 22px;
+}
+
+.back-link:hover, .back-link:focus-visible { color: var(--cyan); }
+
+.article-head h1 {
+    margin: 14px 0 16px;
+    max-width: 22ch;
+    font-size: clamp(2rem, 5vw, 3.1rem);
+    line-height: 1.05;
+    letter-spacing: -.026em;
+    font-weight: 800;
+    text-wrap: balance;
+}
+
+.article-standfirst {
+    margin: 0;
+    max-width: 58ch;
+    color: var(--muted-strong);
+    font-size: 1.1rem;
+    line-height: 1.62;
+}
+
+.article-cover {
+    display: block;
+    width: 100%;
+    /* Same reason as .post-cover: the height attribute is a presentational hint, and without
+       this the cover renders 630px tall at every width. */
+    height: auto;
+    aspect-ratio: 1200 / 630;
+    margin: 34px 0 0;
+    border: 1px solid rgba(148, 163, 184, .16);
+    border-radius: var(--radius);
+}
+
+/* Centre column with full-bleed escapes for figures and tables. */
+.article {
+    display: grid;
+    grid-template-columns: 1fr min(var(--measure), 100%) 1fr;
+    padding: 44px 0 88px;
+    color: var(--muted-strong);
+    font-size: 1.02rem;
+    line-height: 1.72;
+}
+
+.article > * { grid-column: 2; }
+.article > .bleed { grid-column: 1 / -1; }
+
+.article > * + * { margin-top: 22px; }
+
+.article h2 {
+    margin-top: 52px;
+    font-size: clamp(1.4rem, 3vw, 1.85rem);
+    line-height: 1.16;
+    letter-spacing: -.02em;
+    font-weight: 700;
+    color: var(--ink);
+    text-wrap: balance;
+}
+
+.article h3 {
+    margin-top: 34px;
+    font-family: "Space Grotesk", Inter, sans-serif;
+    font-size: 1.1rem;
+    line-height: 1.3;
+    font-weight: 700;
+    color: var(--ink);
+}
+
+.article .kicker {
+    margin-top: 52px;
+    margin-bottom: -12px;
+    color: var(--cyan);
+    text-transform: uppercase;
+    letter-spacing: .14em;
+    font-size: .7rem;
+    font-weight: 800;
+}
+
+.article strong { color: var(--ink); font-weight: 650; }
+
+.article code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: .87em;
+    background: var(--soft);
+    color: var(--cyan);
+    padding: .12em .4em;
+    border-radius: 4px;
+    white-space: nowrap;
+}
+
+.article a:not(.btn) {
+    color: var(--cyan);
+    text-underline-offset: 3px;
+}
+
+.article ul { padding-left: 20px; }
+.article li + li { margin-top: 8px; }
+.article li::marker { color: var(--cyan); }
+
+/* ---- figures ------------------------------------------------------------- */
+
+.article figure {
+    margin: 34px 0 0;
+    padding: 24px;
+    background: var(--night-soft);
+    border: 1px solid rgba(148, 163, 184, .16);
+    border-radius: var(--radius);
+    overflow-x: auto;
+}
+
+.article figure svg {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    margin-inline: auto;
+    color: var(--ink);
+}
+
+.article figcaption {
+    margin-top: 18px;
+    max-width: 76ch;
+    font-size: .87rem;
+    line-height: 1.6;
+    color: var(--muted);
+}
+
+.article figcaption b { color: var(--muted-strong); font-weight: 650; }
+
+.legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 22px;
+    margin-top: 16px;
+    padding: 12px 14px;
+    background: var(--soft);
+    border-radius: var(--radius-sm);
+}
+
+.legend span {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: .8rem;
+    color: var(--muted);
+}
+
+.swatch { width: 13px; height: 13px; border-radius: 3px; flex: 0 0 auto; }
+
+/* ---- callouts ------------------------------------------------------------ */
+
+.callout {
+    margin-top: 26px;
+    padding: 16px 20px;
+    border-left: 3px solid var(--cyan);
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+    background: var(--soft);
+    font-size: .95rem;
+}
+
+.callout--warn {
+    border-left-color: var(--amber);
+    background: rgba(245, 158, 11, .07);
+}
+
+.callout p { margin: 0; }
+
+/* ---- tables -------------------------------------------------------------- */
+
+.table-wrap {
+    margin-top: 30px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.article table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: .88rem;
+    min-width: 620px;
+}
+
+.article th {
+    text-align: left;
+    padding: 0 14px 10px 0;
+    border-bottom: 1px solid rgba(148, 163, 184, .24);
+    font-size: .66rem;
+    letter-spacing: .13em;
+    text-transform: uppercase;
+    font-weight: 800;
+    color: var(--muted);
+    white-space: nowrap;
+}
+
+.article td {
+    padding: 12px 14px 12px 0;
+    border-bottom: 1px solid rgba(148, 163, 184, .12);
+    vertical-align: top;
+    color: var(--muted-strong);
+}
+
+.article td:first-child { white-space: nowrap; }
+.article tbody tr:hover { background: rgba(41, 182, 246, .05); }
+.article .num { font-variant-numeric: tabular-nums; }
+
+.pill {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 100px;
+    font-size: .66rem;
+    font-weight: 800;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.pill-auth { background: rgba(41, 182, 246, .14); color: var(--cyan); }
+.pill-open { background: rgba(245, 158, 11, .15); color: var(--amber); }
+
+/* ---- article footer ------------------------------------------------------ */
+
+.article-end {
+    margin-top: 62px;
+    padding-top: 30px;
+    border-top: 1px solid rgba(148, 163, 184, .16);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.article-end p { margin: 0; color: var(--muted); font-size: .92rem; }
+
+@media (max-width: 720px) {
+    .blog-hero-inner { padding: 52px 0 44px; }
+    .post-list { padding: 40px 0 72px; }
+    .article { padding: 32px 0 64px; font-size: 1rem; }
+    .article figure { padding: 14px; }
+    .article-head { padding: 32px 0 28px; }
+
+    /* The diagrams are authored ~900 units wide with 10.5px labels. Letting them shrink to a
+       345px column renders that text at roughly 4px — not small, illegible. Hold a floor and
+       let the figure scroll instead, the same way the tables already do. */
+    .article figure svg { min-width: 600px; }
+
+    .article figure::before {
+        content: "Scroll to see the whole diagram →";
+        display: block;
+        margin-bottom: 10px;
+        font-size: .72rem;
+        letter-spacing: .06em;
+        text-transform: uppercase;
+        font-weight: 700;
+        color: var(--muted);
+        position: sticky;
+        left: 0;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .post-card, .post-card::before, .post-more::after, .read-progress { transition: none; }
+    .post-card:hover { transform: none; }
+}

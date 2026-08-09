@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630" role="img" aria-label="A key derived on the left seals four envelopes; across a dashed boundary the same shapes appear as empty outlines, unreadable to the relay.">
+  <defs>
+    <linearGradient id="ground" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#12161C"/>
+      <stop offset="1" stop-color="#181A20"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#29B6F6" stop-opacity=".34"/>
+      <stop offset="1" stop-color="#29B6F6" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M40 0 L0 0 0 40" fill="none" stroke="#94A3B8" stroke-opacity=".07" stroke-width="1"/>
+    </pattern>
+  </defs>
+
+  <rect width="1200" height="630" fill="url(#ground)"/>
+  <rect width="1200" height="630" fill="url(#grid)"/>
+  <circle cx="300" cy="315" r="290" fill="url(#glow)"/>
+
+  <!-- a route line, TrackMe's own mark, drifting behind everything -->
+  <path d="M-20 520 C 140 470, 210 300, 360 288 S 640 330, 780 250 S 1040 150, 1220 118"
+        fill="none" stroke="#29B6F6" stroke-opacity=".16" stroke-width="2.5" stroke-linecap="round"/>
+
+  <!-- key -->
+  <circle cx="300" cy="315" r="54" fill="#29B6F6"/>
+  <circle cx="300" cy="315" r="21" fill="#12161C"/>
+  <rect x="292" y="315" width="16" height="74" rx="7" fill="#29B6F6"/>
+  <rect x="308" y="352" width="26" height="14" rx="6" fill="#29B6F6"/>
+
+  <text x="300" y="452" font-family="'Space Grotesk', system-ui, sans-serif" font-size="21" font-weight="700"
+        fill="#E7EDF4" text-anchor="middle" letter-spacing="0.5">derived on the device</text>
+  <text x="300" y="480" font-family="Inter, system-ui, sans-serif" font-size="16" fill="#94A3B8" text-anchor="middle">from an invite token that never leaves it</text>
+
+  <!-- sealed envelopes leaving the device -->
+  <g stroke="#29B6F6" stroke-width="2.5" fill="none">
+    <path d="M372 232 L560 190"/>
+    <path d="M372 288 L560 274"/>
+    <path d="M372 344 L560 358"/>
+    <path d="M372 398 L560 442"/>
+  </g>
+  <g fill="#29B6F6">
+    <circle cx="566" cy="189" r="7"/><circle cx="566" cy="273" r="7"/>
+    <circle cx="566" cy="357" r="7"/><circle cx="566" cy="443" r="7"/>
+  </g>
+
+  <!-- boundary -->
+  <line x1="660" y1="70" x2="660" y2="560" stroke="#DC2626" stroke-width="2.5" stroke-dasharray="12 10" stroke-opacity=".85"/>
+  <text x="660" y="52" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="700"
+        fill="#DC2626" text-anchor="middle" letter-spacing="2.4">TRUST BOUNDARY</text>
+
+  <!-- opaque blobs on the relay side: same four shapes, hollow -->
+  <g stroke="#475569" stroke-width="2.5" fill="none">
+    <rect x="770" y="150" width="300" height="80" rx="14"/>
+    <rect x="770" y="248" width="300" height="80" rx="14"/>
+    <rect x="770" y="346" width="300" height="80" rx="14"/>
+    <rect x="770" y="444" width="300" height="80" rx="14"/>
+  </g>
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="17" fill="#64748B">
+    <text x="795" y="197">a7f3…  ▓▓▓▓▓▓▓▓▓▓▓</text>
+    <text x="795" y="295">2c91…  ▓▓▓▓▓▓▓▓▓▓▓</text>
+    <text x="795" y="393">e04b…  ▓▓▓▓▓▓▓▓▓▓▓</text>
+    <text x="795" y="491">8d5a…  ▓▓▓▓▓▓▓▓▓▓▓</text>
+  </g>
+
+  <text x="920" y="573" font-family="Inter, system-ui, sans-serif" font-size="16" fill="#94A3B8" text-anchor="middle">what the server actually stores</text>
+</svg>
