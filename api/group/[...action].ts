@@ -16,6 +16,7 @@ import {
   JOIN_CODE_TTL_SECONDS,
   MAX_META_ENVELOPE_CHARS,
   MAX_POSITION_ENVELOPE_CHARS,
+  MAX_STATUS_ENVELOPE_CHARS,
   MAX_ROSTER_ENVELOPE_CHARS,
   MAX_WRAPPED_TOKEN_CHARS,
   decideJoin,
@@ -439,6 +440,24 @@ async function handleSync(request: VercelRequest, response: VercelResponse) {
       positionField = encodePositionField(Date.now(), body.pos);
     }
 
+    // A33: the status slot is processed independently of `pos`. A rider whose location permission
+    // is revoked — precisely the one most likely to need the alert tier — can still say so, and
+    // that independence is the whole reason E6 moved off "no backend changes".
+    //
+    // '' means UNCHANGED, so clearing has to be an explicit op: a status must survive every sync
+    // that carries no new one.
+    let statusOp: '' | 'set' | 'clear' = '';
+    let statusField = '';
+    if (body.statusOp === 'clear') {
+      statusOp = 'clear';
+    } else if (body.statusOp === 'set') {
+      if (!isValidEnvelope(body.status, MAX_STATUS_ENVELOPE_CHARS)) {
+        return response.status(400).json({ error: 'status must be a v1 envelope.' });
+      }
+      statusOp = 'set';
+      statusField = body.status as string;
+    }
+
     const now = Date.now();
     const clientRev = Number.isFinite(Number(body.rev)) ? Number(body.rev) : -1;
 
@@ -450,6 +469,8 @@ async function handleSync(request: VercelRequest, response: VercelResponse) {
       ghostCutoffMs: now - GHOST_TTL_MS,
       clientRev,
       minWriteIntervalMs: MIN_WRITE_INTERVAL_MS,
+      statusOp,
+      statusField,
     });
 
     if (result.code === 'GONE' || !result.record) return sendGone(response);
@@ -489,8 +510,19 @@ async function handleSync(request: VercelRequest, response: VercelResponse) {
         expiresAt: record.expiresAt,
         rev: result.rev,
         positions: {},
+        statuses: {},
+        serverNow: now,
         nextSyncInSec: 0,
       });
+    }
+
+    const statuses: Record<string, { e: string; ts: number }> = {};
+    for (const [uid, raw] of Object.entries(result.statuses)) {
+      const decodedStatus = decodePositionField(raw);
+      // Same encoding as a position field (A12), so the same decoder — and the same rule: one
+      // unreadable member costs that member their chip, never everyone's response.
+      if (decodedStatus) statuses[uid] = { e: decodedStatus.e, ts: decodedStatus.ts };
+      else console.error('Unparseable status field', { groupId: record.groupId });
     }
 
     const positions: Record<string, { e: string; ts: number }> = {};
@@ -513,6 +545,11 @@ async function handleSync(request: VercelRequest, response: VercelResponse) {
       rev: result.rev,
       maxMembers: record.maxMembers,
       positions,
+      statuses,
+      // A32. Every age in this response is measured against this, not against the receiver's wall
+      // clock — which is what 1.7.0 did, so a phone five minutes behind showed the whole group as
+      // fresher than it was.
+      serverNow: result.serverNowMs || now,
       nextSyncInSec: nextSyncIntervalSec({
         state,
         foreground: body.foreground === true,

@@ -29,6 +29,11 @@ export const groupKey = (groupId: string) => `group:${groupId}`;
 export const groupMembersKey = (groupId: string) => `group:${groupId}:members`;
 export const groupRevKey = (groupId: string) => `group:${groupId}:rev`;
 export const groupPosKey = (groupId: string) => `group:${groupId}:pos`;
+/**
+ * The status slot (**A33**). A seventh key per group, TTL'd from the group key like `:pos`, so a
+ * status dies with the group exactly like everything else.
+ */
+export const groupStatusKey = (groupId: string) => `group:${groupId}:st`;
 export const groupTokenKey = (tokenHash: string) => `group:tok:${tokenHash}`;
 export const groupCodeKey = (joinCode: string) => `group:code:${joinCode}`;
 
@@ -39,6 +44,10 @@ export function allGroupKeys(groupId: string, tokenHash: string, joinCode: strin
     groupMembersKey(groupId),
     groupRevKey(groupId),
     groupPosKey(groupId),
+    // A33. This MUST be here: `allGroupKeys` is what `ENDED` deletes, and a status left behind
+    // would outlive the group that authorised it — directly against §2.7's "nothing is saved" and
+    // the §5 invariant that nothing survives a session.
+    groupStatusKey(groupId),
     groupTokenKey(tokenHash),
     groupCodeKey(joinCode),
   ];
@@ -69,6 +78,11 @@ export const JOIN_CODE_TTL_SECONDS = 30 * 60;
 export const MAX_META_ENVELOPE_CHARS = 2048;
 export const MAX_ROSTER_ENVELOPE_CHARS = 1024;
 export const MAX_POSITION_ENVELOPE_CHARS = 512;
+/**
+ * A sealed status is ~72 characters; 256 leaves generous headroom for the optional extension
+ * without letting the slot become a place to smuggle a payload.
+ */
+export const MAX_STATUS_ENVELOPE_CHARS = 256;
 
 /** A wrapped invite token is 22 chars sealed: `v1.` + 16 + `.` + 51 ≈ 71. 128 is ample headroom. */
 export const MAX_WRAPPED_TOKEN_CHARS = 128;

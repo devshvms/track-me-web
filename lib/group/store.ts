@@ -20,6 +20,7 @@ import {
   groupKey,
   groupMembersKey,
   groupPosKey,
+  groupStatusKey,
   groupRevKey,
   groupTokenKey,
 } from './model';
@@ -254,28 +255,47 @@ export async function joinGroup(
  *   0 ok · 1 not a member · 2 group gone · 3 writing too fast
  */
 const SYNC_SCRIPT_BODY = `
--- KEYS 1..4 = group:{id} · :members · :rev · :pos
--- ARGV      = uid, positionField(''=skip), nowMs, ghostCutoffMs, clientRev, minWriteIntervalMs
+-- KEYS 1..5 = group:{id} · :members · :rev · :pos · :st
+-- ARGV      = uid, positionField(''=skip), nowMs, ghostCutoffMs, clientRev, minWriteIntervalMs,
+--             statusOp(''|'set'|'clear'), statusField
 local record = redis.call('GET', KEYS[1])
 if not record then
-  return { 2, 0, '', {}, {} }
+  return { 2, 0, '', {}, {}, '0', {} }
 end
 
 if redis.call('HEXISTS', KEYS[2], ARGV[1]) == 0 then
-  return { 1, 0, '', {}, {} }
+  return { 1, 0, '', {}, {}, '0', {} }
 end
 
 local now = tonumber(ARGV[3])
 
 if ARGV[2] ~= '' then
   local existing = redis.call('HGET', KEYS[4], ARGV[1])
+  local prevTs = nil
   if existing then
-    local prevTs = tonumber(string.match(existing, '^(%d+)%.'))
+    prevTs = tonumber(string.match(existing, '^(%d+)%.'))
     if prevTs and (now - prevTs) < tonumber(ARGV[6]) then
-      return { 3, 0, '', {}, {} }
+      return { 3, 0, '', {}, {}, tostring(now), {} }
     end
   end
-  redis.call('HSET', KEYS[4], ARGV[1], ARGV[2])
+  -- A34. IDEMPOTENT RETRY, and it fixes a defect that predates 1.7.2.
+  --
+  -- pendingPosition on the client is set per location callback and never cleared after a send, so
+  -- a device whose GPS has frozen resends BYTE-IDENTICAL ciphertext every sync. Re-stamping it made
+  -- that member look permanently fresh: a bright marker and "8s ago" for a position twenty minutes
+  -- old, which is the exact opposite of §2.6's promise that stale members degrade honestly, and the
+  -- most dangerous way to be wrong — confidently.
+  --
+  -- Envelopes are sealed per callback with a random nonce, so two seals of the same coordinates are
+  -- never byte-equal. Identical bytes therefore mean NO NEW FIX, which is precisely when a position
+  -- should stop looking fresh. Keeping the original timestamp is the honest answer.
+  local incoming = string.match(ARGV[2], '^%d+%.(.*)$')
+  local previous = existing and string.match(existing, '^%d+%.(.*)$') or nil
+  if previous ~= nil and incoming ~= nil and previous == incoming and prevTs then
+    redis.call('HSET', KEYS[4], ARGV[1], tostring(prevTs) .. '.' .. incoming)
+  else
+    redis.call('HSET', KEYS[4], ARGV[1], ARGV[2])
+  end
   -- Derive the position key's lifetime from what the group key has left, rather than taking an
   -- absolute expiry as an argument: the caller cannot know it before this script has read the
   -- record, and passing a placeholder would expire the key on the spot.
@@ -302,6 +322,38 @@ if #stale > 0 then
   redis.call('HDEL', KEYS[4], unpack(stale))
 end
 
+-- A33: the status slot. Its own key, its own timestamp, and processed INDEPENDENTLY of whether a
+-- position was supplied — the rider whose location permission is revoked is precisely the one most
+-- likely to need the alert tier, and that independence is the whole reason E6 changed.
+--
+-- '' means UNCHANGED, which is why clearing must be an explicit op: a status has to survive every
+-- sync that carries no new one.
+local statusOp = ARGV[7]
+if statusOp == 'clear' then
+  redis.call('HDEL', KEYS[5], ARGV[1])
+elseif statusOp == 'set' and ARGV[8] ~= '' then
+  local existingSt = redis.call('HGET', KEYS[5], ARGV[1])
+  local incomingSt = ARGV[8]
+  local prevStTs = existingSt and tonumber(string.match(existingSt, '^(%d+)%.')) or nil
+  local prevStEnv = existingSt and string.match(existingSt, '^%d+%.(.*)$') or nil
+  -- A34 again: a client resends the SAME sealed bytes until acknowledged, so re-stamping would make
+  -- the status walk forward in time every time the network flapped.
+  if prevStEnv ~= nil and prevStEnv == incomingSt and prevStTs then
+    redis.call('HSET', KEYS[5], ARGV[1], tostring(prevStTs) .. '.' .. incomingSt)
+  else
+    redis.call('HSET', KEYS[5], ARGV[1], tostring(now) .. '.' .. incomingSt)
+  end
+  local stTtl = redis.call('PTTL', KEYS[1])
+  if stTtl > 0 then
+    redis.call('PEXPIRE', KEYS[5], stTtl)
+  end
+end
+
+-- Swept on the same cutoff as positions, so a group never accumulates ghosts. A standing status
+-- outlives the position it arrived with, because a member who has gone dark WITH a "Need help" is
+-- the one whose status matters most (O13) — the group key's TTL is what eventually collects it.
+local statusesFlat = redis.call('HGETALL', KEYS[5])
+
 local rev = tonumber(redis.call('GET', KEYS[3]) or '0')
 
 local roster = {}
@@ -309,11 +361,15 @@ if tonumber(ARGV[5]) ~= rev then
   roster = redis.call('HGETALL', KEYS[2])
 end
 
-return { 0, rev, record, fresh, roster }
+-- now is returned so every client can measure ages against the SAME clock that stamped them.
+-- A32: 1.7.0 compared a relay timestamp against the receiver's System.currentTimeMillis(), so a
+-- phone five minutes behind showed the whole group as fresher than it was. Sent as a string because
+-- Lua numbers lose precision past 2^53 when they cross the boundary as doubles.
+return { 0, rev, record, fresh, roster, tostring(now), statusesFlat }
 `;
 
 export const SYNC_SCRIPT: GroupScript = {
-  name: 'group:sync', body: SYNC_SCRIPT_BODY, keys: 4, args: 6,
+  name: 'group:sync', body: SYNC_SCRIPT_BODY, keys: 5, args: 8,
 };
 
 export interface SyncOutcome {
@@ -324,6 +380,15 @@ export interface SyncOutcome {
   positions: Record<string, string>;
   /** Present only when the caller's `rev` was stale. */
   roster: Record<string, GroupMember> | null;
+  /**
+   * The relay clock that stamped every timestamp in this response (**A32**).
+   *
+   * Clients anchor ages to this rather than to their own wall clock, which is what makes freshness
+   * correct on a device whose clock is wrong.
+   */
+  serverNowMs: number;
+  /** Raw `"<ts>.<envelope>"` status values, keyed by uid (**A33**). */
+  statuses: Record<string, string>;
 }
 
 export async function syncGroup(input: {
@@ -335,6 +400,9 @@ export async function syncGroup(input: {
   ghostCutoffMs: number;
   clientRev: number;
   minWriteIntervalMs: number;
+  /** '' leaves the status untouched — absence means unchanged, so clearing is explicit. */
+  statusOp?: '' | 'set' | 'clear';
+  statusField?: string;
 }): Promise<SyncOutcome> {
   const raw = (await runScript(
     SYNC_SCRIPT,
@@ -343,6 +411,7 @@ export async function syncGroup(input: {
       groupMembersKey(input.groupId),
       groupRevKey(input.groupId),
       groupPosKey(input.groupId),
+      groupStatusKey(input.groupId),
     ],
     [
       input.uid,
@@ -351,10 +420,12 @@ export async function syncGroup(input: {
       String(input.ghostCutoffMs),
       String(input.clientRev),
       String(input.minWriteIntervalMs),
+      input.statusOp ?? '',
+      input.statusField ?? '',
     ],
-  )) as [number, number, string, string[], string[]];
+  )) as [number, number, string, string[], string[], string, string[]];
 
-  const [code, rev, recordJson, positionsFlat, rosterFlat] = raw;
+  const [code, rev, recordJson, positionsFlat, rosterFlat, serverNowRaw, statusesFlat] = raw;
   const outcome: SyncOutcome['code'] =
     code === 0 ? 'OK' : code === 1 ? 'NOT_A_MEMBER' : code === 2 ? 'GONE' : 'TOO_FAST';
 
@@ -364,6 +435,8 @@ export async function syncGroup(input: {
     record: parseRecord(recordJson, input.groupId),
     positions: flatToObject(positionsFlat),
     roster: rosterFlat.length > 0 ? parseRoster(rosterFlat) : null,
+    serverNowMs: Number(serverNowRaw ?? 0) || 0,
+    statuses: flatToObject(statusesFlat ?? []),
   };
 }
 

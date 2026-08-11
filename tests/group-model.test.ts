@@ -18,6 +18,7 @@ import {
   groupKey,
   groupMembersKey,
   groupPosKey,
+  groupStatusKey,
   groupRevKey,
   groupTokenKey,
   isValidEnvelope,
@@ -82,6 +83,10 @@ test('allGroupKeys covers every key the store writes', () => {
     groupMembersKey('gid'),
     groupRevKey('gid'),
     groupPosKey('gid'),
+    // A33: the status slot must be in the delete set, or a status would outlive the group that
+    // authorised it — against §2.7's "nothing is saved" and the §5 invariant that nothing survives
+    // a session. This test is the thing that catches a seventh key added without one.
+    groupStatusKey('gid'),
     groupTokenKey(TOKEN_HASH),
     groupCodeKey('ABC123'),
   ];
