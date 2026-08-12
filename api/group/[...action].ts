@@ -40,9 +40,8 @@ import {
   endGroup,
   leaveGroup,
   removeMember,
-  bumpRev,
-  readRev,
   readGroupRaw,
+  readRev,
   resolveCodeEntry,
   resolveGroupIdByToken,
   swapGroupState,
@@ -632,7 +631,8 @@ async function handleState(request: VercelRequest, response: VercelResponse) {
         state: 'LIVE',
         expiresAt: record.expiresAt,
         rev: await readRev(record.groupId),
-        metaUpdated: body.meta === undefined || record.meta === body.meta,
+        metaUpdated: body.meta !== undefined && record.meta === body.meta,
+        meta: record.meta,
       });
     }
 
@@ -672,23 +672,27 @@ async function handleState(request: VercelRequest, response: VercelResponse) {
     };
     // The key's lifetime must move with the record's claim, or the group dies mid-ride while every
     // client still shows time remaining.
-    const outcome = await swapGroupState(
+    const swap = await swapGroupState(
       record.groupId,
       raw,
       live,
+      // A DURATION in ms, not an absolute time: the state script uses PEXPIRE, which takes a TTL.
+      // Passing the epoch value here would set a lifetime of roughly 56,000 years and quietly
+      // defeat §5.1.2's hard expiry — which is a privacy invariant, not a convenience.
       record.durationMinutes ? restartedExpiry - startedAt : 0,
+      body.meta !== undefined,
     );
-    if (outcome === 'GONE') return sendGone(response);
-    if (outcome === 'CONFLICT') {
+    if (swap.outcome === 'GONE') return sendGone(response);
+    if (swap.outcome === 'CONFLICT') {
       return response.status(409).json({
         error: 'The group changed. Try again.',
         code: 'STATE_CONFLICT',
       });
     }
 
-    // Meta is returned only when a member's revision is stale. Bumping here makes the automatic
-    // start time visible to every member on their next sync, just like an explicit meta edit.
-    const rev = body.meta !== undefined ? await bumpRev(record.groupId) : await readRev(record.groupId);
+    // The revision bump is part of the same Redis compare-and-swap, so LIVE cannot become visible
+    // without also making the automatic start time visible on every member's next sync.
+    const rev = swap.rev;
 
     await captureTelemetryEvent(record.groupId, 'group_started', { memberCount });
 
@@ -700,6 +704,7 @@ async function handleState(request: VercelRequest, response: VercelResponse) {
       expiresAt: restartedExpiry,
       rev,
       metaUpdated: body.meta !== undefined,
+      meta: live.meta,
       memberCount,
     });
   } catch (error) {
@@ -821,15 +826,21 @@ async function handleMeta(request: VercelRequest, response: VercelResponse) {
     }
     if (record.state === 'ENDED' || record.expiresAt <= Date.now()) return sendGone(response);
 
-    const outcome = await swapGroupState(record.groupId, raw, { ...record, meta: body.meta });
-    if (outcome === 'GONE') return sendGone(response);
-    if (outcome === 'CONFLICT') {
+    const swap = await swapGroupState(
+      record.groupId,
+      raw,
+      { ...record, meta: body.meta },
+      0,
+      true,
+    );
+    if (swap.outcome === 'GONE') return sendGone(response);
+    if (swap.outcome === 'CONFLICT') {
       return response.status(409).json({ error: 'The group changed. Try again.', code: 'STATE_CONFLICT' });
     }
 
-    // Bump the revision so every member's next sync refetches meta. Without this the leader would
-    // be the only one who knew, which is precisely the "silent" §8 forbids.
-    const rev = await bumpRev(record.groupId);
+    // The revision bump is part of the same Redis compare-and-swap. Without it the leader could
+    // be the only member who learns this edit, which is precisely the "silent" §8 forbids.
+    const rev = swap.rev;
 
     return response.status(200).json({ groupId: record.groupId, rev });
   } catch (error) {

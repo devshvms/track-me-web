@@ -15,18 +15,20 @@ Authenticated routes take the same `Authorization: Bearer <firebase-id-token>` a
 
 ## 1. Redis keys
 
-Six per group, all expiring together at `expiresAt` (the join code expires sooner).
+Seven per group, all expiring together at `expiresAt` (the join code expires sooner).
 
 ```
 group:{groupId}            STRING  plaintext control fields + the encrypted `meta` envelope
 group:{groupId}:members    HASH    field = uid, value = { role, joinedAt, roster }
 group:{groupId}:rev        STRING  roster revision counter (INCR)
 group:{groupId}:pos        HASH    field = uid, value = encrypted position envelope   (GR-04)
+group:{groupId}:st         HASH    field = uid, value = encrypted status envelope     (A33)
 group:tok:{tokenHash}      STRING  → groupId
 group:code:{joinCode}      STRING  → { groupId, wrappedToken }   (TTL = min(session TTL, 30 min))
 ```
 
-§4.4 sketches four keys. The two extra are `:members` and `:rev`, and they earn their place:
+§4.4 sketches four keys. The three extras are `:members`, `:rev`, and 1.7.2's encrypted `:st`
+status slot. They earn their place:
 `:members` makes a join or leave a single-field write plus an `HLEN` capacity check instead of a
 rewrite of a growing JSON blob, and `:rev` makes the roster revision an atomic `INCR`, which
 removes the read-modify-write race §4.5 flags — everywhere, not just inside one script. Every
@@ -399,10 +401,11 @@ serves, and a test asserts it against §7.2's figures, so the doc cannot drift f
 >
 > Groups created before 1.7.2 have no `durationMinutes` and keep the expiry they were created with.
 >
-> **Client-side, and not enforceable here:** when the group goes LIVE with no scheduled start time,
-> the leader's client should write `startAt = now` into the encrypted meta. The relay cannot do this
-> — meta is ciphertext to it. A start time left unset after the group is live claims nothing was
-> planned, when the plan just happened.
+> **Client-authored, relay-atomic:** when the group goes LIVE with no scheduled start time, the
+> leader's client seals `startAt = tap time` into replacement meta and includes it in this state
+> request. The relay still cannot create or inspect that value, but it commits the opaque envelope,
+> LIVE state, restarted expiry, and revision bump in one compare-and-swap. A start time left unset
+> after the group is live claims nothing was planned, when the plan just happened.
 
 
 Auth: **leader only** (`403 NOT_THE_LEADER` otherwise). Body `{ groupId, state }` where `state`
@@ -413,8 +416,8 @@ the automatic start time from splitting across requests.
 
 - **`PREPARING → LIVE`** flips every member's Home into Group Mode and starts the full configured
   duration. Idempotent — a retried "Start group" after a dropped response returns `200`, not an
-  error. Response includes `{ state, expiresAt, rev, metaUpdated, memberCount }` so the leader adopts
-  the restarted clock immediately.
+  error. Response includes `{ state, expiresAt, rev, metaUpdated, meta, memberCount }`; `meta` is the
+  accepted opaque envelope, allowing a retrying leader to decrypt the authoritative start time.
 - **`→ ENDED`** deletes **every** server-side key for the group immediately (§2.7), then answers.
   By the time the client gets `200`, nothing is left.
 
@@ -424,7 +427,9 @@ property of the feature rather than of one client.
 The `LIVE` swap is a compare-and-swap against the exact bytes Redis held. It resets `expiresAt` to
 `now + durationMinutes` and applies that lifetime to the group, members, revision, positions,
 statuses and token keys. The manual join-code key keeps its independent 30-minute ceiling. Redis
-`SET` clears an expiry, so ordinary non-start swaps still re-apply the prior group-key TTL.
+`SET` clears an expiry, so ordinary non-start swaps still re-apply the prior group-key TTL. When
+`meta` is present, the revision increment occurs inside that same script; peers therefore cannot
+observe LIVE without also being forced to refetch the accepted start-time envelope.
 
 Records created before `durationMinutes` was persisted keep their original expiry; the relay does
 not guess a duration for an old record. If `meta` was supplied, the relay bumps `rev`, causing every

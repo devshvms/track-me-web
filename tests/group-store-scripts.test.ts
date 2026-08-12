@@ -275,6 +275,13 @@ test('the state swap can restart the lifetime, not only preserve it', () => {
   assert.ok(/elseif ttl > 0 then/.test(body), 'state must fall back to preserving the existing TTL');
 });
 
+test('the state swap commits meta revision in the same script', () => {
+  const body = code(ALL_GROUP_SCRIPTS.find((s) => s.name === 'group:state')!.body);
+  assert.ok(/ARGV\[4\] == '1'/.test(body), 'state must accept the atomic revision-bump flag');
+  assert.ok(/INCR', KEYS\[3\]/.test(body), 'state must bump rev inside the compare-and-swap');
+  assert.ok(/return \{ 1, rev \}/.test(body), 'state must return the committed revision');
+});
+
 test('the state swap is a compare-and-swap, not a blind write', () => {
   const state = ALL_GROUP_SCRIPTS.find((s) => s.name === 'group:state')!;
   assert.match(code(state.body), /if current ~= ARGV\[1\] then/, 'no CAS guard on the record');

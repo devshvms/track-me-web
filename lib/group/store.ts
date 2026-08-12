@@ -488,8 +488,10 @@ function parseRecord(raw: string, groupId: string): GroupRecord | null {
  */
 const STATE_SCRIPT_BODY = `
 local current = redis.call('GET', KEYS[1])
-if not current then return 0 end
-if current ~= ARGV[1] then return 2 end
+if not current then return { 0, 0 } end
+if current ~= ARGV[1] then
+  return { 2, tonumber(redis.call('GET', KEYS[3]) or '0') }
+end
 
 local ttl = redis.call('PTTL', KEYS[1])
 redis.call('SET', KEYS[1], ARGV[2])
@@ -512,14 +514,28 @@ if requested and requested > 0 then
 elseif ttl > 0 then
   redis.call('PEXPIRE', KEYS[1], ttl)
 end
-return 1
+
+local rev = tonumber(redis.call('GET', KEYS[3]) or '0')
+if ARGV[4] == '1' then
+  rev = redis.call('INCR', KEYS[3])
+  if requested and requested > 0 then
+    redis.call('PEXPIRE', KEYS[3], requested)
+  elseif ttl > 0 then
+    redis.call('PEXPIRE', KEYS[3], ttl)
+  end
+end
+return { 1, rev }
 `;
 
 export const STATE_SCRIPT: GroupScript = {
-  name: 'group:state', body: STATE_SCRIPT_BODY, keys: 6, args: 3,
+  name: 'group:state', body: STATE_SCRIPT_BODY, keys: 6, args: 4,
 };
 
 export type StateSwapOutcome = 'SWAPPED' | 'GONE' | 'CONFLICT';
+export interface StateSwapResult {
+  outcome: StateSwapOutcome;
+  rev: number;
+}
 
 export async function swapGroupState(
   groupId: string,
@@ -527,8 +543,10 @@ export async function swapGroupState(
   next: GroupRecord,
   /** Explicit new lifetime in ms. Omit to keep whatever the key already had. */
   newTtlMs = 0,
-): Promise<StateSwapOutcome> {
-  const result = await runScript(
+  /** Meta changes must bump rev in this same CAS so peers cannot miss the new envelope. */
+  bumpRevision = false,
+): Promise<StateSwapResult> {
+  const [code, rev] = (await runScript(
     STATE_SCRIPT,
     [
       groupKey(groupId),
@@ -538,11 +556,15 @@ export async function swapGroupState(
       groupStatusKey(groupId),
       groupTokenKey(next.tokenHash),
     ],
-    [expectedRaw, JSON.stringify(next), String(Math.max(0, Math.floor(newTtlMs)))],
-  );
-  if (result === 0) return 'GONE';
-  if (result === 2) return 'CONFLICT';
-  return 'SWAPPED';
+    [
+      expectedRaw,
+      JSON.stringify(next),
+      String(Math.max(0, Math.floor(newTtlMs))),
+      bumpRevision ? '1' : '0',
+    ],
+  )) as [number, number];
+  const outcome: StateSwapOutcome = code === 0 ? 'GONE' : code === 2 ? 'CONFLICT' : 'SWAPPED';
+  return { outcome, rev: Number(rev) || 0 };
 }
 
 /**
