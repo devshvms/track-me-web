@@ -228,7 +228,11 @@ Auth: member.
   "pos": "v1.<nonce>.<body>",   // OPTIONAL — envelope, context `v1:pos:{yourUid}`
   "moving": true,               // from the device motion sensor
   "foreground": true,           // is the user actually looking at the map
-  "rev": 7                      // the roster revision you last saw
+  "rev": 7,                     // the roster revision you last saw
+
+  // --- 1.7.2 (A33). Both optional; omit BOTH to leave the status untouched. -----------------
+  "statusOp": "set",            // ''  = unchanged  |  'set'  |  'clear'
+  "status": "v1.<nonce>.<body>" // required when statusOp = 'set'. Context `v1:status:{yourUid}`
 }
 ```
 
@@ -245,9 +249,83 @@ Auth: member.
   },
   "nextSyncInSec": 10,
   "roster": { "uid-alice": "v1.<nonce>.<body>" },   // ONLY when your `rev` was stale
-  "meta":   "v1.<nonce>.<body>"                     // sent alongside `roster`
+  "meta":   "v1.<nonce>.<body>",                    // sent alongside `roster`
+
+  // --- 1.7.2 -------------------------------------------------------------------------------
+  "serverNow": 1785000010000,                       // A32 — the clock every `ts` above is stamped by
+  "statuses": {                                     // A33 — independent of `positions`
+    "uid-alice": { "e": "v1.<nonce>.<body>", "ts": 1785000000000 }
+  }
 }
 ```
+
+### 1.7.2 additions — what a client MUST do
+
+These are the contract points a second client implementation has to match. The shared fixture
+`tests/fixtures/group-status-vectors.json` is executable proof for the code grammar and the age
+arithmetic; the rest is here.
+
+**`serverNow` (A32) — anchor every age to it, never to your own clock.**
+
+1.7.0 compared a relay-stamped `ts` against the *receiver's* wall clock, so a phone five minutes
+behind showed the whole group as fresher than it was and one five minutes ahead greyed everybody
+out. The correct computation is:
+
+```
+ageAtReceipt = (serverNow - ts) + (stAge ?? 0) * 1000     // clamp at 0
+displayedAge = ageAtReceipt + (nowMonotonic - receivedAtMonotonic)
+```
+
+Both terms of the second line are **monotonic** (`SystemClock.elapsedRealtime()` /
+`ProcessInfo.systemUptime`). No device wall clock enters the answer at any point.
+
+`serverNow` is **absent or 0** on a relay that predates this. Fall back to the device clock and
+accept the old behaviour rather than rendering nothing — do not treat 0 as the epoch.
+
+**The status envelope plaintext.**
+
+```jsonc
+{ "st": "2MEH", "stAge": 420 }
+```
+
+- `st` — the 4-character code, grammar `^[0-9][A-Z][A-Z]{2}(:[A-Za-z0-9]{1,8})?$`. Severity is
+  character 1, persona character 2, message characters 3–4, optional `:extension`.
+- `stAge` — whole seconds the sender has held the status, on **their monotonic clock**. A duration,
+  never an instant, so sender skew cannot distort it.
+- **`stAge` absent ≠ `stAge: 0`.** Absent means the sender rebooted and lost the age: render the
+  status with **no** age. Zero means "set just now". Collapsing them fabricates a fresh age for a
+  status that may be hours old.
+
+**Parser fallbacks — the reason the code is structured at all.** An unknown code must degrade, never
+disappear:
+
+| Case | Behaviour |
+|---|---|
+| Grammar mismatch | Ignore the status entirely. No chip. Never guess |
+| Unknown message, known severity+persona | Render at the correct severity with a generic label |
+| Unknown persona | Render at the correct severity, no persona word |
+| Unknown severity (`0`, `4`–`9`) | Treat as **INFO**, never ALERT — including `0`, which is reserved for a tier *above* alert. Fails quiet, never loud |
+| Extension present | Parse and preserve; no consumers yet |
+
+**Idempotent retries (A34) — the client's obligation.**
+
+The relay keeps the original timestamp when an incoming envelope is **byte-identical** to the stored
+one. A client must therefore **resend the stored envelope bytes**, never a re-seal: re-sealing mints
+a fresh nonce, the relay treats it as new, and the age walks forward every time the network flaps.
+The one exception is restoring after process death, where the bytes did not survive — re-seal there,
+with the age from your monotonic base if it is still valid.
+
+This also means **"the relay echoed my position back" ≠ "the relay accepted a new one."** To drive a
+"last shared" indicator, compare the returned `ts` for your own uid against the previous one and only
+advance when it actually moved. Anything looser reports a frozen GPS as freshly shared.
+
+**Clearing is an explicit op.** `statusOp: ''` means *unchanged*, because a status must survive every
+sync that carries no new one. Only `'clear'` removes it. Until the relay stops echoing your status
+back, the UI must say "clearing", never "cleared".
+
+**A status never touches the position slot.** Setting one does not refresh any position timestamp,
+and it works with no position at all — the rider whose location permission is revoked is precisely
+the one most likely to need the alert tier.
 
 **One call, both directions** (§4.3). Half the invocations of a push endpoint plus a polled pull,
 one round trip to see a change, and worst-case staleness bounded by the push interval alone

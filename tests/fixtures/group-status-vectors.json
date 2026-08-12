@@ -1,0 +1,70 @@
+{
+  "version": 1,
+  "canonical": "track-me-web/tests/fixtures — copy to each client, same as group-crypto-vectors.json",
+  "note": "SCOPE_1.7.2 §4.3 — the cross-platform status contract. Android and iOS must both produce and consume exactly these. E1 exists because a silent divergence here is invisible until a real group is riding: one platform would render nothing where the other renders 'Need help'.",
+  "grammar": "^[0-9][A-Z][A-Z]{2}(:[A-Za-z0-9]{1,8})?$",
+  "codes": [
+    { "raw": "2MEH", "valid": true, "severity": "2", "persona": "M", "message": "EH", "extension": null },
+    { "raw": "1GNH", "valid": true, "severity": "1", "persona": "G", "message": "NH", "extension": null },
+    { "raw": "2MEH:T15", "valid": true, "severity": "2", "persona": "M", "message": "EH", "extension": "T15" },
+
+    { "raw": "2MOH", "valid": true, "severity": "2", "persona": "M", "message": "OH", "extension": null,
+      "note": "unknown message — must render at the correct severity, never be dropped" },
+    { "raw": "1ZNH", "valid": true, "severity": "1", "persona": null, "message": "NH", "extension": null,
+      "note": "unknown persona — must not blank out a valid alert" },
+    { "raw": "0GNH", "valid": true, "severity": "3", "persona": "G", "message": "NH", "extension": null,
+      "note": "digit 0 is reserved for a tier ABOVE alert and must still demote to INFO: an unrecognised tier must never make an old client scream" },
+    { "raw": "9GNH", "valid": true, "severity": "3", "persona": "G", "message": "NH", "extension": null },
+
+    { "raw": "2ME", "valid": false, "note": "too short" },
+    { "raw": "2MEHX", "valid": false, "note": "too long" },
+    { "raw": "2meh", "valid": false, "note": "lowercase" },
+    { "raw": "22EH", "valid": false, "note": "digit in the persona slot" },
+    { "raw": "2MEH:", "valid": false, "note": "empty extension" },
+    { "raw": "2MEH:TOOLONGEXT", "valid": false, "note": "extension over 8 chars" },
+    { "raw": " 2MEH", "valid": false, "note": "leading whitespace — the wire is ours end to end, so padding has no legitimate source" },
+    { "raw": "2MEH ", "valid": false, "note": "trailing whitespace" },
+    { "raw": "", "valid": false }
+  ],
+  "ages": [
+    {
+      "note": "the ordinary case — transit plus how long the sender had held it",
+      "serverNowMs": 1785000010000,
+      "serverTsMs": 1785000008000,
+      "stAgeSeconds": 420,
+      "expectedAgeAtReceiptMs": 422000
+    },
+    {
+      "note": "a position stamped fractionally after the relay read its own clock is fresh, not future",
+      "serverNowMs": 1785000010000,
+      "serverTsMs": 1785000010250,
+      "stAgeSeconds": 0,
+      "expectedAgeAtReceiptMs": 0
+    },
+    {
+      "note": "reboot — the sender kept the status but lost its age. Age is UNKNOWN, never fabricated, and never zero, which would claim it was set this instant",
+      "serverNowMs": 1785000010000,
+      "serverTsMs": 1785000009000,
+      "stAgeSeconds": null,
+      "expectedAgeAtReceiptMs": null
+    },
+    {
+      "note": "a negative age from a broken sender clamps rather than travelling",
+      "serverNowMs": 1785000010000,
+      "serverTsMs": 1785000010000,
+      "stAgeSeconds": -99,
+      "expectedAgeAtReceiptMs": 0
+    }
+  ],
+  "buckets": [
+    { "ageMs": 0, "syncIntervalSec": 10, "expected": "Now" },
+    { "ageMs": 9999, "syncIntervalSec": 10, "expected": "Now" },
+    { "ageMs": 25000, "syncIntervalSec": 30, "expected": "Now",
+      "note": "the Now threshold tracks the relay's ADVERTISED cadence, not a constant — the relay slows everyone down under load and a fixed threshold would make the whole fleet start counting seconds during a legitimate slowdown" },
+    { "ageMs": 10000, "syncIntervalSec": 10, "expected": "Seconds:10" },
+    { "ageMs": 59999, "syncIntervalSec": 10, "expected": "Seconds:59" },
+    { "ageMs": 60000, "syncIntervalSec": 10, "expected": "Minutes:1" },
+    { "ageMs": 3599999, "syncIntervalSec": 10, "expected": "Minutes:59" },
+    { "ageMs": 3600000, "syncIntervalSec": 10, "expected": "Hours:1" }
+  ]
+}
