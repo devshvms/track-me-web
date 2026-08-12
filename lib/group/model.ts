@@ -113,6 +113,18 @@ export interface GroupRecord {
   state: GroupState;
   createdAt: number;
   expiresAt: number;
+  /**
+   * The window the leader asked for, in minutes.
+   *
+   * Persisted so `PREPARING → LIVE` can **restart** the clock: the countdown should measure the
+   * ride, not the wait before it. A group created at 09:00 and started at 09:40 was previously
+   * already 40 minutes into its own expiry, which is time nobody agreed to lose — and the leader
+   * cannot know at creation how long assembling will take.
+   *
+   * Optional on read: records written before 1.7.2 do not carry it, and those simply keep the
+   * expiry they were created with rather than being reset to a duration we would have to guess.
+   */
+  durationMinutes?: number;
   maxMembers: number;
   syncIntervalSec: number;
   tokenHash: string;

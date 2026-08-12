@@ -254,6 +254,27 @@ test('the state swap re-applies the TTL it just cleared', () => {
   assert.ok(expireAt > setAt, 'expiry is never re-applied after the SET');
 });
 
+test('the state swap can restart the lifetime, not only preserve it', () => {
+  // PREPARING -> LIVE restarts the countdown so it measures the ride rather than the wait before
+  // it. If the script only ever preserved the existing PTTL, the record would claim a later expiry
+  // while the KEY still died at its creation-based time — the group would vanish mid-ride with
+  // every client showing time remaining.
+  const body = code(ALL_GROUP_SCRIPTS.find((s) => s.name === 'group:state')!.body);
+  assert.ok(/tonumber\(ARGV\[3\]\)/.test(body), 'state must accept an explicit new lifetime');
+  assert.ok(
+    /PEXPIRE', KEYS\[1\], requested/.test(body),
+    'state must apply the requested lifetime when one is given',
+  );
+  for (let key = 2; key <= 6; key += 1) {
+    assert.ok(
+      body.includes(`PEXPIRE', KEYS[${key}], requested`),
+      `state must move session KEYS[${key}] to the restarted expiry`,
+    );
+  }
+  // ...and still preserve the old one otherwise, so every other swap is unchanged.
+  assert.ok(/elseif ttl > 0 then/.test(body), 'state must fall back to preserving the existing TTL');
+});
+
 test('the state swap is a compare-and-swap, not a blind write', () => {
   const state = ALL_GROUP_SCRIPTS.find((s) => s.name === 'group:state')!;
   assert.match(code(state.body), /if current ~= ARGV\[1\] then/, 'no CAS guard on the record');

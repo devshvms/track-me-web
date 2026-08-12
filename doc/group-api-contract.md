@@ -46,7 +46,7 @@ Auth: member.
   "tokenHash": "<64 lowercase hex>",   // sha256(inviteToken). The token itself NEVER comes here.
   "joinCode": "ABC123",                // client-minted, 6 Crockford base32, already normalised
   "wrappedToken": "v1.<nonce>.<body>", // seal(HKDF(joinCode), inviteToken, "v1:code")
-  "durationMinutes": 240,              // optional, default 240, max 240
+  "durationMinutes": 240,              // optional, default/max 240; LIVE countdown duration
   "maxMembers": 5,                     // optional, default 5, min 2, max 5
   "meta": "v1.<nonce>.<body>",         // envelope, context `v1:meta`
   "roster": "v1.<nonce>.<body>"        // envelope, context `v1:roster:{yourUid}`
@@ -382,20 +382,53 @@ serves, and a test asserts it against §7.2's figures, so the doc cannot drift f
 
 ## 4c. `POST /api/group/state`
 
-Auth: **leader only** (`403 NOT_THE_LEADER` otherwise). Body `{ groupId, state }` where `state`
-is `LIVE` or `ENDED`.
+> **1.7.2 — `PREPARING → LIVE` restarts the countdown.**
+>
+> `expiresAt` was previously fixed at creation, so a group created at 09:00 and started at 09:40 had
+> already spent 40 minutes of its own window before anyone set off. The record now carries
+> `durationMinutes`, and the LIVE transition recomputes `expiresAt = now + durationMinutes`, applying
+> the new lifetime to the Redis key as well as the record — writing one without the other would make
+> the group vanish mid-ride while every client still showed time remaining.
+>
+> The response therefore includes the new `expiresAt`, and **a client must adopt it** rather than
+> waiting for the next sync; the leader is looking at the timer as they tap Start.
+>
+> ```jsonc
+> { "groupId": "<uuid>", "state": "LIVE", "expiresAt": 1785014400000, "memberCount": 3 }
+> ```
+>
+> Groups created before 1.7.2 have no `durationMinutes` and keep the expiry they were created with.
+>
+> **Client-side, and not enforceable here:** when the group goes LIVE with no scheduled start time,
+> the leader's client should write `startAt = now` into the encrypted meta. The relay cannot do this
+> — meta is ciphertext to it. A start time left unset after the group is live claims nothing was
+> planned, when the plan just happened.
 
-- **`PREPARING → LIVE`** flips every member's Home into Group Mode. Idempotent — a retried
-  "Start group" after a dropped response returns `200`, not an error.
+
+Auth: **leader only** (`403 NOT_THE_LEADER` otherwise). Body `{ groupId, state }` where `state`
+is `LIVE` or `ENDED`. A 1.7.2 client starting a group whose encrypted meta has no start time also
+sends `meta`, a replacement `v1:meta` envelope containing the start-button tap time. The relay
+cannot create or inspect that value; accepting it in the same compare-and-swap prevents `LIVE` and
+the automatic start time from splitting across requests.
+
+- **`PREPARING → LIVE`** flips every member's Home into Group Mode and starts the full configured
+  duration. Idempotent — a retried "Start group" after a dropped response returns `200`, not an
+  error. Response includes `{ state, expiresAt, rev, metaUpdated, memberCount }` so the leader adopts
+  the restarted clock immediately.
 - **`→ ENDED`** deletes **every** server-side key for the group immediately (§2.7), then answers.
   By the time the client gets `200`, nothing is left.
 
 **A group of one never enters `LIVE`** (§8) — `409 GROUP_OF_ONE`. Enforced server-side so it is a
 property of the feature rather than of one client.
 
-The `LIVE` swap is a compare-and-swap against the exact bytes Redis held, and it re-applies the
-key's remaining TTL: Redis `SET` clears an expiry, so without that, "Start group" would silently
-turn a 4-hour session into a permanent one and break §5.1.2 in the least visible way available.
+The `LIVE` swap is a compare-and-swap against the exact bytes Redis held. It resets `expiresAt` to
+`now + durationMinutes` and applies that lifetime to the group, members, revision, positions,
+statuses and token keys. The manual join-code key keeps its independent 30-minute ceiling. Redis
+`SET` clears an expiry, so ordinary non-start swaps still re-apply the prior group-key TTL.
+
+Records created before `durationMinutes` was persisted keep their original expiry; the relay does
+not guess a duration for an old record. If `meta` was supplied, the relay bumps `rev`, causing every
+member's next stale-revision sync to receive the new encrypted meta.
 
 ## 4d. `POST /api/group/leave`
 

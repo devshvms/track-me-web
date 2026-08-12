@@ -41,6 +41,7 @@ import {
   leaveGroup,
   removeMember,
   bumpRev,
+  readRev,
   readGroupRaw,
   resolveCodeEntry,
   resolveGroupIdByToken,
@@ -160,6 +161,8 @@ async function handleCreate(request: VercelRequest, response: VercelResponse) {
       state: 'PREPARING',
       createdAt: now,
       expiresAt,
+      // Kept so the clock can be restarted when the ride actually begins (see handleState).
+      durationMinutes: duration.value,
       maxMembers: size.value,
       syncIntervalSec: DEFAULT_SYNC_INTERVAL_SEC,
       tokenHash: body.tokenHash,
@@ -595,6 +598,9 @@ async function handleState(request: VercelRequest, response: VercelResponse) {
     if (!next) {
       return response.status(400).json({ error: 'state must be LIVE or ENDED.' });
     }
+    if (body.meta !== undefined && !isValidEnvelope(body.meta, MAX_META_ENVELOPE_CHARS)) {
+      return response.status(400).json({ error: 'meta must be a v1 envelope.' });
+    }
 
     const current = await readGroupRaw(body.groupId);
     if (!current) return sendGone(response);
@@ -621,7 +627,13 @@ async function handleState(request: VercelRequest, response: VercelResponse) {
     if (record.state === 'ENDED' || record.expiresAt <= Date.now()) return sendGone(response);
     if (record.state === 'LIVE') {
       // Idempotent: a retried "Start group" after a dropped response must not be an error.
-      return response.status(200).json({ groupId: record.groupId, state: 'LIVE' });
+      return response.status(200).json({
+        groupId: record.groupId,
+        state: 'LIVE',
+        expiresAt: record.expiresAt,
+        rev: await readRev(record.groupId),
+        metaUpdated: body.meta === undefined || record.meta === body.meta,
+      });
     }
 
     // §8: "A group of one never enters LIVE; there is nothing to be co-present with." Enforced
@@ -635,7 +647,37 @@ async function handleState(request: VercelRequest, response: VercelResponse) {
       });
     }
 
-    const outcome = await swapGroupState(record.groupId, raw, { ...record, state: 'LIVE' });
+    // The countdown measures the RIDE, not the wait before it.
+    //
+    // Previously `expiresAt` was fixed at creation, so a group created at 09:00 and started at
+    // 09:40 was already 40 minutes into its own expiry before anyone set off — time nobody agreed
+    // to lose, and unknowable to the leader at creation because they cannot predict how long
+    // assembling takes. Restarting here gives the full window from the moment it means something.
+    //
+    // Records written before 1.7.2 have no `durationMinutes`; those keep the expiry they were
+    // created with rather than being reset to a duration we would have to invent.
+    const startedAt = Date.now();
+    const restartedExpiry = record.durationMinutes
+      ? startedAt + record.durationMinutes * 60_000
+      : record.expiresAt;
+
+    const live: GroupRecord = {
+      ...record,
+      state: 'LIVE',
+      expiresAt: restartedExpiry,
+      // The relay cannot manufacture the automatic start time because meta is E2EE. A 1.7.2
+      // leader supplies the re-sealed envelope in this same state transition so LIVE and the
+      // missing-start-time fix cannot split across two requests.
+      ...(body.meta !== undefined ? { meta: body.meta } : {}),
+    };
+    // The key's lifetime must move with the record's claim, or the group dies mid-ride while every
+    // client still shows time remaining.
+    const outcome = await swapGroupState(
+      record.groupId,
+      raw,
+      live,
+      record.durationMinutes ? restartedExpiry - startedAt : 0,
+    );
     if (outcome === 'GONE') return sendGone(response);
     if (outcome === 'CONFLICT') {
       return response.status(409).json({
@@ -644,9 +686,22 @@ async function handleState(request: VercelRequest, response: VercelResponse) {
       });
     }
 
+    // Meta is returned only when a member's revision is stale. Bumping here makes the automatic
+    // start time visible to every member on their next sync, just like an explicit meta edit.
+    const rev = body.meta !== undefined ? await bumpRev(record.groupId) : await readRev(record.groupId);
+
     await captureTelemetryEvent(record.groupId, 'group_started', { memberCount });
 
-    return response.status(200).json({ groupId: record.groupId, state: 'LIVE', memberCount });
+    return response.status(200).json({
+      groupId: record.groupId,
+      state: 'LIVE',
+      // Returned so the leader's client adopts the restarted clock immediately rather than showing
+      // the creation-time expiry until the next sync.
+      expiresAt: restartedExpiry,
+      rev,
+      metaUpdated: body.meta !== undefined,
+      memberCount,
+    });
   } catch (error) {
     return sendError(response, error, 'state');
   }

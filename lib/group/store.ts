@@ -493,14 +493,30 @@ if current ~= ARGV[1] then return 2 end
 
 local ttl = redis.call('PTTL', KEYS[1])
 redis.call('SET', KEYS[1], ARGV[2])
-if ttl > 0 then
+
+-- ARGV[3] is an explicit new lifetime, used when PREPARING -> LIVE restarts the countdown so it
+-- measures the ride rather than the wait before it. KEYS[1...6] are every session-lifetime key;
+-- the deliberately short-lived manual join-code key is not included.
+--
+-- Without this the record would claim a later expiry while the KEY still died at its original
+-- creation-based time: the group would vanish early, mid-ride, with every client showing time
+-- remaining. Preserving the old PTTL is still the default for every other swap.
+local requested = tonumber(ARGV[3])
+if requested and requested > 0 then
+  redis.call('PEXPIRE', KEYS[1], requested)
+  if redis.call('EXISTS', KEYS[2]) == 1 then redis.call('PEXPIRE', KEYS[2], requested) end
+  if redis.call('EXISTS', KEYS[3]) == 1 then redis.call('PEXPIRE', KEYS[3], requested) end
+  if redis.call('EXISTS', KEYS[4]) == 1 then redis.call('PEXPIRE', KEYS[4], requested) end
+  if redis.call('EXISTS', KEYS[5]) == 1 then redis.call('PEXPIRE', KEYS[5], requested) end
+  if redis.call('EXISTS', KEYS[6]) == 1 then redis.call('PEXPIRE', KEYS[6], requested) end
+elseif ttl > 0 then
   redis.call('PEXPIRE', KEYS[1], ttl)
 end
 return 1
 `;
 
 export const STATE_SCRIPT: GroupScript = {
-  name: 'group:state', body: STATE_SCRIPT_BODY, keys: 1, args: 2,
+  name: 'group:state', body: STATE_SCRIPT_BODY, keys: 6, args: 3,
 };
 
 export type StateSwapOutcome = 'SWAPPED' | 'GONE' | 'CONFLICT';
@@ -509,11 +525,20 @@ export async function swapGroupState(
   groupId: string,
   expectedRaw: string,
   next: GroupRecord,
+  /** Explicit new lifetime in ms. Omit to keep whatever the key already had. */
+  newTtlMs = 0,
 ): Promise<StateSwapOutcome> {
   const result = await runScript(
     STATE_SCRIPT,
-    [groupKey(groupId)],
-    [expectedRaw, JSON.stringify(next)],
+    [
+      groupKey(groupId),
+      groupMembersKey(groupId),
+      groupRevKey(groupId),
+      groupPosKey(groupId),
+      groupStatusKey(groupId),
+      groupTokenKey(next.tokenHash),
+    ],
+    [expectedRaw, JSON.stringify(next), String(Math.max(0, Math.floor(newTtlMs)))],
   );
   if (result === 0) return 'GONE';
   if (result === 2) return 'CONFLICT';
