@@ -244,15 +244,23 @@ if (exportBtn) {
 }
 
 // --- GitHub Releases Fetching Logic ---
+// A local copy of the newest release, used ONLY when the GitHub API is unreachable or rate-limited
+// — an unauthenticated browser gets 60 requests/hour per IP, so this is a real case rather than a
+// theoretical one. When the API does answer, its copy wins and this is discarded.
+//
+// Keep this in step with the newest published release. It is easy to forget, which is exactly why
+// the merge below no longer trusts its position.
 const pinnedReleases = {
     'track-me-android': [{
-        tag_name: 'v1.7.1',
-        name: 'TrackMe v1.7.1',
-        published_at: '2026-08-09T00:00:00Z',
+        tag_name: 'v1.7.2',
+        name: 'TrackMe v1.7.2',
+        published_at: '2026-08-13T00:00:00Z',
         body: [
-            'Fixed a map crash that could happen when camera views opened before map initialization completed.',
-            'Added an interactive first-run walkthrough covering location access, privacy choices, and GPS tracking.',
-            'Play in-app update notices now match the installed release track and show formatted release notes.'
+            'Ride Together statuses: tell your group you have stopped for fuel, hit a vehicle issue, or are taking a break — without typing.',
+            'Every rider row now shows when the group last heard from them, so you can tell "just now" from "ten minutes ago".',
+            'Open directions to a rider\'s last known point.',
+            'Your own screen now tells you when the group has stopped receiving your updates.',
+            'More accurate freshness: stale positions no longer look current.'
         ].join('\n\n')
     }]
 };
@@ -264,7 +272,17 @@ function normalizeReleaseTag(tag) {
 function mergePinnedReleases(repoName, releases) {
     const pinned = pinnedReleases[repoName] || [];
     const pinnedTags = new Set(pinned.map(release => normalizeReleaseTag(release.tag_name)));
-    return [...pinned, ...releases.filter(release => !pinnedTags.has(normalizeReleaseTag(release.tag_name)))];
+    const merged = [...pinned, ...releases.filter(release => !pinnedTags.has(normalizeReleaseTag(release.tag_name)))];
+
+    // Sort by publish date, newest first — never by source.
+    //
+    // Pinned entries used to be prepended unconditionally, so the hardcoded fallback always landed
+    // at index 0, and index 0 is the row that renders expanded. The moment a newer release shipped
+    // without someone remembering to update the constant above, the page showed the OLD version at
+    // the top with the OLD notes open — which is exactly what happened to 1.7.2.
+    //
+    // Ordering by date means a stale constant can now only ever be missing, never misleading.
+    return merged.sort((a, b) => new Date(b.published_at) - new Date(a.published_at));
 }
 
 function escapeReleaseText(value) {
