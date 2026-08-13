@@ -15,18 +15,20 @@ Authenticated routes take the same `Authorization: Bearer <firebase-id-token>` a
 
 ## 1. Redis keys
 
-Six per group, all expiring together at `expiresAt` (the join code expires sooner).
+Seven per group, all expiring together at `expiresAt` (the join code expires sooner).
 
 ```
 group:{groupId}            STRING  plaintext control fields + the encrypted `meta` envelope
 group:{groupId}:members    HASH    field = uid, value = { role, joinedAt, roster }
 group:{groupId}:rev        STRING  roster revision counter (INCR)
 group:{groupId}:pos        HASH    field = uid, value = encrypted position envelope   (GR-04)
+group:{groupId}:st         HASH    field = uid, value = encrypted status envelope     (A33)
 group:tok:{tokenHash}      STRING  → groupId
 group:code:{joinCode}      STRING  → { groupId, wrappedToken }   (TTL = min(session TTL, 30 min))
 ```
 
-§4.4 sketches four keys. The two extra are `:members` and `:rev`, and they earn their place:
+§4.4 sketches four keys. The three extras are `:members`, `:rev`, and 1.7.2's encrypted `:st`
+status slot. They earn their place:
 `:members` makes a join or leave a single-field write plus an `HLEN` capacity check instead of a
 rewrite of a growing JSON blob, and `:rev` makes the roster revision an atomic `INCR`, which
 removes the read-modify-write race §4.5 flags — everywhere, not just inside one script. Every
@@ -46,7 +48,7 @@ Auth: member.
   "tokenHash": "<64 lowercase hex>",   // sha256(inviteToken). The token itself NEVER comes here.
   "joinCode": "ABC123",                // client-minted, 6 Crockford base32, already normalised
   "wrappedToken": "v1.<nonce>.<body>", // seal(HKDF(joinCode), inviteToken, "v1:code")
-  "durationMinutes": 240,              // optional, default 240, max 240
+  "durationMinutes": 240,              // optional, default/max 240; LIVE countdown duration
   "maxMembers": 5,                     // optional, default 5, min 2, max 5
   "meta": "v1.<nonce>.<body>",         // envelope, context `v1:meta`
   "roster": "v1.<nonce>.<body>"        // envelope, context `v1:roster:{yourUid}`
@@ -228,7 +230,11 @@ Auth: member.
   "pos": "v1.<nonce>.<body>",   // OPTIONAL — envelope, context `v1:pos:{yourUid}`
   "moving": true,               // from the device motion sensor
   "foreground": true,           // is the user actually looking at the map
-  "rev": 7                      // the roster revision you last saw
+  "rev": 7,                     // the roster revision you last saw
+
+  // --- 1.7.2 (A33). Both optional; omit BOTH to leave the status untouched. -----------------
+  "statusOp": "set",            // ''  = unchanged  |  'set'  |  'clear'
+  "status": "v1.<nonce>.<body>" // required when statusOp = 'set'. Context `v1:status:{yourUid}`
 }
 ```
 
@@ -245,9 +251,83 @@ Auth: member.
   },
   "nextSyncInSec": 10,
   "roster": { "uid-alice": "v1.<nonce>.<body>" },   // ONLY when your `rev` was stale
-  "meta":   "v1.<nonce>.<body>"                     // sent alongside `roster`
+  "meta":   "v1.<nonce>.<body>",                    // sent alongside `roster`
+
+  // --- 1.7.2 -------------------------------------------------------------------------------
+  "serverNow": 1785000010000,                       // A32 — the clock every `ts` above is stamped by
+  "statuses": {                                     // A33 — independent of `positions`
+    "uid-alice": { "e": "v1.<nonce>.<body>", "ts": 1785000000000 }
+  }
 }
 ```
+
+### 1.7.2 additions — what a client MUST do
+
+These are the contract points a second client implementation has to match. The shared fixture
+`tests/fixtures/group-status-vectors.json` is executable proof for the code grammar and the age
+arithmetic; the rest is here.
+
+**`serverNow` (A32) — anchor every age to it, never to your own clock.**
+
+1.7.0 compared a relay-stamped `ts` against the *receiver's* wall clock, so a phone five minutes
+behind showed the whole group as fresher than it was and one five minutes ahead greyed everybody
+out. The correct computation is:
+
+```
+ageAtReceipt = (serverNow - ts) + (stAge ?? 0) * 1000     // clamp at 0
+displayedAge = ageAtReceipt + (nowMonotonic - receivedAtMonotonic)
+```
+
+Both terms of the second line are **monotonic** (`SystemClock.elapsedRealtime()` /
+`ProcessInfo.systemUptime`). No device wall clock enters the answer at any point.
+
+`serverNow` is **absent or 0** on a relay that predates this. Fall back to the device clock and
+accept the old behaviour rather than rendering nothing — do not treat 0 as the epoch.
+
+**The status envelope plaintext.**
+
+```jsonc
+{ "st": "2MEH", "stAge": 420 }
+```
+
+- `st` — the 4-character code, grammar `^[0-9][A-Z][A-Z]{2}(:[A-Za-z0-9]{1,8})?$`. Severity is
+  character 1, persona character 2, message characters 3–4, optional `:extension`.
+- `stAge` — whole seconds the sender has held the status, on **their monotonic clock**. A duration,
+  never an instant, so sender skew cannot distort it.
+- **`stAge` absent ≠ `stAge: 0`.** Absent means the sender rebooted and lost the age: render the
+  status with **no** age. Zero means "set just now". Collapsing them fabricates a fresh age for a
+  status that may be hours old.
+
+**Parser fallbacks — the reason the code is structured at all.** An unknown code must degrade, never
+disappear:
+
+| Case | Behaviour |
+|---|---|
+| Grammar mismatch | Ignore the status entirely. No chip. Never guess |
+| Unknown message, known severity+persona | Render at the correct severity with a generic label |
+| Unknown persona | Render at the correct severity, no persona word |
+| Unknown severity (`0`, `4`–`9`) | Treat as **INFO**, never ALERT — including `0`, which is reserved for a tier *above* alert. Fails quiet, never loud |
+| Extension present | Parse and preserve; no consumers yet |
+
+**Idempotent retries (A34) — the client's obligation.**
+
+The relay keeps the original timestamp when an incoming envelope is **byte-identical** to the stored
+one. A client must therefore **resend the stored envelope bytes**, never a re-seal: re-sealing mints
+a fresh nonce, the relay treats it as new, and the age walks forward every time the network flaps.
+The one exception is restoring after process death, where the bytes did not survive — re-seal there,
+with the age from your monotonic base if it is still valid.
+
+This also means **"the relay echoed my position back" ≠ "the relay accepted a new one."** To drive a
+"last shared" indicator, compare the returned `ts` for your own uid against the previous one and only
+advance when it actually moved. Anything looser reports a frozen GPS as freshly shared.
+
+**Clearing is an explicit op.** `statusOp: ''` means *unchanged*, because a status must survive every
+sync that carries no new one. Only `'clear'` removes it. Until the relay stops echoing your status
+back, the UI must say "clearing", never "cleared".
+
+**A status never touches the position slot.** Setting one does not refresh any position timestamp,
+and it works with no position at all — the rider whose location permission is revoked is precisely
+the one most likely to need the alert tier.
 
 **One call, both directions** (§4.3). Half the invocations of a push endpoint plus a polled pull,
 one round trip to see a change, and worst-case staleness bounded by the push interval alone
@@ -304,20 +384,56 @@ serves, and a test asserts it against §7.2's figures, so the doc cannot drift f
 
 ## 4c. `POST /api/group/state`
 
-Auth: **leader only** (`403 NOT_THE_LEADER` otherwise). Body `{ groupId, state }` where `state`
-is `LIVE` or `ENDED`.
+> **1.7.2 — `PREPARING → LIVE` restarts the countdown.**
+>
+> `expiresAt` was previously fixed at creation, so a group created at 09:00 and started at 09:40 had
+> already spent 40 minutes of its own window before anyone set off. The record now carries
+> `durationMinutes`, and the LIVE transition recomputes `expiresAt = now + durationMinutes`, applying
+> the new lifetime to the Redis key as well as the record — writing one without the other would make
+> the group vanish mid-ride while every client still showed time remaining.
+>
+> The response therefore includes the new `expiresAt`, and **a client must adopt it** rather than
+> waiting for the next sync; the leader is looking at the timer as they tap Start.
+>
+> ```jsonc
+> { "groupId": "<uuid>", "state": "LIVE", "expiresAt": 1785014400000, "memberCount": 3 }
+> ```
+>
+> Groups created before 1.7.2 have no `durationMinutes` and keep the expiry they were created with.
+>
+> **Client-authored, relay-atomic:** when the group goes LIVE with no scheduled start time, the
+> leader's client seals `startAt = tap time` into replacement meta and includes it in this state
+> request. The relay still cannot create or inspect that value, but it commits the opaque envelope,
+> LIVE state, restarted expiry, and revision bump in one compare-and-swap. A start time left unset
+> after the group is live claims nothing was planned, when the plan just happened.
 
-- **`PREPARING → LIVE`** flips every member's Home into Group Mode. Idempotent — a retried
-  "Start group" after a dropped response returns `200`, not an error.
+
+Auth: **leader only** (`403 NOT_THE_LEADER` otherwise). Body `{ groupId, state }` where `state`
+is `LIVE` or `ENDED`. A 1.7.2 client starting a group whose encrypted meta has no start time also
+sends `meta`, a replacement `v1:meta` envelope containing the start-button tap time. The relay
+cannot create or inspect that value; accepting it in the same compare-and-swap prevents `LIVE` and
+the automatic start time from splitting across requests.
+
+- **`PREPARING → LIVE`** flips every member's Home into Group Mode and starts the full configured
+  duration. Idempotent — a retried "Start group" after a dropped response returns `200`, not an
+  error. Response includes `{ state, expiresAt, rev, metaUpdated, meta, memberCount }`; `meta` is the
+  accepted opaque envelope, allowing a retrying leader to decrypt the authoritative start time.
 - **`→ ENDED`** deletes **every** server-side key for the group immediately (§2.7), then answers.
   By the time the client gets `200`, nothing is left.
 
 **A group of one never enters `LIVE`** (§8) — `409 GROUP_OF_ONE`. Enforced server-side so it is a
 property of the feature rather than of one client.
 
-The `LIVE` swap is a compare-and-swap against the exact bytes Redis held, and it re-applies the
-key's remaining TTL: Redis `SET` clears an expiry, so without that, "Start group" would silently
-turn a 4-hour session into a permanent one and break §5.1.2 in the least visible way available.
+The `LIVE` swap is a compare-and-swap against the exact bytes Redis held. It resets `expiresAt` to
+`now + durationMinutes` and applies that lifetime to the group, members, revision, positions,
+statuses and token keys. The manual join-code key keeps its independent 30-minute ceiling. Redis
+`SET` clears an expiry, so ordinary non-start swaps still re-apply the prior group-key TTL. When
+`meta` is present, the revision increment occurs inside that same script; peers therefore cannot
+observe LIVE without also being forced to refetch the accepted start-time envelope.
+
+Records created before `durationMinutes` was persisted keep their original expiry; the relay does
+not guess a duration for an old record. If `meta` was supplied, the relay bumps `rev`, causing every
+member's next stale-revision sync to receive the new encrypted meta.
 
 ## 4d. `POST /api/group/leave`
 

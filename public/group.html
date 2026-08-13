@@ -99,6 +99,15 @@
     background: none; color: var(--cyan); border: 1px solid var(--line); margin-top: 10px;
   }
   .cta.secondary:hover, .cta.secondary:focus-visible { border-color: var(--cyan); filter: none; }
+  .store-cta {
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+  }
+  .store-cta img { display: block; border-radius: 5px; }
+  /* Not a link, and must not pretend to be one — no pointer, no hover lift, dimmed. */
+  .store-cta-disabled {
+    color: var(--muted); cursor: default; opacity: .65;
+  }
+  .store-cta-disabled:hover { border-color: var(--line); filter: none; }
   .steps { text-align: left; color: var(--muted); font-size: .9rem; line-height: 1.65; margin: 18px 0 0; padding-left: 20px; }
 
   .promise {
@@ -142,17 +151,31 @@
         query, or anything a server could log (A6, §10).
       -->
       <a class="cta" id="openApp" href="#">Open in TrackMe</a>
-      <a class="cta secondary" id="storeLink"
+      <!--
+        The same store artwork the landing page uses (`assets/store/*-48.png`), rather than the
+        hand-drawn SVG that used to live here — its paths were an approximation of the Play glyph
+        and did not match anything else in the product.
+
+        Absolute paths on purpose. `/g`, `/g/` and `/g/:path*` all rewrite to this file, so a
+        relative `assets/...` resolves against whichever form the invite link happened to use and
+        404s on the trailing-slash one.
+      -->
+      <a class="cta secondary store-cta" id="storeLink"
          href="https://play.google.com/store/apps/details?id=in.shvms.trackme"
-         target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;gap:8px;">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-            <path d="M3.609 1.814L15.485 12 3.609 22.186A1.85 1.85 0 0 1 3 20.841V3.159c0-.528.225-1.01.609-1.345z" fill="#4285F4"/>
-            <path d="M19.467 8.563l-3.982 3.437 3.982 3.437a2.21 2.21 0 0 0 0-6.874z" fill="#FBBC05"/>
-            <path d="M3.609 1.814L15.485 12l-3.982-3.437L3.609 1.814z" fill="#EA4335"/>
-            <path d="M3.609 22.186L11.503 15.437 15.485 12 3.609 22.186z" fill="#34A853"/>
-        </svg>
+         target="_blank" rel="noopener noreferrer">
+        <img src="/assets/store/google-play-48.png" width="24" height="24" alt="" aria-hidden="true">
         <span>GET IT ON Google Play</span>
       </a>
+      <!--
+        iOS is not on the App Store yet, and an invite link is exactly where someone on an iPhone
+        will land. Saying so plainly beats a dead link or, worse, no mention at all — they would
+        otherwise assume the invite was broken rather than that the app is Android-only for now.
+      -->
+      <span class="cta secondary store-cta store-cta-disabled" id="iosStore"
+            aria-disabled="true" title="Coming soon">
+        <img src="/assets/store/app-store-48.png" width="24" height="24" alt="" aria-hidden="true">
+        <span>App Store &mdash; coming soon</span>
+      </span>
 
       <ol class="steps">
         <li>Install TrackMe and sign in.</li>

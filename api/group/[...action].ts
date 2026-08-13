@@ -16,6 +16,7 @@ import {
   JOIN_CODE_TTL_SECONDS,
   MAX_META_ENVELOPE_CHARS,
   MAX_POSITION_ENVELOPE_CHARS,
+  MAX_STATUS_ENVELOPE_CHARS,
   MAX_ROSTER_ENVELOPE_CHARS,
   MAX_WRAPPED_TOKEN_CHARS,
   decideJoin,
@@ -39,8 +40,8 @@ import {
   endGroup,
   leaveGroup,
   removeMember,
-  bumpRev,
   readGroupRaw,
+  readRev,
   resolveCodeEntry,
   resolveGroupIdByToken,
   swapGroupState,
@@ -159,6 +160,8 @@ async function handleCreate(request: VercelRequest, response: VercelResponse) {
       state: 'PREPARING',
       createdAt: now,
       expiresAt,
+      // Kept so the clock can be restarted when the ride actually begins (see handleState).
+      durationMinutes: duration.value,
       maxMembers: size.value,
       syncIntervalSec: DEFAULT_SYNC_INTERVAL_SEC,
       tokenHash: body.tokenHash,
@@ -439,6 +442,24 @@ async function handleSync(request: VercelRequest, response: VercelResponse) {
       positionField = encodePositionField(Date.now(), body.pos);
     }
 
+    // A33: the status slot is processed independently of `pos`. A rider whose location permission
+    // is revoked — precisely the one most likely to need the alert tier — can still say so, and
+    // that independence is the whole reason E6 moved off "no backend changes".
+    //
+    // '' means UNCHANGED, so clearing has to be an explicit op: a status must survive every sync
+    // that carries no new one.
+    let statusOp: '' | 'set' | 'clear' = '';
+    let statusField = '';
+    if (body.statusOp === 'clear') {
+      statusOp = 'clear';
+    } else if (body.statusOp === 'set') {
+      if (!isValidEnvelope(body.status, MAX_STATUS_ENVELOPE_CHARS)) {
+        return response.status(400).json({ error: 'status must be a v1 envelope.' });
+      }
+      statusOp = 'set';
+      statusField = body.status as string;
+    }
+
     const now = Date.now();
     const clientRev = Number.isFinite(Number(body.rev)) ? Number(body.rev) : -1;
 
@@ -450,6 +471,8 @@ async function handleSync(request: VercelRequest, response: VercelResponse) {
       ghostCutoffMs: now - GHOST_TTL_MS,
       clientRev,
       minWriteIntervalMs: MIN_WRITE_INTERVAL_MS,
+      statusOp,
+      statusField,
     });
 
     if (result.code === 'GONE' || !result.record) return sendGone(response);
@@ -489,8 +512,19 @@ async function handleSync(request: VercelRequest, response: VercelResponse) {
         expiresAt: record.expiresAt,
         rev: result.rev,
         positions: {},
+        statuses: {},
+        serverNow: now,
         nextSyncInSec: 0,
       });
+    }
+
+    const statuses: Record<string, { e: string; ts: number }> = {};
+    for (const [uid, raw] of Object.entries(result.statuses)) {
+      const decodedStatus = decodePositionField(raw);
+      // Same encoding as a position field (A12), so the same decoder — and the same rule: one
+      // unreadable member costs that member their chip, never everyone's response.
+      if (decodedStatus) statuses[uid] = { e: decodedStatus.e, ts: decodedStatus.ts };
+      else console.error('Unparseable status field', { groupId: record.groupId });
     }
 
     const positions: Record<string, { e: string; ts: number }> = {};
@@ -513,6 +547,11 @@ async function handleSync(request: VercelRequest, response: VercelResponse) {
       rev: result.rev,
       maxMembers: record.maxMembers,
       positions,
+      statuses,
+      // A32. Every age in this response is measured against this, not against the receiver's wall
+      // clock — which is what 1.7.0 did, so a phone five minutes behind showed the whole group as
+      // fresher than it was.
+      serverNow: result.serverNowMs || now,
       nextSyncInSec: nextSyncIntervalSec({
         state,
         foreground: body.foreground === true,
@@ -558,6 +597,9 @@ async function handleState(request: VercelRequest, response: VercelResponse) {
     if (!next) {
       return response.status(400).json({ error: 'state must be LIVE or ENDED.' });
     }
+    if (body.meta !== undefined && !isValidEnvelope(body.meta, MAX_META_ENVELOPE_CHARS)) {
+      return response.status(400).json({ error: 'meta must be a v1 envelope.' });
+    }
 
     const current = await readGroupRaw(body.groupId);
     if (!current) return sendGone(response);
@@ -584,7 +626,14 @@ async function handleState(request: VercelRequest, response: VercelResponse) {
     if (record.state === 'ENDED' || record.expiresAt <= Date.now()) return sendGone(response);
     if (record.state === 'LIVE') {
       // Idempotent: a retried "Start group" after a dropped response must not be an error.
-      return response.status(200).json({ groupId: record.groupId, state: 'LIVE' });
+      return response.status(200).json({
+        groupId: record.groupId,
+        state: 'LIVE',
+        expiresAt: record.expiresAt,
+        rev: await readRev(record.groupId),
+        metaUpdated: body.meta !== undefined && record.meta === body.meta,
+        meta: record.meta,
+      });
     }
 
     // §8: "A group of one never enters LIVE; there is nothing to be co-present with." Enforced
@@ -598,18 +647,66 @@ async function handleState(request: VercelRequest, response: VercelResponse) {
       });
     }
 
-    const outcome = await swapGroupState(record.groupId, raw, { ...record, state: 'LIVE' });
-    if (outcome === 'GONE') return sendGone(response);
-    if (outcome === 'CONFLICT') {
+    // The countdown measures the RIDE, not the wait before it.
+    //
+    // Previously `expiresAt` was fixed at creation, so a group created at 09:00 and started at
+    // 09:40 was already 40 minutes into its own expiry before anyone set off — time nobody agreed
+    // to lose, and unknowable to the leader at creation because they cannot predict how long
+    // assembling takes. Restarting here gives the full window from the moment it means something.
+    //
+    // Records written before 1.7.2 have no `durationMinutes`; those keep the expiry they were
+    // created with rather than being reset to a duration we would have to invent.
+    const startedAt = Date.now();
+    const restartedExpiry = record.durationMinutes
+      ? startedAt + record.durationMinutes * 60_000
+      : record.expiresAt;
+
+    const live: GroupRecord = {
+      ...record,
+      state: 'LIVE',
+      expiresAt: restartedExpiry,
+      // The relay cannot manufacture the automatic start time because meta is E2EE. A 1.7.2
+      // leader supplies the re-sealed envelope in this same state transition so LIVE and the
+      // missing-start-time fix cannot split across two requests.
+      ...(body.meta !== undefined ? { meta: body.meta } : {}),
+    };
+    // The key's lifetime must move with the record's claim, or the group dies mid-ride while every
+    // client still shows time remaining.
+    const swap = await swapGroupState(
+      record.groupId,
+      raw,
+      live,
+      // A DURATION in ms, not an absolute time: the state script uses PEXPIRE, which takes a TTL.
+      // Passing the epoch value here would set a lifetime of roughly 56,000 years and quietly
+      // defeat §5.1.2's hard expiry — which is a privacy invariant, not a convenience.
+      record.durationMinutes ? restartedExpiry - startedAt : 0,
+      body.meta !== undefined,
+    );
+    if (swap.outcome === 'GONE') return sendGone(response);
+    if (swap.outcome === 'CONFLICT') {
       return response.status(409).json({
         error: 'The group changed. Try again.',
         code: 'STATE_CONFLICT',
       });
     }
 
+    // The revision bump is part of the same Redis compare-and-swap, so LIVE cannot become visible
+    // without also making the automatic start time visible on every member's next sync.
+    const rev = swap.rev;
+
     await captureTelemetryEvent(record.groupId, 'group_started', { memberCount });
 
-    return response.status(200).json({ groupId: record.groupId, state: 'LIVE', memberCount });
+    return response.status(200).json({
+      groupId: record.groupId,
+      state: 'LIVE',
+      // Returned so the leader's client adopts the restarted clock immediately rather than showing
+      // the creation-time expiry until the next sync.
+      expiresAt: restartedExpiry,
+      rev,
+      metaUpdated: body.meta !== undefined,
+      meta: live.meta,
+      memberCount,
+    });
   } catch (error) {
     return sendError(response, error, 'state');
   }
@@ -729,15 +826,21 @@ async function handleMeta(request: VercelRequest, response: VercelResponse) {
     }
     if (record.state === 'ENDED' || record.expiresAt <= Date.now()) return sendGone(response);
 
-    const outcome = await swapGroupState(record.groupId, raw, { ...record, meta: body.meta });
-    if (outcome === 'GONE') return sendGone(response);
-    if (outcome === 'CONFLICT') {
+    const swap = await swapGroupState(
+      record.groupId,
+      raw,
+      { ...record, meta: body.meta },
+      0,
+      true,
+    );
+    if (swap.outcome === 'GONE') return sendGone(response);
+    if (swap.outcome === 'CONFLICT') {
       return response.status(409).json({ error: 'The group changed. Try again.', code: 'STATE_CONFLICT' });
     }
 
-    // Bump the revision so every member's next sync refetches meta. Without this the leader would
-    // be the only one who knew, which is precisely the "silent" §8 forbids.
-    const rev = await bumpRev(record.groupId);
+    // The revision bump is part of the same Redis compare-and-swap. Without it the leader could
+    // be the only member who learns this edit, which is precisely the "silent" §8 forbids.
+    const rev = swap.rev;
 
     return response.status(200).json({ groupId: record.groupId, rev });
   } catch (error) {

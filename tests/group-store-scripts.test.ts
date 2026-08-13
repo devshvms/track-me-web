@@ -131,6 +131,54 @@ test('sync writes a position only when one was supplied', () => {
   assert.match(code(sync.body), /if ARGV\[2\] ~= ''/, 'sync unconditionally writes the position field');
 });
 
+test('sync keeps the original timestamp when the envelope is byte-identical', () => {
+  // A34, and the fix for the §6.3 defect that predates 1.7.2: the client sets pendingPosition per
+  // location callback and never clears it after a send, so a device whose GPS has frozen resends
+  // the SAME ciphertext every sync. Re-stamping it made that member look permanently fresh — a
+  // bright marker and "8s ago" for a position twenty minutes old.
+  //
+  // Envelopes are sealed per callback with a random nonce, so identical bytes can only mean no new
+  // fix arrived. Keeping prevTs is the honest answer.
+  const body = code(ALL_GROUP_SCRIPTS.find((s) => s.name === 'group:sync')!.body);
+  assert.ok(
+    /previous\s*==\s*incoming/.test(body),
+    'sync must compare the stored envelope with the incoming one',
+  );
+  assert.ok(
+    /tostring\(prevTs\)/.test(body),
+    'sync must re-write the ORIGINAL timestamp on an identical resend, not now',
+  );
+});
+
+test('sync returns its own clock so clients never anchor ages to their own', () => {
+  // A32. 1.7.0 compared a relay timestamp against the receiver's System.currentTimeMillis(), so a
+  // phone five minutes behind showed the whole group as fresher than it was.
+  const body = code(ALL_GROUP_SCRIPTS.find((s) => s.name === 'group:sync')!.body);
+  assert.ok(/tostring\(now\)/.test(body), 'sync must return its own now');
+});
+
+test('sync processes the status slot independently of the position', () => {
+  // §4.7, and the reason E6 stopped claiming "no backend changes": a rider whose location
+  // permission is revoked is precisely the one most likely to need the alert tier.
+  const body = code(ALL_GROUP_SCRIPTS.find((s) => s.name === 'group:sync')!.body);
+  const statusBlock = body.slice(body.indexOf('statusOp'));
+  assert.ok(statusBlock.length > 0, 'sync must handle statusOp');
+  // The status write must not be nested inside the `if ARGV[2] ~= ''` position guard.
+  const posGuard = body.indexOf("if ARGV[2] ~= ''");
+  const statusGuard = body.indexOf('local statusOp');
+  assert.ok(
+    statusGuard > posGuard,
+    'the status block must be a sibling of the position block, not inside it',
+  );
+  assert.ok(/HDEL', KEYS\[5\]/.test(body), 'clear must delete from the status key');
+});
+
+test('the status key expires with the group, like the position key', () => {
+  // §4.7: a status dies with the group exactly like everything else.
+  const body = code(ALL_GROUP_SCRIPTS.find((s) => s.name === 'group:sync')!.body);
+  assert.ok(/PEXPIRE', KEYS\[5\]/.test(body), 'the status key must be given the group TTL');
+});
+
 test('sync checks membership before it reads anything', () => {
   // §5.2, "departed member keeps polling": authorisation is the enforcement point, and it has
   // to run before the group's positions are read, not after.
@@ -204,6 +252,34 @@ test('the state swap re-applies the TTL it just cleared', () => {
   const expireAt = body.indexOf("call('PEXPIRE'");
   assert.ok(ttlAt > 0 && ttlAt < setAt, 'TTL is read after the SET has already cleared it');
   assert.ok(expireAt > setAt, 'expiry is never re-applied after the SET');
+});
+
+test('the state swap can restart the lifetime, not only preserve it', () => {
+  // PREPARING -> LIVE restarts the countdown so it measures the ride rather than the wait before
+  // it. If the script only ever preserved the existing PTTL, the record would claim a later expiry
+  // while the KEY still died at its creation-based time — the group would vanish mid-ride with
+  // every client showing time remaining.
+  const body = code(ALL_GROUP_SCRIPTS.find((s) => s.name === 'group:state')!.body);
+  assert.ok(/tonumber\(ARGV\[3\]\)/.test(body), 'state must accept an explicit new lifetime');
+  assert.ok(
+    /PEXPIRE', KEYS\[1\], requested/.test(body),
+    'state must apply the requested lifetime when one is given',
+  );
+  for (let key = 2; key <= 6; key += 1) {
+    assert.ok(
+      body.includes(`PEXPIRE', KEYS[${key}], requested`),
+      `state must move session KEYS[${key}] to the restarted expiry`,
+    );
+  }
+  // ...and still preserve the old one otherwise, so every other swap is unchanged.
+  assert.ok(/elseif ttl > 0 then/.test(body), 'state must fall back to preserving the existing TTL');
+});
+
+test('the state swap commits meta revision in the same script', () => {
+  const body = code(ALL_GROUP_SCRIPTS.find((s) => s.name === 'group:state')!.body);
+  assert.ok(/ARGV\[4\] == '1'/.test(body), 'state must accept the atomic revision-bump flag');
+  assert.ok(/INCR', KEYS\[3\]/.test(body), 'state must bump rev inside the compare-and-swap');
+  assert.ok(/return \{ 1, rev \}/.test(body), 'state must return the committed revision');
 });
 
 test('the state swap is a compare-and-swap, not a blind write', () => {
