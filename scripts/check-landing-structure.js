@@ -19,7 +19,7 @@ requireText("Google Play store icon", landing, /assets\/store\/google-play-48\.p
 requireText("App Store icon", landing, /assets\/store\/app-store-48\.png/);
 requireText("non-clickable App Store state", landing, /class="store-tooltip"[^>]*data-tooltip="Coming soon"[^>]*aria-disabled="true"/);
 requireText("iOS default release state", landing, /iOS is coming soon|iOS is in preparation|iOS preparation/);
-requireText("pinned Android 1.7.2 release", app, /tag_name: 'v1\.7\.2'/);
+requireText("pinned Android 1.7.3 release", app, /tag_name: 'v1\.7\.3'/);
 requireText("pinned release de-duplication", app, /normalizeReleaseTag/);
 requireText("accessible release tab switching", app, /setupReleaseTabs[\s\S]*ArrowLeft[\s\S]*ArrowRight/);
 requireText("scrollable release archive", landing, /class="release-history"/);

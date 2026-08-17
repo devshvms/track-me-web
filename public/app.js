@@ -252,15 +252,15 @@ if (exportBtn) {
 // the merge below no longer trusts its position.
 const pinnedReleases = {
     'track-me-android': [{
-        tag_name: 'v1.7.2',
-        name: 'TrackMe v1.7.2',
-        published_at: '2026-08-13T00:00:00Z',
+        tag_name: 'v1.7.3',
+        name: 'TrackMe v1.7.3',
+        published_at: '2026-08-17T00:00:00Z',
         body: [
-            'Ride Together statuses: tell your group you have stopped for fuel, hit a vehicle issue, or are taking a break — without typing.',
-            'Every rider row now shows when the group last heard from them, so you can tell "just now" from "ten minutes ago".',
-            'Open directions to a rider\'s last known point.',
-            'Your own screen now tells you when the group has stopped receiving your updates.',
-            'More accurate freshness: stale positions no longer look current.'
+            'The map stays where you put it. Pan or zoom while recording and it no longer drags you back. Tap recentre to follow yourself again.',
+            'Tap any rider in your group to see them on the map.',
+            'A short trail behind each rider shows which way they are heading.',
+            'Long rides are no longer split in two. A ride of any length saves in one piece.',
+            'Deleting a ride now clears every part of it from the cloud.'
         ].join('\n\n')
     }]
 };
