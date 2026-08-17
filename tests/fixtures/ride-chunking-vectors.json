@@ -1,0 +1,64 @@
+{
+  "version": 1,
+  "canonical": "track-me-web/tests/fixtures — copy to each client, same as group-status-vectors.json",
+  "note": "SCOPE_1.7.3 §2(a), §0 contracts 3-4, and §8. A cloud ride is a parent document plus N ordered chunk documents; the parent carries chunkCount and is written last. Chunk ids are zero-padded so lexical order is chronological order. §8 names this as the contract worth pinning: a client that formats `1` where the other formats `001` uploads rides the other platform silently reassembles in the wrong order, or cannot find at all. Invisible until someone switches phone.",
+
+  "shape": {
+    "parentPath": "users/{uid}/rides/{rideId}",
+    "chunkPath": "users/{uid}/rides/{rideId}/points/{chunkId}",
+    "chunkCountField": "chunkCount",
+    "chunkPointsField": "points",
+    "pointsSubcollection": "points",
+    "chunkSize": 1000,
+    "chunkIdDigits": 3,
+    "deleteBatchLimit": 500
+  },
+
+  "rules": [
+    "The parent is the commit marker AND the tombstone: written last on upload, deleted last on removal.",
+    "Children are written before the parent and deleted before the parent — strict reverse order.",
+    "Readers take exactly chunkCount chunks and ignore anything beyond, so a stale orphan from a re-upload is inert before it is cleaned up.",
+    "Reassembly order is built from chunkCount, not from a sorted query. Padding keeps every other view of the data (console, orderBy(documentId()), export tooling) honest.",
+    "A ride whose parent carries chunkCount but whose chunks are incomplete must be REJECTED, not partially imported. Half a ride that looks plausible is worse than no ride."
+  ],
+
+  "chunkIds": [
+    { "index": 0, "id": "000" },
+    { "index": 1, "id": "001" },
+    { "index": 2, "id": "002" },
+    { "index": 9, "id": "009" },
+    { "index": 10, "id": "010" },
+    { "index": 99, "id": "099" },
+    { "index": 100, "id": "100" },
+    { "index": 999, "id": "999" },
+    { "index": 1000, "id": "1000",
+      "note": "Past 999 the id grows a fourth digit and lexical order no longer matches chronological order. Reassembly is unaffected because it is built from chunkCount, never sorted. 999 chunks is 999,000 points — about eleven days of continuous 1 Hz recording. Both clients must agree on this behaviour rather than one of them clamping." }
+  ],
+
+  "chunkCounts": [
+    { "pointCount": 0, "chunkCount": 0,
+      "note": "no points is no chunks, not one empty chunk — an empty chunk document is a read that always returns nothing" },
+    { "pointCount": 1, "chunkCount": 1 },
+    { "pointCount": 999, "chunkCount": 1 },
+    { "pointCount": 1000, "chunkCount": 1,
+      "note": "exact boundary — must NOT round up to 2" },
+    { "pointCount": 1001, "chunkCount": 2 },
+    { "pointCount": 2000, "chunkCount": 2 },
+    { "pointCount": 9000, "chunkCount": 9,
+      "note": "the old auto-split threshold, for reference — this is the ride that used to be cut in half" },
+    { "pointCount": 10483, "chunkCount": 11,
+      "note": "the measured single-document ceiling from §9 (100 bytes/point, 1 MiB). Chunking removes it entirely; this row exists so both clients can see the number the old shape died at." },
+    { "pointCount": 50000, "chunkCount": 50 }
+  ],
+
+  "deleteBatching": [
+    { "chunkCount": 0, "batches": 1, "atomic": true,
+      "note": "parent only — the legacy array-shaped ride" },
+    { "chunkCount": 1, "batches": 1, "atomic": true },
+    { "chunkCount": 499, "batches": 1, "atomic": true,
+      "note": "499 chunks + 1 parent = exactly the 500-operation limit" },
+    { "chunkCount": 500, "batches": 2, "atomic": false,
+      "note": "501 operations. ~500,000 points, beyond any real ride — but the resumable path must exist, because losing atomicity silently is how orphans are made." },
+    { "chunkCount": 1000, "batches": 3, "atomic": false }
+  ]
+}
