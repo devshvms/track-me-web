@@ -12,12 +12,12 @@ jobs:
   update-releases:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v7
         with:
-          node-version: '18'
+          node-version: '24'
 
       - name: Update releases.json
         run: |
@@ -46,7 +46,7 @@ jobs:
           "
 
       - name: Create Pull Request
-        uses: peter-evans/create-pull-request@v5
+        uses: peter-evans/create-pull-request@v8
         with:
           commit-message: "chore: add ${{ github.event.client_payload.platform }} release ${{ github.event.client_payload.version }}"
           title: "New Mobile Release: ${{ github.event.client_payload.platform }} ${{ github.event.client_payload.version }}"
