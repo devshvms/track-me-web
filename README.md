@@ -1,6 +1,8 @@
-# TrackMe Web & API 🌐 (v1.7.0)
+# TrackMe Web & API 🌐 (v1.8.0)
 
 `track-me-web` is the Vercel-hosted web platform, serverless backend, live-share viewer, data export service, and zero-knowledge Group Ride relay for TrackMe.
+
+Download TrackMe for [Android on Google Play](https://play.google.com/store/apps/details?id=in.shvms.trackme) or [iPhone and iPad on the App Store](https://apps.apple.com/app/id6800161248).
 
 ## 🌟 Core Features
 

@@ -56,11 +56,13 @@ require_('leads with the group name, not the app', /id="headline"/);
 require_('shows how many people are in it', /id="liveText"/);
 require_('shows the join code — the only way in without App Links', /id="joinCode"/);
 require_('has a Play Store handoff', /play\.google\.com\/store\/apps\/details\?id=in\.shvms\.trackme/);
+require_('has an App Store handoff', /apps\.apple\.com\/app\/id6800161248/);
+require_('opens installed iOS app with the invite token', /trackme:\/\/group\?\$\{params\.toString\(\)\}/);
 require_('tells the user where to enter the code', /Join with a code/);
 require_('states the privacy promise in plain language', /You can leave at any time and nobody is\s+told/);
 
 // --- Self-contained and cheap (§4.8: Lighthouse 95+, <500 KB, zero framework) ---
-forbid('no third-party script or stylesheet', /(src|href)="https?:\/\/(?!play\.google)/);
+forbid('no third-party script or stylesheet', /(src|href)="https?:\/\/(?!play\.google|apps\.apple)/);
 require_('loads only the local crypto module', /from '\/js\/group-crypto\.mjs'/);
 
 const bytes = Buffer.byteLength(html, 'utf8');

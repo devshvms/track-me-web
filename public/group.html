@@ -166,16 +166,12 @@
         <img src="/assets/store/google-play-48.png" width="24" height="24" alt="" aria-hidden="true">
         <span>GET IT ON Google Play</span>
       </a>
-      <!--
-        iOS is not on the App Store yet, and an invite link is exactly where someone on an iPhone
-        will land. Saying so plainly beats a dead link or, worse, no mention at all — they would
-        otherwise assume the invite was broken rather than that the app is Android-only for now.
-      -->
-      <span class="cta secondary store-cta store-cta-disabled" id="iosStore"
-            aria-disabled="true" title="Coming soon">
+      <a class="cta secondary store-cta" id="iosStore"
+         href="https://apps.apple.com/app/id6800161248"
+         target="_blank" rel="noopener noreferrer">
         <img src="/assets/store/app-store-48.png" width="24" height="24" alt="" aria-hidden="true">
-        <span>App Store &mdash; coming soon</span>
-      </span>
+        <span>Download on the App Store</span>
+      </a>
 
       <ol class="steps">
         <li>Install TrackMe and sign in.</li>
@@ -314,10 +310,11 @@ async function main() {
     el('joinCode').closest('.code-block').hidden = true;
   }
 
-  // Android only: `intent://` is a Chrome-on-Android construct, and on any other platform it
-  // would be a button that visibly does nothing. iOS has no app yet (D1), so the Play Store link
-  // is the honest single option everywhere else.
+  // Android uses an intent with a Play Store fallback. iOS uses TrackMe's registered custom
+  // scheme and keeps the App Store link visible below it for people who have not installed yet.
   const isAndroid = /android/i.test(navigator.userAgent);
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent)
+    || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   if (isAndroid) {
     const extras = [`S.token=${encodeURIComponent(token)}`];
     if (data.joinCode) extras.push(`S.code=${encodeURIComponent(data.joinCode)}`);
@@ -326,6 +323,10 @@ async function main() {
       'href',
       `intent://group#Intent;scheme=trackme;package=in.shvms.trackme;${extras.join(';')};S.browser_fallback_url=${fallback};end`,
     );
+  } else if (isIOS) {
+    const params = new URLSearchParams({ token });
+    if (data.joinCode) params.set('code', data.joinCode);
+    el('openApp').setAttribute('href', `trackme://group?${params.toString()}`);
   } else {
     el('openApp').hidden = true;
   }

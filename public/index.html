@@ -247,9 +247,9 @@
         <section id="waitlist" class="section-shell section-block waitlist-section" aria-labelledby="waitlist-title">
             <div class="waitlist-card">
                 <div class="waitlist-copy">
-                    <p class="eyebrow">Be first out the door</p>
-                    <h2 id="waitlist-title">Join the launch list.</h2>
-                    <p>Get a single note when TrackMe opens up. No newsletter, no sharing your address. Sent securely via <a href="https://resend.com/legal/dpa" target="_blank" rel="noopener noreferrer" style="color:inherit;text-decoration:underline;">Resend</a> EU; we store only a one-way hash locally.</p>
+                    <p class="eyebrow">Stay on the route</p>
+                    <h2 id="waitlist-title">Get TrackMe updates.</h2>
+                    <p>Get an occasional note when TrackMe ships something useful. No newsletter spam, no sharing your address. Sent securely via <a href="https://resend.com/legal/dpa" target="_blank" rel="noopener noreferrer" style="color:inherit;text-decoration:underline;">Resend</a> EU; we store only a one-way hash locally.</p>
                 </div>
                 <form id="waitlist-form" class="waitlist-form" novalidate>
                     <div class="form-group">
@@ -269,7 +269,7 @@
                         <label for="waitlist-company">Company</label>
                         <input type="text" id="waitlist-company" name="company" tabindex="-1" autocomplete="off">
                     </div>
-                    <button type="submit" id="waitlist-submit" class="btn btn-primary btn-large">Join the list</button>
+                    <button type="submit" id="waitlist-submit" class="btn btn-primary btn-large">Get updates</button>
                     <p id="waitlist-message" class="waitlist-message" role="status" aria-live="polite"></p>
                 </form>
             </div>
@@ -278,7 +278,7 @@
         <section id="releases" class="section-shell section-block releases-section" aria-labelledby="releases-title">
             <div class="section-heading section-heading-row">
                 <div><p class="eyebrow">Start where you are</p><h2 id="releases-title">Get the app.</h2></div>
-                <p>Android version 1.7.2 is live on Google Play. iOS is coming soon to the App Store.</p>
+                <p>Android version 1.8.1 and iOS version 1.8.0 are available now.</p>
             </div>
             <div class="tabs" role="tablist" aria-label="Platform releases">
                 <button class="tab-btn active" id="android-tab" type="button" role="tab" aria-selected="true" aria-controls="android-releases" data-target="android-releases">Android</button>
@@ -288,7 +288,7 @@
                 <div class="download-panel">
                     <div>
                         <span class="status-label status-live">Live in Production</span>
-                        <h3>Google Play Store (v1.7.2)</h3>
+                        <h3>Google Play Store (v1.8.1)</h3>
                         <p>TrackMe for Android is live on Google Play. Download or open the store listing directly.</p>
                     </div>
                     <div class="download-actions">
@@ -305,17 +305,15 @@
             <div id="ios-releases" class="tab-content" role="tabpanel" aria-labelledby="ios-tab" hidden>
                 <div class="download-panel">
                     <div>
-                        <span class="status-label status-coming">Coming Soon</span>
-                        <h3>Apple App Store</h3>
-                        <p>TrackMe for iOS is in preparation. App Store availability will open soon.</p>
+                        <span class="status-label status-live">Live in Production</span>
+                        <h3>Apple App Store (v1.8.0)</h3>
+                        <p>TrackMe for iPhone and iPad is live on the App Store. Download or open the store listing directly.</p>
                     </div>
                     <div class="download-actions">
-                        <span class="store-tooltip" data-tooltip="Coming soon" tabindex="0" aria-label="App Store, coming soon" aria-disabled="true" title="Coming soon">
-                            <span class="btn btn-secondary store-btn store-btn-disabled" aria-hidden="true">
-                                <img class="store-icon" src="assets/store/app-store-48.png" width="48" height="48" alt="">
-                                <span>App Store</span>
-                            </span>
-                        </span>
+                        <a class="btn btn-primary download-cta store-btn" href="https://apps.apple.com/app/id6800161248" target="_blank" rel="noreferrer" data-download-platform="ios">
+                            <img class="store-icon" src="assets/store/app-store-48.png" width="48" height="48" alt="" aria-hidden="true">
+                            <span>Download on the App Store</span>
+                        </a>
                     </div>
                 </div>
                 <div class="release-history" id="dynamic-ios-releases" aria-label="iOS release history">
@@ -386,7 +384,7 @@
                         const res = await fetch('/api/telemetry/subscribe', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, platform, company }) });
                         if (res.ok) {
                             waitlistForm.reset();
-                            message.textContent = "You're on the list. We'll be in touch at launch.";
+                            message.textContent = "You're subscribed. We'll share meaningful TrackMe updates here.";
                             message.dataset.state = 'success';
                         } else if (res.status === 429) {
                             message.textContent = 'Too many attempts. Please try again in a little while.';

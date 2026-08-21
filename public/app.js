@@ -252,15 +252,27 @@ if (exportBtn) {
 // the merge below no longer trusts its position.
 const pinnedReleases = {
     'track-me-android': [{
-        tag_name: 'v1.7.3',
-        name: 'TrackMe v1.7.3',
-        published_at: '2026-08-17T00:00:00Z',
+        tag_name: 'v1.8.1',
+        name: 'TrackMe v1.8.1',
+        published_at: '2026-08-20T13:55:32Z',
         body: [
             'The map stays where you put it. Pan or zoom while recording and it no longer drags you back. Tap recentre to follow yourself again.',
-            'Tap any rider in your group to see them on the map.',
-            'A short trail behind each rider shows which way they are heading.',
-            'Long rides are no longer split in two. A ride of any length saves in one piece.',
-            'Deleting a ride now clears every part of it from the cloud.'
+            'Tap any rider in your group to see them on the map, with a short trail showing their heading.',
+            'Walks and runs now report pace, with a baseline per kilometre.',
+            'The map matches your theme, and you can pause or finish a ride from the notification.',
+            'Long rides save in one piece, and deleting a ride clears every part of it from the cloud.'
+        ].join('\n\n')
+    }],
+    'track-me-ios': [{
+        tag_name: 'v1.8.0',
+        name: 'TrackMe v1.8.0',
+        published_at: '2026-08-21T18:09:59Z',
+        body: [
+            'Keep long rides together with more reliable cloud sync and safer offline deletion across devices.',
+            'Follow your position on the map or explore freely, then recenter when you are ready.',
+            'Focus on a rider from Community and see a short heading trail during live Group Rides.',
+            'Permission requests now appear only when you start a ride or use the feature that needs them; onboarding simply explains each permission.',
+            'Improved recording safeguards, warning readability, accessibility, and interface polish.'
         ].join('\n\n')
     }]
 };
@@ -279,7 +291,7 @@ function mergePinnedReleases(repoName, releases) {
     // Pinned entries used to be prepended unconditionally, so the hardcoded fallback always landed
     // at index 0, and index 0 is the row that renders expanded. The moment a newer release shipped
     // without someone remembering to update the constant above, the page showed the OLD version at
-    // the top with the OLD notes open — which is exactly what happened to 1.7.2.
+    // the top with the OLD notes open — which is exactly what happened before 1.7.3.
     //
     // Ordering by date means a stale constant can now only ever be missing, never misleading.
     return merged.sort((a, b) => new Date(b.published_at) - new Date(a.published_at));
@@ -399,6 +411,6 @@ document.addEventListener('DOMContentLoaded', () => {
     fetchReleases(
         'track-me-ios',
         'dynamic-ios-releases',
-        "iOS isn't on TestFlight yet — releases will show up here once it opens. Join the launch list above to be the first to know."
+        'iOS release notes will appear here as they are published. Version 1.8.0 is available on the App Store now.'
     );
 });
