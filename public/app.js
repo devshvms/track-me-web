@@ -405,7 +405,7 @@ async function fetchReleases(repoName, containerId, emptyMessage = 'No public re
     });
 }
 
-document.addEventListener('DOMContentLoaded', () => {
+function initReleases() {
     setupReleaseTabs();
     fetchReleases('track-me-android', 'dynamic-android-releases');
     fetchReleases(
@@ -413,4 +413,11 @@ document.addEventListener('DOMContentLoaded', () => {
         'dynamic-ios-releases',
         'iOS release notes will appear here as they are published. Version 1.8.0 is available on the App Store now.'
     );
-});
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initReleases);
+} else {
+    initReleases();
+}
+

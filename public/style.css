@@ -77,6 +77,11 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .hero h1 { max-width: 680px; margin: 0; font-size: clamp(2.7rem, 6vw, 5.2rem); line-height: 1.02; letter-spacing: -.04em; }
 .hero-lede { max-width: 600px; margin: 24px 0 0; color: var(--muted-strong); font-size: clamp(1.05rem, 2vw, 1.25rem); }
 .hero-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 20px; margin-top: 30px; }
+.hero-store-badges { display: inline-flex; align-items: center; gap: 14px; }
+.hero-store-badge { display: inline-flex; align-items: center; justify-content: center; width: 48px; height: 48px; border-radius: 12px; background: var(--night-soft); border: 1px solid var(--line); transition: transform .15s ease, border-color .15s ease, box-shadow .15s ease; text-decoration: none; }
+.hero-store-badge:hover { transform: translateY(-2px); border-color: var(--cyan); box-shadow: 0 4px 12px rgba(41, 182, 246, .2); }
+.hero-store-badge:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
+.hero-store-badge img { display: block; width: 28px; height: 28px; object-fit: contain; }
 .hero-actions .text-link { display: inline-flex; align-items: center; min-height: 44px; }
 .text-link { color: var(--cyan); font-weight: 800; text-decoration: none; }
 .text-link:hover { color: #67cdf9; }
