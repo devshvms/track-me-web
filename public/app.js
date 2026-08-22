@@ -251,30 +251,49 @@ if (exportBtn) {
 // Keep this in step with the newest published release. It is easy to forget, which is exactly why
 // the merge below no longer trusts its position.
 const pinnedReleases = {
-    'track-me-android': [{
-        tag_name: 'v1.8.1',
-        name: 'TrackMe v1.8.1',
-        published_at: '2026-08-20T13:55:32Z',
-        body: [
-            'The map stays where you put it. Pan or zoom while recording and it no longer drags you back. Tap recentre to follow yourself again.',
-            'Tap any rider in your group to see them on the map, with a short trail showing their heading.',
-            'Walks and runs now report pace, with a baseline per kilometre.',
-            'The map matches your theme, and you can pause or finish a ride from the notification.',
-            'Long rides save in one piece, and deleting a ride clears every part of it from the cloud.'
-        ].join('\n\n')
-    }],
-    'track-me-ios': [{
-        tag_name: 'v1.8.0',
-        name: 'TrackMe v1.8.0',
-        published_at: '2026-08-21T18:09:59Z',
-        body: [
-            'Keep long rides together with more reliable cloud sync and safer offline deletion across devices.',
-            'Follow your position on the map or explore freely, then recenter when you are ready.',
-            'Focus on a rider from Community and see a short heading trail during live Group Rides.',
-            'Permission requests now appear only when you start a ride or use the feature that needs them; onboarding simply explains each permission.',
-            'Improved recording safeguards, warning readability, accessibility, and interface polish.'
-        ].join('\n\n')
-    }]
+    'track-me-android': [
+        {
+            tag_name: 'v1.8.4',
+            name: 'TrackMe v1.8.4',
+            published_at: '2026-08-22T21:40:00Z',
+            body: [
+                'Floating dashboard — your distance, pace and time stay on screen while you navigate in another app. Tap the home gesture mid-ride and TrackMe shrinks into a corner window instead of disappearing.',
+                'Share images now match their preview exactly, and the stats panel is sized to fit its text instead of a fixed band.',
+                'Fixes and polish across ride history and group rides.'
+            ].join('\n\n')
+        },
+        {
+            tag_name: 'v1.8.3',
+            name: 'TrackMe v1.8.3',
+            published_at: '2026-08-22T10:16:05Z',
+            body: [
+                'Fixes a startup crash that stopped the app from opening on fresh installs.',
+                'Everything from 1.8.2: try the app during the walkthrough with real controls, a sample ride waiting in History on day one, and rebuilt intro screens.'
+            ].join('\n\n')
+        }
+    ],
+    'track-me-ios': [
+        {
+            tag_name: 'v1.8.4',
+            name: 'TrackMe v1.8.4',
+            published_at: '2026-08-22T21:41:29Z',
+            body: [
+                'Live Activity & Dynamic Island — keep your distance, pace, and duration visible on your Lock Screen and Dynamic Island during rides.',
+                'Siri ride actions — start, pause, resume, and finish your rides hands-free.',
+                'Siri ride queries — ask Siri for your current distance, pace, and ride duration hands-free.',
+                'Share images now match their preview with compact duration formatting and refined theme styling.'
+            ].join('\n\n')
+        },
+        {
+            tag_name: 'v1.8.3',
+            name: 'TrackMe v1.8.3',
+            published_at: '2026-08-22T10:16:05Z',
+            body: [
+                'Version alignment with Android 1.8.3.',
+                'Everything from 1.8.2: try the app during the walkthrough with real controls, a sample ride waiting in History on day one, and rebuilt intro screens.'
+            ].join('\n\n')
+        }
+    ]
 };
 
 function normalizeReleaseTag(tag) {
@@ -411,7 +430,7 @@ function initReleases() {
     fetchReleases(
         'track-me-ios',
         'dynamic-ios-releases',
-        'iOS release notes will appear here as they are published. Version 1.8.0 is available on the App Store now.'
+        'iOS release notes will appear here as they are published. Version 1.8.4 is available on the App Store now.'
     );
 }
 

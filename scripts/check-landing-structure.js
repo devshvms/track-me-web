@@ -20,13 +20,13 @@ function forbidText(name, document, pattern) {
 requireText("dependency-free landing controls", landing, /app\.js/);
 requireText("Android release panel", landing, /id="android-releases"[^>]*role="tabpanel"/);
 requireText("iOS release panel", landing, /id="ios-releases"[^>]*role="tabpanel"/);
-requireText("Android 1.8.1 release state", landing, /Google Play Store \(v1\.8\.1\)/);
+requireText("Android 1.8.4 release state", landing, /Google Play Store \(v1\.8\.4\)/);
 requireText("Google Play store icon", landing, /assets\/store\/google-play-48\.png/);
 requireText("App Store icon", landing, /assets\/store\/app-store-48\.png/);
 requireText("clickable App Store handoff", landing, /<a[^>]*href="https:\/\/apps\.apple\.com\/app\/id6800161248"[^>]*data-download-platform="ios"/);
-requireText("iOS 1.8.0 release state", landing, /Apple App Store \(v1\.8\.0\)/);
-requireText("pinned Android 1.8.1 release", app, /tag_name: 'v1\.8\.1'/);
-requireText("pinned iOS 1.8.0 release", app, /'track-me-ios': \[\{[\s\S]*tag_name: 'v1\.8\.0'/);
+requireText("iOS 1.8.4 release state", landing, /Apple App Store \(v1\.8\.4\)/);
+requireText("pinned Android 1.8.4 release", app, /tag_name: 'v1\.8\.4'/);
+requireText("pinned iOS 1.8.4 release", app, /'track-me-ios': \[[\s\S]*tag_name: 'v1\.8\.4'/);
 forbidText("CSS merge-conflict markers", style, /^(<<<<<<<|=======|>>>>>>>)/m);
 requireText("pinned release de-duplication", app, /normalizeReleaseTag/);
 requireText("accessible release tab switching", app, /setupReleaseTabs[\s\S]*ArrowLeft[\s\S]*ArrowRight/);
