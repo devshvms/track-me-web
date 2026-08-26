@@ -255,7 +255,7 @@ const pinnedReleases = {
         {
             tag_name: 'v1.8.4',
             name: 'TrackMe v1.8.4',
-            published_at: '2026-08-22T21:40:00Z',
+            published_at: '2026-08-22T16:11:39Z',
             body: [
                 'Floating dashboard — your distance, pace and time stay on screen while you navigate in another app. Tap the home gesture mid-ride and TrackMe shrinks into a corner window instead of disappearing.',
                 'Share images now match their preview exactly, and the stats panel is sized to fit its text instead of a fixed band.',
