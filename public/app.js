@@ -274,17 +274,6 @@ const pinnedReleases = {
     ],
     'track-me-ios': [
         {
-            tag_name: 'v1.8.4',
-            name: 'TrackMe v1.8.4',
-            published_at: '2026-08-22T21:41:29Z',
-            body: [
-                'Live Activity & Dynamic Island — keep your distance, pace, and duration visible on your Lock Screen and Dynamic Island during rides.',
-                'Siri ride actions — start, pause, resume, and finish your rides hands-free.',
-                'Siri ride queries — ask Siri for your current distance, pace, and ride duration hands-free.',
-                'Share images now match their preview with compact duration formatting and refined theme styling.'
-            ].join('\n\n')
-        },
-        {
             tag_name: 'v1.8.3',
             name: 'TrackMe v1.8.3',
             published_at: '2026-08-22T10:16:05Z',
@@ -430,7 +419,7 @@ function initReleases() {
     fetchReleases(
         'track-me-ios',
         'dynamic-ios-releases',
-        'iOS release notes will appear here as they are published. Version 1.8.4 is available on the App Store now.'
+        'iOS release notes will appear here as they are published. The latest App Store release is v1.8.3.'
     );
 }
 
@@ -439,4 +428,3 @@ if (document.readyState === 'loading') {
 } else {
     initReleases();
 }
-
