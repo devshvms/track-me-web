@@ -253,6 +253,17 @@ if (exportBtn) {
 const pinnedReleases = {
     'track-me-android': [
         {
+            tag_name: 'v1.8.6',
+            name: 'TrackMe v1.8.6',
+            published_at: '2026-09-02T17:54:30Z',
+            body: [
+                'My Progress is now a trail. Six levels earned by active minutes, each showing when you reached it and which activities got you there — all local, no account and no leaderboard.',
+                'Imported GPX files no longer count toward levels or milestones, and importing the same track twice is refused even when the file came from another app.',
+                'Home shows real figures instead of generic trends, This Week breaks distance down by activity, and Ride Together is one control instead of two.',
+                'Auto-paused segments draw as solid lines, and route previews now match exported images exactly.'
+            ].join('\n\n')
+        },
+        {
             tag_name: 'v1.8.4',
             name: 'TrackMe v1.8.4',
             published_at: '2026-08-22T16:11:39Z',
@@ -273,6 +284,17 @@ const pinnedReleases = {
         }
     ],
     'track-me-ios': [
+        {
+            tag_name: 'v1.8.6',
+            name: 'TrackMe v1.8.6',
+            published_at: '2026-09-02T17:49:35Z',
+            body: [
+                'My Progress becomes a trail, matching Android: six levels earned by active minutes, each showing when it was reached and which activities earned it.',
+                'Your level now appears on your own avatar in Settings and Account, signed in or not.',
+                'Imported GPX no longer counts toward levels or milestones, and duplicate imports are refused by a track fingerprint identical to Android\'s.',
+                'The group-ride screens are translated into all six supported languages for the first time.'
+            ].join('\n\n')
+        },
         {
             tag_name: 'v1.8.3',
             name: 'TrackMe v1.8.3',
