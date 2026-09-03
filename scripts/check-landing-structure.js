@@ -20,19 +20,29 @@ function forbidText(name, document, pattern) {
 requireText("dependency-free landing controls", landing, /app\.js/);
 requireText("Android release panel", landing, /id="android-releases"[^>]*role="tabpanel"/);
 requireText("iOS release panel", landing, /id="ios-releases"[^>]*role="tabpanel"/);
-requireText("Android 1.8.6 internal release state", landing, /Google Play internal testing \(v1\.8\.6\)/);
-requireText("Android internal testing badge", landing, /<span class="status-label status-coming">Internal testing<\/span>/);
+// TASK-293. These two lines used to REQUIRE the internal-testing copy, which is how a claim that
+// was false for over a month survived a green test suite: the guard pinned the defect instead of
+// the invariant. Both apps are in production on both stores, so the assertion is now inverted.
+forbidText("internal-testing claim", landing, /internal test/i);
+forbidText("not-yet-available release badge", landing, /status-label status-coming/);
+requireText("Android live-in-production badge", landing, /id="android-releases"[\s\S]*?<span class="status-label status-live">Live in Production<\/span>/);
 requireText("Google Play store icon", landing, /assets\/store\/google-play-48\.png/);
 requireText("App Store icon", landing, /assets\/store\/app-store-48\.png/);
 requireText("clickable App Store handoff", landing, /<a[^>]*href="https:\/\/apps\.apple\.com\/app\/id6800161248"[^>]*data-download-platform="ios"/);
-requireText("iOS 1.8.5 release state", landing, /Apple App Store \(v1\.8\.5\)/);
+// Version numbers in the release panels are what went stale. The panels now carry no version at
+// all — the history under each tab is generated from the published releases — so the page cannot
+// outrun the store by construction rather than by anyone remembering to edit a string.
+forbidText("hardcoded store version in a release panel", landing, /<h3>(?:Google Play|Apple App Store)[^<]*\(v\d/);
 requireText("pinned Android 1.8.6 release", app, /tag_name: 'v1\.8\.6'/);
 requireText("pinned iOS 1.8.6 release", app, /'track-me-ios': \[[\s\S]*tag_name: 'v1\.8\.6'/);
-// The App Store is on 1.8.5; 1.8.6 is only in TestFlight. This guard is why: the page has
-// claimed an unreleased iOS build as live before, and copy that outruns the store is the exact
-// failure this check exists to catch. Move it forward only when the store actually moves.
-forbidText("unsubmitted iOS 1.8.6 availability claim in fallback", app, /'track-me-ios': \[[\s\S]*tag_name: 'v1\.8\.7'/);
-forbidText("unsubmitted iOS 1.8.6 availability claim", landing, /(?:iOS version 1\.8\.6|Apple App Store \(v1\.8\.6\)).*(?:available|live)/i);
+// The page has claimed an unreleased build as live before, and copy that outruns the store is the
+// exact failure this check exists to catch. Kept as a version-agnostic shape check so it cannot
+// itself go stale.
+forbidText("unsubmitted iOS availability claim in fallback", app, /'track-me-ios': \[[\s\S]*tag_name: 'v1\.8\.7'/);
+forbidText("version-pinned availability claim in prose", landing, /(?:version|v)\s*\d+\.\d+\.\d+[^<]{0,40}(?:available|live|in TestFlight)/i);
+// TASK-293. SOS was retired in 1.6.4/1.6.5 and SosRemovalNoticePolicy.kt exists solely to explain
+// its disappearance. Marketing a deleted feature is how an install becomes a disappointed uninstall.
+forbidText("retired SOS marketing", landing, /\bSOS\b|emergency|rescue/i);
 forbidText("CSS merge-conflict markers", style, /^(<<<<<<<|=======|>>>>>>>)/m);
 requireText("pinned release de-duplication", app, /normalizeReleaseTag/);
 requireText("accessible release tab switching", app, /setupReleaseTabs[\s\S]*ArrowLeft[\s\S]*ArrowRight/);
