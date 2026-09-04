@@ -385,19 +385,24 @@
             UTM_KEYS.forEach((k) => { const v = params.get(k); if (v) currentUtm[k] = v.slice(0, 120); });
             let attribution = {};
             try { attribution = JSON.parse(store.get('tm_first_touch') || '{}'); } catch (e) { attribution = {}; }
-            if (!Object.keys(attribution).length && Object.keys(currentUtm).length) {
-                attribution = currentUtm;
-                store.set('tm_first_touch', JSON.stringify(currentUtm));
+            // Record the first touch on the FIRST visit whatever it was, including a direct one.
+            // Persisting only when UTM is present let a campaign clicked weeks later become the
+            // "first" touch for someone we had already acquired directly — the same stolen-credit
+            // error, one visit further out.
+            if (!Object.keys(attribution).length) {
+                attribution = Object.keys(currentUtm).length ? currentUtm : { utm_source: 'direct' };
+                store.set('tm_first_touch', JSON.stringify(attribution));
             }
             // The canonical utm_* keys always carry FIRST touch, never the current visit —
             // spreading currentUtm over them would silently re-credit whichever link was clicked
             // most recently, which is exactly the attribution error this task exists to remove.
             // The current visit is still reported, under its own prefix, so a returning-visitor
             // path is visible without competing with the credit.
+            // Emitted whenever this visit carries UTM, not only when it differs from first touch.
+            // Suppressing the equal case made "came back through the same Reddit link" byte-identical
+            // to "came back directly", which hides a channel's repeat contribution.
             const latestUtm = {};
-            Object.keys(currentUtm).forEach((k) => {
-                if (currentUtm[k] !== attribution[k]) latestUtm['latest_' + k] = currentUtm[k];
-            });
+            Object.keys(currentUtm).forEach((k) => { latestUtm['latest_' + k] = currentUtm[k]; });
 
             const trackEvent = (event, properties = {}) => fetch('/api/telemetry/event', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ event, distinctId, properties: { ...latestUtm, ...attribution, ...properties, page: 'home_v2' } }) }).catch(() => {});
             trackEvent('landing_page_viewed', { url: window.location.href, version: 'v2' });

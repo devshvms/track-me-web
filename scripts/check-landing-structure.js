@@ -25,7 +25,15 @@ requireText("iOS release panel", landing, /id="ios-releases"[^>]*role="tabpanel"
 // the invariant. Both apps are in production on both stores, so the assertion is now inverted.
 forbidText("internal-testing claim", landing, /internal test/i);
 forbidText("not-yet-available release badge", landing, /status-label status-coming/);
-requireText("Android live-in-production badge", landing, /id="android-releases"[\s\S]*?<span class="status-label status-live">Live in Production<\/span>/);
+// Sliced, not spanned. A lazy [\s\S]*? from id="android-releases" runs straight through the
+// Android block into the iOS panel's identical badge, so the assertion passed even with the
+// Android badge deleted — the same "guard pins the wrong thing" failure this file just had.
+const androidPanel = landing.slice(
+  landing.indexOf('id="android-releases"'),
+  landing.indexOf('id="ios-releases"'),
+);
+if (androidPanel.length < 100) throw new Error("Could not isolate the Android release panel");
+requireText("Android live-in-production badge", androidPanel, /<span class="status-label status-live">Live in Production<\/span>/);
 requireText("Google Play store icon", landing, /assets\/store\/google-play-48\.png/);
 requireText("App Store icon", landing, /assets\/store\/app-store-48\.png/);
 requireText("clickable App Store handoff", landing, /<a[^>]*href="https:\/\/apps\.apple\.com\/app\/id6800161248"[^>]*data-download-platform="ios"/);

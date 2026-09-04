@@ -155,7 +155,8 @@
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        event: 'download_clicked',
+                        // Same name the landing page uses. One action, one event, one funnel.
+                        event: 'download_cta_clicked',
                         distinctId: viewerId,
                         properties: { sessionId, platform: link.dataset.downloadPlatform, surface: 'live_share_viewer' }
                     })
