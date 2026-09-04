@@ -354,7 +354,52 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            const trackEvent = (event, properties = {}) => fetch('/api/telemetry/event', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ event, properties: { ...properties, page: 'home_v2' } }) }).catch(() => {});
+            // TASK-295. Every landing event used to post without a distinctId, so the server fell
+            // through to the literal 'anonymous_visitor' and all 407 landing views plus all 26
+            // download clicks collapsed into ONE PostHog person — no channel attribution and no
+            // funnel, which also made TASK-293's improvement unmeasurable.
+            //
+            // First-party, anonymous, resettable. Local storage rather than a cookie: it is never
+            // transmitted automatically with every request, carries no cross-site scope, and adds
+            // no third-party cookie. Nothing is derived from the device or browser — this is a
+            // random value the browser happens to keep, not a fingerprint — and clearing site data
+            // resets it. Disclosed in privacy.html §2 and §9; those two never ship apart.
+            const store = {
+                get(k) { try { return window.localStorage.getItem(k); } catch (e) { return null; } },
+                set(k, v) { try { window.localStorage.setItem(k, v); } catch (e) { /* private mode: id stays in memory for this page only */ } },
+            };
+            let distinctId = store.get('tm_visitor_id');
+            if (!distinctId) {
+                distinctId = (window.crypto && window.crypto.randomUUID)
+                    ? window.crypto.randomUUID()
+                    : 'v-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+                store.set('tm_visitor_id', distinctId);
+            }
+
+            // First touch wins. The campaign that brought someone here is the one that earned the
+            // install; overwriting it on a later visit would credit whichever link they clicked
+            // last, which is usually our own.
+            const UTM_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'];
+            const params = new URLSearchParams(window.location.search);
+            const currentUtm = {};
+            UTM_KEYS.forEach((k) => { const v = params.get(k); if (v) currentUtm[k] = v.slice(0, 120); });
+            let attribution = {};
+            try { attribution = JSON.parse(store.get('tm_first_touch') || '{}'); } catch (e) { attribution = {}; }
+            if (!Object.keys(attribution).length && Object.keys(currentUtm).length) {
+                attribution = currentUtm;
+                store.set('tm_first_touch', JSON.stringify(currentUtm));
+            }
+            // The canonical utm_* keys always carry FIRST touch, never the current visit —
+            // spreading currentUtm over them would silently re-credit whichever link was clicked
+            // most recently, which is exactly the attribution error this task exists to remove.
+            // The current visit is still reported, under its own prefix, so a returning-visitor
+            // path is visible without competing with the credit.
+            const latestUtm = {};
+            Object.keys(currentUtm).forEach((k) => {
+                if (currentUtm[k] !== attribution[k]) latestUtm['latest_' + k] = currentUtm[k];
+            });
+
+            const trackEvent = (event, properties = {}) => fetch('/api/telemetry/event', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ event, distinctId, properties: { ...latestUtm, ...attribution, ...properties, page: 'home_v2' } }) }).catch(() => {});
             trackEvent('landing_page_viewed', { url: window.location.href, version: 'v2' });
             const timers = {};
             const observer = new IntersectionObserver((entries) => entries.forEach((entry) => {
