@@ -8,6 +8,37 @@
     <style>
         body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
         #map { height: 100vh; width: 100vw; }
+        /* TASK-294. The map keeps the whole viewport until a rider is actually on screen. Once the
+           session renders we give back a strip so the whole band — the line AND both badges — is
+           visible at the bottom edge rather than hidden below the fold. Visible, but never over the
+           map. The strip is taller on narrow screens because the line wraps to two there; a badge
+           the viewer has to scroll to find is a badge that does not exist. Leaflet needs
+           invalidateSize() after the container resizes, which revealGetApp() calls. */
+        :root { --getapp-strip: 122px; }
+        @media (max-width: 520px) { :root { --getapp-strip: 152px; } }
+        body.has-getapp #map { height: calc(100vh - var(--getapp-strip)); }
+        #getApp {
+            box-sizing: border-box; width: 100vw; background: #0b1320; color: #e8eef6;
+            padding: 18px 20px 26px; text-align: center;
+        }
+        #getApp p { margin: 0 0 14px; font-size: 0.95em; line-height: 1.45; color: #b8c6d9; }
+        #getApp .getapp-badges { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+        #getApp a {
+            display: inline-flex; align-items: center; gap: 8px; text-decoration: none;
+            background: #16202f; border: 1px solid #26364d; border-radius: 8px;
+            padding: 10px 14px; color: #e8eef6; font-size: 0.9em; font-weight: 600;
+        }
+        #getApp a:hover, #getApp a:focus-visible { background: #1d2a3d; border-color: #3a5170; }
+        /* Two badges must share one row on a phone. Stacked, the second falls past the fold and a
+           badge below the fold is a badge that does not exist. Short labels, not shrunk text. */
+        #getApp .lbl-short { display: none; }
+        @media (max-width: 520px) {
+            #getApp { padding: 14px 12px 20px; }
+            #getApp p { font-size: 0.9em; margin-bottom: 12px; }
+            #getApp a { padding: 9px 12px; font-size: 0.85em; }
+            #getApp .lbl-long { display: none; }
+            #getApp .lbl-short { display: inline; }
+        }
         #overlay {
             position: absolute;
             top: 20px;
@@ -54,6 +85,32 @@
     </div>
     <div id="map"></div>
 
+    <!--
+        TASK-294. 141 non-users watched a live ride and were shown no way to get the app. They
+        arrived through a link from someone they trust, at a moment they cared about.
+
+        Absolute /assets/ paths on purpose: this file is served at /live/:id, so a relative
+        assets/... would resolve to /live/assets/... and 404 — the same reason group.html documents.
+
+        Hidden until a location has actually rendered. Someone checking on a rider sees the rider
+        first, and a viewer who ignores this can keep watching indefinitely.
+    -->
+    <section id="getApp" hidden aria-label="Get TrackMe">
+        <p>Recording this route took no signal and no subscription.</p>
+        <div class="getapp-badges">
+            <a href="https://play.google.com/store/apps/details?id=in.shvms.trackme"
+               target="_blank" rel="noopener noreferrer" data-download-platform="android">
+                <img src="/assets/store/google-play-48.png" width="24" height="24" alt="" aria-hidden="true">
+                <span class="lbl-long">GET IT ON Google Play</span><span class="lbl-short">Google Play</span>
+            </a>
+            <a href="https://apps.apple.com/app/id6800161248"
+               target="_blank" rel="noopener noreferrer" data-download-platform="ios">
+                <img src="/assets/store/app-store-48.png" width="24" height="24" alt="" aria-hidden="true">
+                <span class="lbl-long">Download on the App Store</span><span class="lbl-short">App Store</span>
+            </a>
+        </div>
+    </section>
+
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
         // Extract sessionId from URL (e.g., /live/abc-123)
@@ -80,6 +137,31 @@
 
         let marker = null;
         let isFirstLoad = true;
+
+        // TASK-294. Idempotent: called from the first render and from every terminal state.
+        let getAppShown = false;
+        function revealGetApp() {
+            if (getAppShown) return;
+            getAppShown = true;
+            document.getElementById('getApp').hidden = false;
+            document.body.classList.add('has-getapp');
+            // The map container just changed height; Leaflet must be told or the tiles and the
+            // marker position go stale.
+            map.invalidateSize();
+        }
+        document.querySelectorAll('#getApp a[data-download-platform]').forEach((link) => {
+            link.addEventListener('click', () => {
+                fetch('/api/telemetry/event', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        event: 'download_clicked',
+                        distinctId: viewerId,
+                        properties: { sessionId, platform: link.dataset.downloadPlatform, surface: 'live_share_viewer' }
+                    })
+                }).catch(() => {});
+            });
+        });
 
         function buildLocationPopup(lat, lon, username, timestamp) {
             const container = document.createElement('div');
@@ -163,6 +245,7 @@
                         document.getElementById('detailsText').innerText = timeStr;
                         if (pollingInterval) clearInterval(pollingInterval);
                         if (pingInterval) clearInterval(pingInterval);
+                        revealGetApp();
                         return;
                     }
                     if (response.status === 429) {
@@ -171,6 +254,7 @@
                         document.getElementById('detailsText').innerText = 'Maximum number of viewers reached. Try again later.';
                         if (pollingInterval) clearInterval(pollingInterval);
                         if (pingInterval) clearInterval(pingInterval);
+                        revealGetApp();
                         return;
                     }
                 }
@@ -190,6 +274,7 @@
                         document.getElementById('detailsText').innerText = timeStr;
                         if (pollingInterval) clearInterval(pollingInterval);
                         if (pingInterval) clearInterval(pingInterval);
+                        revealGetApp();
                         return;
                     }
                     if (response.status === 429) {
@@ -198,6 +283,7 @@
                         document.getElementById('detailsText').innerText = 'Maximum number of viewers reached. Try again later.';
                         if (pollingInterval) clearInterval(pollingInterval);
                         if (pingInterval) clearInterval(pingInterval);
+                        revealGetApp();
                         return;
                     }
                     throw new Error('Failed to fetch');
@@ -215,6 +301,7 @@
                     document.getElementById('detailsText').innerText = data.stopReason || 'The rider has ended this trip.';
                     if (pollingInterval) clearInterval(pollingInterval);
                     if (pingInterval) clearInterval(pingInterval);
+                    revealGetApp();
                     return;
                 }
                 
@@ -254,6 +341,7 @@
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ event: 'live_share_viewed', distinctId: viewerId, properties: { sessionId, username, viewerId } })
                         }).catch(() => {});
+                        revealGetApp();
                     }
 
                     const timeAgo = Math.round((new Date() - new Date(timestamp)) / 1000);
