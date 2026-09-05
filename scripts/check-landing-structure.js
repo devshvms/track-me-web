@@ -52,8 +52,23 @@ forbidText("version-pinned availability claim in prose", landing, /(?:version|v)
 // its disappearance. Marketing a deleted feature is how an install becomes a disappointed uninstall.
 forbidText("retired SOS marketing", landing, /\bSOS\b|emergency|rescue/i);
 forbidText("legacy showcase JPEGs", landing, /assets\/showcase\/(live-share|post-ride-reveal|weekly-recap)\.jpg/i);
-requireText("1.8.7 showcase assets", landing, /assets\/showcase\/offline-tracking\.png/);
-requireText("truthful share-preview showcase", landing, /assets\/showcase\/share-preview\.png/);
+// Pinning two filenames here made a rename look like a regression while a genuinely broken
+// <img> would still have passed. The invariant is: the page shows several 1.8.7 showcase
+// images, and every one it references actually exists. Same lesson as the two comments above.
+const showcaseRefs = [...new Set(
+  [...landing.matchAll(/assets\/showcase\/([a-z0-9-]+\.(?:png|webp))/g)].map((m) => m[1]),
+)];
+if (showcaseRefs.length < 4) {
+  throw new Error(`Expected at least 4 showcase assets, found ${showcaseRefs.length}`);
+}
+for (const name of showcaseRefs) {
+  const asset = path.join(publicDir, "assets", "showcase", name);
+  if (!fs.existsSync(asset)) {
+    throw new Error(`Showcase asset referenced but missing on disk: ${name}`);
+  }
+}
+process.stdout.write(`1.8.7 showcase assets: ${showcaseRefs.length} referenced, all on disk\n`);
+requireText("share/export showcase", landing, /assets\/showcase\/share-[a-z]+\.(?:png|webp)/);
 forbidText("CSS merge-conflict markers", style, /^(<<<<<<<|=======|>>>>>>>)/m);
 requireText("pinned release de-duplication", app, /normalizeReleaseTag/);
 requireText("accessible release tab switching", app, /setupReleaseTabs[\s\S]*ArrowLeft[\s\S]*ArrowRight/);
