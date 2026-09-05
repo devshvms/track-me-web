@@ -29,8 +29,8 @@
         <section class="section-shell legal-hero" aria-labelledby="privacy-title">
             <p class="eyebrow">Privacy, in plain language</p>
             <h1 id="privacy-title">Privacy Policy</h1>
-            <p>TrackMe is a local-first GPS tracking app for Android, with optional account, cloud-sync, live-sharing, analytics, and Web account-management features. This policy explains the data those features handle and the choices available to you.</p>
-            <span class="legal-updated">Effective and last updated: September 5, 2026</span>
+            <p>TrackMe is a local-first GPS tracking app for Android and iOS, with optional account, cloud-sync, live-sharing, analytics, and Web account-management features. This policy explains the data those features handle and the choices available to you.</p>
+            <span class="legal-updated">Effective and last updated: September 6, 2026</span>
         </section>
 
         <div class="section-shell legal-layout">
@@ -52,16 +52,16 @@
             <article class="legal-content">
                 <section id="scope" class="legal-section">
                     <h2>1. Scope and operator</h2>
-                    <p>This policy applies to the TrackMe Android application (package <code>in.shvms.trackme</code>), the TrackMe website, public Live Share pages, and related account-management services. TrackMe is the product and operator named in this policy.</p>
+                    <p>This policy applies to the TrackMe Android application (package <code>in.shvms.trackme</code>), the TrackMe iOS application (bundle <code>in.shvms.track-me-ios</code>), the TrackMe website, public Live Share pages, and related account-management services. TrackMe is the product and operator named in this policy.</p>
                     <div class="legal-callout"><strong>Core promise:</strong> TrackMe does not sell, rent, or trade your personal information or precise location data. It has no third-party advertising SDK.</div>
                 </section>
 
                 <section id="data-we-handle" class="legal-section">
                     <h2>2. Data we access, collect, or process</h2>
                     <div class="legal-grid">
-                        <div class="legal-card"><h3>Location and ride records</h3><p>During active tracking, TrackMe handles precise and approximate location, latitude, longitude, altitude, accuracy, speed, heading, timestamps, route points, distance, duration, and related ride statistics. TrackMe does not use Android's background-location permission. Location is collected only while a ride or safety session you started is running; that session runs as a foreground service with a persistent notification, so recording continues when the app is not on screen, but it never starts without a session you began and never continues after you end one. Outside a session, TrackMe asks for your location only while the app is open on screen, and only to center the map on you. Those readings are not added to a ride, uploaded, or shared.</p></div>
+                        <div class="legal-card"><h3>Location and ride records</h3><p>During active tracking, TrackMe handles precise and approximate location, latitude, longitude, altitude, accuracy, speed, heading, timestamps, route points, distance, duration, and related ride statistics. Location is collected only while a ride you started is running; recording can continue when the app is not on screen, but it never starts without a ride you began and never continues after you end one. Android does not use the background-location permission and keeps an active ride in a foreground service with a persistent notification. iOS uses its location background mode only for a rider-started active ride. Outside a ride, TrackMe asks for your location only while the app is open on screen, and only to center the map on you. Those readings are not added to a ride, uploaded, or shared.</p></div>
                         <div class="legal-card"><h3>Account information</h3><p>If you choose Google Sign-In, Firebase Authentication provides your display name, email address, account identifier, and authentication/security metadata. An account is optional for local-only recording.</p></div>
-                        <div class="legal-card"><h3>Emergency information (retired)</h3><p>TrackMe no longer has an SOS feature. It cannot store emergency contacts, phone numbers, message templates, SOS settings or delivery logs, and it does not send SMS. If you used a version before 1.6.4 that had SOS, any emergency data left on your device from it is <strong>deleted automatically</strong> the next time you open the app; nothing in the current app can create it again. This entry is kept so the removal is stated rather than silently omitted.</p></div>
+                        <div class="legal-card"><h3>Emergency information (retired)</h3><p>TrackMe no longer has an SOS feature. The current app has no feature that creates emergency contacts, phone numbers, message templates, SOS settings or delivery logs, and it does not send SMS. If you used a version before 1.6.4 that had SOS, the app automatically attempts to delete any legacy emergency data left on your device when you next open it and retries local cleanup after a failure. This entry is kept so the removal is stated rather than silently omitted.</p></div>
                         <div class="legal-card"><h3>Live Share information</h3><p>When you start Live Share, the service processes the active session identifier, exact location, speed, heading, battery information, and timestamps needed to show your progress to people holding the link.</p></div>
                         <div class="legal-card"><h3>Group Ride information</h3><p>When you create or join a Group Ride, TrackMe processes a group identifier, a membership list of account identifiers, the group's state and expiry time, and a per-member position record. <strong>The position, the group's name, and every member's display name and photo are encrypted on your device before they are sent, with a key derived from the invite link. TrackMe's servers store them as data they cannot read.</strong> The server does hold, in readable form, the group identifier, which accounts are members, when the group was created, when it expires, and a timestamp for each position so it can tell how recent it is. Group data is held only in short-lived server memory with an expiry, is overwritten rather than appended, and is deleted when the group ends. No group data is written to your cloud ride storage.</p></div>
                         <div class="legal-card"><h3>Feedback and support</h3><p>TrackMe processes feedback text and an optional account-deletion reason that you submit. Authenticated feedback is associated with your account identifier so it can be removed with your account.</p></div>
@@ -76,7 +76,6 @@
                     <ul>
                         <li>Record routes and calculate distance, speed, altitude, duration, maps, charts, and ride summaries.</li>
                         <li>Provide optional sign-in, cloud backup, synchronization, data export, and account management.</li>
-                        
                         <li>Create a time-limited Live Share experience when you explicitly start it.</li>
                         <li>Show group members to each other on a map, for as long as a Group Ride you joined is running.</li>
                         <li>Protect accounts, prevent abuse, diagnose crashes, measure reliability, and improve product flows.</li>
@@ -92,7 +91,6 @@
                         <li><strong>PostHog:</strong> PostHog's EU-hosted service processes product analytics and app-interaction events. Raw precise GPS coordinates were removed from TrackMe analytics events. See the <a href="https://posthog.com/privacy" target="_blank" rel="noreferrer">PostHog privacy policy</a>.</li>
                         <li><strong>People you choose:</strong> Anyone with an active Live Share link can see the live-session data exposed by that link until the session ends or expires.</li>
                         <li><strong>Members of a Group Ride:</strong> While a group is running, every member can see every other member's current position on their own map. Visibility is mutual — there is no way to see others without being visible yourself. Members see only where you are now, never where you have been. You can leave at any time, in one action, and no one is notified that you left.</li>
-                        
                         <li><strong>Legal and safety requirements:</strong> Data may be disclosed if required by applicable law or necessary to protect users, the public, or the service from fraud, abuse, or security threats.</li>
                     </ul>
                     <p>Service-provider processing is not a sale of personal data. TrackMe does not use location data for advertising.</p>
@@ -107,14 +105,14 @@
                 <section id="retention-deletion" class="legal-section">
                     <h2>6. Retention, export, and deletion</h2>
                     <ul>
-                        <li><strong>Local records:</strong> remain on your device until you delete a ride, clear app data, uninstall according to Android backup behavior, or otherwise remove them.</li>
+                        <li><strong>Local records:</strong> remain on your device until you delete a ride, clear the app's data, uninstall the app, or otherwise remove them, subject to Android or iOS backup and restore behavior.</li>
                         <li><strong>Cloud ride/account data:</strong> remains while your account and cloud features are active or until you delete it.</li>
                         <li><strong>Live Share:</strong> remains available only for the session lifetime and stops being public when the session ends or expires.</li>
                         <li><strong>Export:</strong> signed-in users can request a ZIP containing their profile, ride history, and GPX traces through the Android app or Web account portal.</li>
                         <li><strong>Account deletion:</strong> TrackMe attempts to delete rides and GPS points, any emergency configuration and delivery logs left behind by a pre-1.6.4 version, and feedback associated with your user ID before deleting the Firebase Authentication account. If the cloud purge fails, the account is not silently removed and the app reports the failure so you can retry or contact support.</li>
                         <li><strong>Analytics and diagnostics:</strong> processor-managed analytics, security, and crash records may follow Firebase or PostHog retention controls and may not be individually accessible through the TrackMe account screen.</li>
                     </ul>
-                    <p>You can start account deletion from Android Settings or the <a href="index_v2.html#account">Web account portal</a>. For help with a failed request, email the privacy contact below.</p>
+                    <p>You can start account deletion from Android or iOS Settings, or from the <a href="index_v2.html#account">Web account portal</a>. For help with a failed request, email the privacy contact below.</p>
                 </section>
 
                 <section id="security" class="legal-section">
@@ -124,14 +122,13 @@
                 </section>
 
                 <section id="permissions" class="legal-section">
-                    <h2>8. Android device permissions</h2>
+                    <h2>8. Device permissions</h2>
                     <ul>
-                        <li><strong>Precise/approximate and foreground-service location:</strong> route recording, maps, and Live Share.</li>
-                        
-                        <li><strong>Notifications:</strong> persistent tracking status, safety results, sync, and other operational alerts.</li>
-                        <li><strong>Vibration and battery-optimization request:</strong> tactile feedback and reliable long-running ride recording.</li>
+                        <li><strong>Location:</strong> route recording, maps, and Live Share. Android also declares foreground-service location; iOS uses its location background mode only during a rider-started active ride.</li>
+                        <li><strong>Notifications:</strong> tracking status, storage warnings, group status, sync, and other operational alerts.</li>
+                        <li><strong>Vibration and battery controls:</strong> tactile feedback and reliable long-running ride recording, where the platform supports them.</li>
                     </ul>
-                    <p>Android presents permission controls in system Settings. Denying a permission limits the related feature but does not prevent unrelated local features from working.</p>
+                    <p>Android and iOS present permission controls in system Settings. Denying a permission limits the related feature but does not prevent unrelated local features from working.</p>
                 </section>
 
                 <section id="choices" class="legal-section">
