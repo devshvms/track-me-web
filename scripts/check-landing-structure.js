@@ -48,8 +48,8 @@ requireText("pinned iOS 1.8.6 release", app, /'track-me-ios': \[[\s\S]*tag_name:
 // itself go stale.
 forbidText("unsubmitted iOS availability claim in fallback", app, /'track-me-ios': \[[\s\S]*tag_name: 'v1\.8\.7'/);
 forbidText("version-pinned availability claim in prose", landing, /(?:version|v)\s*\d+\.\d+\.\d+[^<]{0,40}(?:available|live|in TestFlight)/i);
-// TASK-293. SOS was retired in 1.6.4/1.6.5 and SosRemovalNoticePolicy.kt exists solely to explain
-// its disappearance. Marketing a deleted feature is how an install becomes a disappointed uninstall.
+// TASK-293. SOS was retired in 1.6.4/1.6.5, and TASK-309 removed the last of its code in 1.8.7.
+// Marketing a deleted feature is how an install becomes a disappointed uninstall.
 forbidText("retired SOS marketing", landing, /\bSOS\b|emergency|rescue/i);
 forbidText("legacy showcase JPEGs", landing, /assets\/showcase\/(live-share|post-ride-reveal|weekly-recap)\.jpg/i);
 // Pinning two filenames here made a rename look like a regression while a genuinely broken
@@ -81,10 +81,13 @@ requireText("privacy data inventory", privacy, /id="data-we-handle"/);
 requireText("privacy service providers", privacy, /Firebase[\s\S]*PostHog/);
 requireText("privacy retention and deletion", privacy, /id="retention-deletion"/);
 requireText("privacy covers Android and iOS apps", privacy, /Android application[\s\S]*iOS application/);
-requireText("retired SOS disclosure", privacy, /Emergency information \(retired\)/);
+// TASK-309. The policy used to carry an "Emergency information (retired)" card explaining a
+// feature the app had already deleted. Once the code was gone too, that card was the only place
+// left where a reader could learn TrackMe ever had an SOS button — a privacy policy is a statement
+// about what the app does with data now, not a changelog. The assertion is therefore inverted: the
+// word must not come back, in either direction. A *positive* claim about SOS would be false, and a
+// *retirement notice* keeps a dead feature alive in the one document people read most carefully.
+forbidText("any SOS or emergency claim", privacy, /\bSOS\b|emergenc/i);
+// Kept, and deliberately not phrased in terms of SOS: this is a standing capability statement
+// ("we cannot text on your behalf"), which is worth more to a reader than the history of why.
 requireText("no Android SMS permission claim", privacy, /does not request the Android SMS permission/);
-forbidText(
-  "active SOS or safety-session privacy claim",
-  privacy,
-  /If you configure SOS|Send SOS messages|location-based SOS|ride or safety session|safety results/i,
-);
