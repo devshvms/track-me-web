@@ -51,6 +51,9 @@ forbidText("version-pinned availability claim in prose", landing, /(?:version|v)
 // TASK-293. SOS was retired in 1.6.4/1.6.5 and SosRemovalNoticePolicy.kt exists solely to explain
 // its disappearance. Marketing a deleted feature is how an install becomes a disappointed uninstall.
 forbidText("retired SOS marketing", landing, /\bSOS\b|emergency|rescue/i);
+forbidText("legacy showcase JPEGs", landing, /assets\/showcase\/(live-share|post-ride-reveal|weekly-recap)\.jpg/i);
+requireText("1.8.7 showcase assets", landing, /assets\/showcase\/offline-tracking\.png/);
+requireText("truthful share-preview showcase", landing, /assets\/showcase\/share-preview\.png/);
 forbidText("CSS merge-conflict markers", style, /^(<<<<<<<|=======|>>>>>>>)/m);
 requireText("pinned release de-duplication", app, /normalizeReleaseTag/);
 requireText("accessible release tab switching", app, /setupReleaseTabs[\s\S]*ArrowLeft[\s\S]*ArrowRight/);

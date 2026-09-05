@@ -137,7 +137,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .showcase-dot { width: 9px; height: 9px; padding: 0; border: 0; border-radius: 50%; background: var(--line); cursor: pointer; transition: background .2s ease, transform .2s ease, width .2s ease; }
 .showcase-dot[aria-selected="true"] { width: 26px; border-radius: 6px; background: var(--cyan); }
 
-/* Poster cards (3D material-design app mockups) */
+/* Poster cards composed from real Android and iOS captures. */
 .showcase-poster-wrap { justify-self: center; width: 100%; }
 .showcase-poster { display: block; width: 100%; height: auto; border-radius: 18px; border: 1px solid var(--line); background: var(--night-soft); box-shadow: var(--shadow-2); }
 .site-footer { border-top: 1px solid var(--line); background: #080e18; }.footer-inner { display: grid; grid-template-columns: 1fr auto; gap: 14px 28px; align-items: center; padding-top: 30px; padding-bottom: 30px; }.brand-footer { color: var(--ink); }.footer-inner > div { display: flex; flex-wrap: wrap; gap: 18px; color: var(--muted); font-size: .9rem; }.footer-inner > div a { text-decoration: none; }.footer-inner > div a:hover { color: var(--cyan); }.footer-inner p { grid-column: 1 / -1; margin: 0; color: var(--muted); font-size: .82rem; }
