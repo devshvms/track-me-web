@@ -62,3 +62,11 @@ requireText("releases ordered by date, not by source", app, /sort\(\(a, b\) => n
 requireText("privacy data inventory", privacy, /id="data-we-handle"/);
 requireText("privacy service providers", privacy, /Firebase[\s\S]*PostHog/);
 requireText("privacy retention and deletion", privacy, /id="retention-deletion"/);
+requireText("privacy covers Android and iOS apps", privacy, /Android application[\s\S]*iOS application/);
+requireText("retired SOS disclosure", privacy, /Emergency information \(retired\)/);
+requireText("no Android SMS permission claim", privacy, /does not request the Android SMS permission/);
+forbidText(
+  "active SOS or safety-session privacy claim",
+  privacy,
+  /If you configure SOS|Send SOS messages|location-based SOS|ride or safety session|safety results/i,
+);
