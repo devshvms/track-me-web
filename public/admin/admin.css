@@ -280,3 +280,33 @@ input:focus + .slider { box-shadow: 0 0 1px var(--primary); }
 input:checked + .slider:before { transform: translateX(22px); }
 .slider.round { border-radius: 34px; }
 .slider.round:before { border-radius: 50%; }
+
+/* Broadcast tab — SCOPE_1.8.7 §6.3 */
+.input-field {
+    width: 100%;
+    padding: 10px 12px;
+    margin: 6px 0 4px;
+    border: 1px solid var(--border, #d5d9e0);
+    border-radius: 8px;
+    font: inherit;
+    background: var(--surface, #fff);
+    color: inherit;
+    box-sizing: border-box;
+}
+.config-hint {
+    margin: 0 0 16px;
+    font-size: 0.85rem;
+    opacity: 0.72;
+    line-height: 1.5;
+}
+.broadcast-history {
+    list-style: none;
+    padding: 0;
+    margin: 12px 0 0;
+}
+.broadcast-history li {
+    padding: 12px 0;
+    border-top: 1px solid var(--border, #e3e6ea);
+    line-height: 1.5;
+}
+.broadcast-history li:first-child { border-top: none; }

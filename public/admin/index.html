@@ -29,6 +29,7 @@
                 <a href="#" class="nav-item" data-target="tab-config">Remote Config</a>
                 <a href="#" class="nav-item" data-target="tab-telemetry">PostHog Telemetry</a>
                 <a href="#" class="nav-item" data-target="tab-users">User Support</a>
+                <a href="#" class="nav-item" data-target="tab-broadcast">Broadcast</a>
             </nav>
             <div class="sidebar-footer">
                 <span id="admin-email"></span>
@@ -76,6 +77,63 @@
             </section>
 
             <!-- CONFIG TAB -->
+            <!-- BROADCAST TAB — SCOPE_1.8.7 §6.3 -->
+            <section id="tab-broadcast" class="tab-pane">
+                <header class="tab-header">
+                    <h1>Broadcast</h1>
+                    <button id="send-broadcast-btn" class="btn btn-primary">Send to everyone</button>
+                </header>
+                <p id="broadcast-status" class="status-message hidden" role="status" aria-live="polite"></p>
+
+                <div class="config-panel">
+                    <p style="margin:0 0 18px;line-height:1.55;">
+                        This goes to <strong>every install with notifications turned on</strong>, on both
+                        platforms, immediately. There is no undo and no way to reach only some people.
+                        <br><br>
+                        <strong>Operational messages only.</strong> Nothing promotional, ever — not a
+                        feature announcement, not a milestone, not a good week. Permission to notify was
+                        given for problems with the app; using it for anything else is the one thing that
+                        would make every notification in TrackMe indefensible.
+                    </p>
+
+                    <label class="config-info" for="broadcast-tag"><h3>What kind of message</h3></label>
+                    <select id="broadcast-tag" class="input-field">
+                        <option value="URGENT">Urgent — a defect in the running build</option>
+                        <option value="MAINTENANCE">Maintenance — a service is down or degraded</option>
+                        <option value="UPDATE">Update — a newer version fixes something</option>
+                    </select>
+
+                    <label class="config-info" for="broadcast-title"><h3>Title</h3></label>
+                    <input id="broadcast-title" class="input-field" type="text" maxlength="80"
+                           placeholder="Cloud sync is paused">
+                    <p class="config-hint"><span id="broadcast-title-count">0</span>/80 — the shade shows about this much.</p>
+
+                    <label class="config-info" for="broadcast-body"><h3>Body</h3></label>
+                    <textarea id="broadcast-body" class="input-field" rows="4" maxlength="480"
+                              placeholder="Say what is wrong, what the reader should do, and when it will be fixed."></textarea>
+                    <p class="config-hint"><span id="broadcast-body-count">0</span>/480</p>
+
+                    <div id="broadcast-version-row" class="hidden">
+                        <label class="config-info" for="broadcast-max-version"><h3>Only builds at or below</h3></label>
+                        <input id="broadcast-max-version" class="input-field" type="number" min="1"
+                               placeholder="Version code, e.g. 187">
+                        <p class="config-hint">
+                            So the notice is true for whoever gets it — someone already on the fixed build
+                            should not be told to update. Update notices only; this is not a targeting tool.
+                        </p>
+                    </div>
+
+                    <label class="config-info" for="broadcast-link"><h3>Learn-more link (optional)</h3></label>
+                    <input id="broadcast-link" class="input-field" type="url" placeholder="https://trackme.shvms.in/blogs">
+                </div>
+
+                <div class="config-panel" style="margin-top:20px;">
+                    <h3>Already sent</h3>
+                    <p class="config-hint">Most bad broadcasts are a duplicate of a good one sent an hour ago.</p>
+                    <ul id="broadcast-history" class="broadcast-history"></ul>
+                </div>
+            </section>
+
             <section id="tab-config" class="tab-pane">
                 <header class="tab-header">
                     <h1>Remote Configuration</h1>
