@@ -26,6 +26,10 @@
       "destination": "/group.html"
     },
     {
+      "source": "/r/:path*",
+      "destination": "/index.html"
+    },
+    {
       "source": "/api/telemetry/:route",
       "destination": "/api/telemetry?route=:route"
     }

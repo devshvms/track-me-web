@@ -77,6 +77,14 @@ requireText("scrollable release archive", landing, /class="release-history"/);
 // at index 0 — the row that renders expanded. Sorting by date means a stale pin can only ever be
 // missing, never misleading, and this pins that behaviour so it cannot regress.
 requireText("releases ordered by date, not by source", app, /sort\(\(a, b\) => new Date\(b\.published_at\) - new Date\(a\.published_at\)\)/);
+// TASK-305: the replay video burns https://trackme.shvms.in/r/<id> into every frame. That URL
+// had no rewrite and no Android app-link, so it 404'd — a share artifact carrying a dead link is
+// worse than one carrying none, and every video already shared has it. The route must exist, and
+// the landing page must recognise an arrival on it rather than filing it under "direct".
+const vercel = fs.readFileSync(path.join(__dirname, "..", "vercel.json"), "utf8");
+requireText("replay deep-link route", vercel, /"source":\s*"\/r\/:path\*"/);
+requireText("shared-artifact attribution", landing, /shared_artifact/);
+
 requireText("privacy data inventory", privacy, /id="data-we-handle"/);
 requireText("privacy service providers", privacy, /Firebase[\s\S]*PostHog/);
 requireText("privacy retention and deletion", privacy, /id="retention-deletion"/);

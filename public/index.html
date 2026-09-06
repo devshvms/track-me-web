@@ -381,8 +381,17 @@
             // Persisting only when UTM is present let a campaign clicked weeks later become the
             // "first" touch for someone we had already acquired directly — the same stolen-credit
             // error, one visit further out.
+            // TASK-305: /r/<id> is the link burned into every exported replay video. Until now it
+            // 404'd — no rewrite here and no Android app-link either — so the one channel meant to
+            // bring people back was a dead end on every artifact that had already travelled. It now
+            // lands here, and it is attributed as what it is. Counting these as 'direct' would hide
+            // the share loop inside the bucket that means "we have no idea", which is precisely the
+            // absence of evidence that got this channel scored 25/660 in the first place.
+            const fromSharedArtifact = /^\/r\//.test(window.location.pathname);
             if (!Object.keys(attribution).length) {
-                attribution = Object.keys(currentUtm).length ? currentUtm : { utm_source: 'direct' };
+                attribution = Object.keys(currentUtm).length
+                    ? currentUtm
+                    : { utm_source: fromSharedArtifact ? 'shared_artifact' : 'direct' };
                 store.set('tm_first_touch', JSON.stringify(attribution));
             }
             // The canonical utm_* keys always carry FIRST touch, never the current visit —
