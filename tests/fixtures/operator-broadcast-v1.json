@@ -5,7 +5,7 @@
   "tags": [
     {
       "id": "UPDATE",
-      "note": "A newer version fixes something the user is living with. The only tag that may carry applies_to_versions_at_or_below."
+      "note": "A newer version fixes something the user is living with. The only tag that may carry applies_to_releases_at_or_below."
     },
     {
       "id": "MAINTENANCE",
