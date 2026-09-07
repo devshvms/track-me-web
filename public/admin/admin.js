@@ -557,7 +557,10 @@ async function sendBroadcast() {
     const link = broadcastEls.link.value.trim();
     if (link) payload.learn_more_url = link;
     if (broadcastEls.tag.value === 'UPDATE' && broadcastEls.maxVersion.value.trim()) {
-        payload.applies_to_versions_at_or_below = Number(broadcastEls.maxVersion.value.trim());
+        // A dotted release string, not a build number. Android's versionCode and iOS's
+        // CFBundleVersion are different integers for the same release, so one number could never
+        // mean the same thing on both — the endpoint refuses the old key outright.
+        payload.applies_to_releases_at_or_below = broadcastEls.maxVersion.value.trim();
     }
 
     broadcastEls.sendBtn.disabled = true;

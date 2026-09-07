@@ -1,69 +1,363 @@
 {
-  "version": 1,
+  "version": 2,
   "canonical": "track-me-web/tests/fixtures — copy to each client, same as notification-budget-v1.json",
   "note": "SCOPE_1.8.7 §6.3 / OPERATOR_BROADCAST.md — the Class D wire contract. Three implementations have to agree: the admin endpoint that writes it, and two clients that read it. A client that silently drops a valid broadcast is an outage nobody hears about; a client that renders an invalid one is an unvalidated string from the network on a HIGH-importance channel.",
-
   "tags": [
-    { "id": "UPDATE", "note": "A newer version fixes something the user is living with. The only tag that may carry applies_to_versions_at_or_below." },
-    { "id": "MAINTENANCE", "note": "A service the app depends on is degraded or down, with an expected shape to it." },
-    { "id": "URGENT", "note": "A defect in the running build that the user needs to know about now." }
+    {
+      "id": "UPDATE",
+      "note": "A newer version fixes something the user is living with. The only tag that may carry applies_to_versions_at_or_below."
+    },
+    {
+      "id": "MAINTENANCE",
+      "note": "A service the app depends on is degraded or down, with an expected shape to it."
+    },
+    {
+      "id": "URGENT",
+      "note": "A defect in the running build that the user needs to know about now."
+    }
   ],
   "_tag_note": "Closed vocabulary, enforced on the endpoint AND on both clients. There is no OTHER, no free-form category and no way to add one from the admin UI, because 'nothing promotional' has to be a property of the system rather than a rule someone remembers at 11pm on a slow month.",
-
   "valid": [
     {
       "description": "the minimum a broadcast can be",
-      "record": { "id": "b1", "tag": "MAINTENANCE", "title": "Cloud sync is paused", "body": "Sync is down for about two hours. Your rides are recording normally and will upload when it is back.", "created_at_millis": 1757000000000 },
-      "applies_to_version_code": 100,
+      "record": {
+        "id": "b1",
+        "tag": "MAINTENANCE",
+        "title": "Cloud sync is paused",
+        "body": "Sync is down for about two hours. Your rides are recording normally and will upload when it is back.",
+        "created_at_millis": 1757000000000
+      },
+      "applies_to_release": "1.8.7",
       "expected_applies": true
     },
     {
-      "description": "an update notice that does not apply to a device already on the fixed build",
-      "record": { "id": "b2", "tag": "UPDATE", "title": "Update fixes the paused-ride bug", "body": "1.8.8 fixes a bug where a paused ride could lose its last minute. Updating takes a moment.", "created_at_millis": 1757000000000, "applies_to_versions_at_or_below": 187 },
-      "applies_to_version_code": 188,
+      "description": "an update notice does not apply to a device already on the fixed release",
+      "record": {
+        "id": "b2",
+        "tag": "UPDATE",
+        "title": "Update fixes the paused-ride bug",
+        "body": "1.8.8 fixes a bug where a paused ride could lose its last minute.",
+        "created_at_millis": 1757000000000,
+        "applies_to_releases_at_or_below": "1.8.7"
+      },
+      "applies_to_release": "1.8.8",
       "expected_applies": false,
-      "note": "The one filter in the design, and it is about whether the message is TRUE for this device, not about who we would like to re-engage. Telling someone already on the fixed build to update is noise that teaches them to ignore the channel."
+      "note": "The one filter in the design, and it is about whether the message is TRUE for this device, not about who we would like to re-engage."
     },
     {
-      "description": "the same update notice on a device that still has the defect",
-      "record": { "id": "b2", "tag": "UPDATE", "title": "Update fixes the paused-ride bug", "body": "1.8.8 fixes a bug where a paused ride could lose its last minute.", "created_at_millis": 1757000000000, "applies_to_versions_at_or_below": 187 },
-      "applies_to_version_code": 187,
+      "description": "the same notice on a device that still has the defect",
+      "record": {
+        "id": "b2",
+        "tag": "UPDATE",
+        "title": "Update fixes the paused-ride bug",
+        "body": "1.8.8 fixes a bug where a paused ride could lose its last minute.",
+        "created_at_millis": 1757000000000,
+        "applies_to_releases_at_or_below": "1.8.7"
+      },
+      "applies_to_release": "1.8.7",
       "expected_applies": true,
-      "note": "Boundary is inclusive: at_or_below means the build carrying the defect is included."
+      "note": "at_or_below is inclusive: the release carrying the defect is included."
+    },
+    {
+      "description": "an older release is included",
+      "record": {
+        "id": "b3",
+        "tag": "UPDATE",
+        "title": "t",
+        "body": "b",
+        "created_at_millis": 1757000000000,
+        "applies_to_releases_at_or_below": "1.8.7"
+      },
+      "applies_to_release": "1.6.4",
+      "expected_applies": true
+    },
+    {
+      "description": "components are compared numerically, not as text",
+      "record": {
+        "id": "b4",
+        "tag": "UPDATE",
+        "title": "t",
+        "body": "b",
+        "created_at_millis": 1757000000000,
+        "applies_to_releases_at_or_below": "1.10.0"
+      },
+      "applies_to_release": "1.9.9",
+      "expected_applies": true,
+      "note": "String comparison would put 1.9.9 above 1.10.0 and silently exclude every device that most needs the notice."
+    },
+    {
+      "description": "a shorter version is padded with zeros, not treated as smaller",
+      "record": {
+        "id": "b5",
+        "tag": "UPDATE",
+        "title": "t",
+        "body": "b",
+        "created_at_millis": 1757000000000,
+        "applies_to_releases_at_or_below": "1.8"
+      },
+      "applies_to_release": "1.8.0",
+      "expected_applies": true
     },
     {
       "description": "a learn-more link is allowed and must be https",
-      "record": { "id": "b3", "tag": "URGENT", "title": "Group rides may not start", "body": "Creating a group fails on 1.8.7. A fix is in review.", "created_at_millis": 1757000000000, "learn_more_url": "https://trackme.shvms.in/blogs" },
-      "applies_to_version_code": 187,
+      "record": {
+        "id": "b6",
+        "tag": "URGENT",
+        "title": "Group rides may not start",
+        "body": "Creating a group fails on 1.8.7. A fix is in review.",
+        "created_at_millis": 1757000000000,
+        "learn_more_url": "https://trackme.shvms.in/blogs"
+      },
+      "applies_to_release": "1.8.7",
       "expected_applies": true
     }
   ],
-
   "invalid": [
-    { "description": "unknown tag", "record": { "id": "x", "tag": "PROMO", "title": "t", "body": "b", "created_at_millis": 1 },
-      "note": "The single most important rejection in the file. A client that passes an unknown tag through is a client that will render whatever the next person types into the category box." },
-    { "description": "lowercase tag", "record": { "id": "x", "tag": "urgent", "title": "t", "body": "b", "created_at_millis": 1 } },
-    { "description": "missing tag", "record": { "id": "x", "title": "t", "body": "b", "created_at_millis": 1 } },
-    { "description": "missing id", "record": { "tag": "URGENT", "title": "t", "body": "b", "created_at_millis": 1 } },
-    { "description": "empty title", "record": { "id": "x", "tag": "URGENT", "title": "", "body": "b", "created_at_millis": 1 } },
-    { "description": "blank title", "record": { "id": "x", "tag": "URGENT", "title": "   ", "body": "b", "created_at_millis": 1 } },
-    { "description": "empty body", "record": { "id": "x", "tag": "URGENT", "title": "t", "body": "", "created_at_millis": 1 } },
-    { "description": "title over 80 characters", "record": { "id": "x", "tag": "URGENT", "title": "0123456789012345678901234567890123456789012345678901234567890123456789012345678901", "body": "b", "created_at_millis": 1 },
-      "note": "A title longer than the shade shows is a title whose end nobody reads. Truncating silently would let an operator believe they said something they did not." },
-    { "description": "body over 480 characters", "record": { "id": "x", "tag": "URGENT", "title": "t", "body": "________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________", "created_at_millis": 1 } },
-    { "description": "missing created_at", "record": { "id": "x", "tag": "URGENT", "title": "t", "body": "b" } },
-    { "description": "created_at not a number", "record": { "id": "x", "tag": "URGENT", "title": "t", "body": "b", "created_at_millis": "yesterday" } },
-    { "description": "http learn-more link", "record": { "id": "x", "tag": "URGENT", "title": "t", "body": "b", "created_at_millis": 1, "learn_more_url": "http://trackme.shvms.in" },
-      "note": "Plaintext is refused rather than upgraded. A link arriving over the network and opened from a HIGH-importance notification is not the place to be permissive." },
-    { "description": "javascript learn-more link", "record": { "id": "x", "tag": "URGENT", "title": "t", "body": "b", "created_at_millis": 1, "learn_more_url": "javascript:alert(1)" } },
-    { "description": "applies_to_versions_at_or_below on a non-update tag", "record": { "id": "x", "tag": "MAINTENANCE", "title": "t", "body": "b", "created_at_millis": 1, "applies_to_versions_at_or_below": 187 },
-      "note": "Version filtering exists so an update notice is true for the device that gets it. On any other tag it is a segmentation lever with no operational meaning, so the shape forbids it rather than trusting nobody to reach for it." }
+    {
+      "description": "unknown tag",
+      "record": {
+        "id": "x",
+        "tag": "PROMO",
+        "title": "t",
+        "body": "b",
+        "created_at_millis": 1
+      },
+      "note": "The single most important rejection in the file. A client that passes an unknown tag through is a client that will render whatever the next person types into the category box."
+    },
+    {
+      "description": "lowercase tag",
+      "record": {
+        "id": "x",
+        "tag": "urgent",
+        "title": "t",
+        "body": "b",
+        "created_at_millis": 1
+      }
+    },
+    {
+      "description": "missing tag",
+      "record": {
+        "id": "x",
+        "title": "t",
+        "body": "b",
+        "created_at_millis": 1
+      }
+    },
+    {
+      "description": "missing id",
+      "record": {
+        "tag": "URGENT",
+        "title": "t",
+        "body": "b",
+        "created_at_millis": 1
+      }
+    },
+    {
+      "description": "empty title",
+      "record": {
+        "id": "x",
+        "tag": "URGENT",
+        "title": "",
+        "body": "b",
+        "created_at_millis": 1
+      }
+    },
+    {
+      "description": "blank title",
+      "record": {
+        "id": "x",
+        "tag": "URGENT",
+        "title": "   ",
+        "body": "b",
+        "created_at_millis": 1
+      }
+    },
+    {
+      "description": "empty body",
+      "record": {
+        "id": "x",
+        "tag": "URGENT",
+        "title": "t",
+        "body": "",
+        "created_at_millis": 1
+      }
+    },
+    {
+      "description": "title over 80 characters",
+      "record": {
+        "id": "x",
+        "tag": "URGENT",
+        "title": "0123456789012345678901234567890123456789012345678901234567890123456789012345678901",
+        "body": "b",
+        "created_at_millis": 1
+      },
+      "note": "A title longer than the shade shows is a title whose end nobody reads. Truncating silently would let an operator believe they said something they did not."
+    },
+    {
+      "description": "body over 480 characters",
+      "record": {
+        "id": "x",
+        "tag": "URGENT",
+        "title": "t",
+        "body": "________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________",
+        "created_at_millis": 1
+      }
+    },
+    {
+      "description": "missing created_at",
+      "record": {
+        "id": "x",
+        "tag": "URGENT",
+        "title": "t",
+        "body": "b"
+      }
+    },
+    {
+      "description": "created_at not a number",
+      "record": {
+        "id": "x",
+        "tag": "URGENT",
+        "title": "t",
+        "body": "b",
+        "created_at_millis": "yesterday"
+      }
+    },
+    {
+      "description": "http learn-more link",
+      "record": {
+        "id": "x",
+        "tag": "URGENT",
+        "title": "t",
+        "body": "b",
+        "created_at_millis": 1,
+        "learn_more_url": "http://trackme.shvms.in"
+      },
+      "note": "Plaintext is refused rather than upgraded. A link arriving over the network and opened from a HIGH-importance notification is not the place to be permissive."
+    },
+    {
+      "description": "javascript learn-more link",
+      "record": {
+        "id": "x",
+        "tag": "URGENT",
+        "title": "t",
+        "body": "b",
+        "created_at_millis": 1,
+        "learn_more_url": "javascript:alert(1)"
+      }
+    },
+    {
+      "description": "a release ceiling on a non-update tag",
+      "record": {
+        "id": "x",
+        "tag": "MAINTENANCE",
+        "title": "t",
+        "body": "b",
+        "created_at_millis": 1,
+        "applies_to_releases_at_or_below": "1.8.7"
+      },
+      "note": "Version filtering exists so an update notice is TRUE for the device that gets it. On any other tag it is a segmentation lever with no operational meaning."
+    },
+    {
+      "description": "a non-numeric release ceiling",
+      "record": {
+        "id": "x",
+        "tag": "UPDATE",
+        "title": "t",
+        "body": "b",
+        "created_at_millis": 1,
+        "applies_to_releases_at_or_below": "1.8.7-beta"
+      },
+      "note": "Refused rather than coerced. A ceiling the two platforms might parse differently is worse than no ceiling."
+    },
+    {
+      "description": "an empty release ceiling",
+      "record": {
+        "id": "x",
+        "tag": "UPDATE",
+        "title": "t",
+        "body": "b",
+        "created_at_millis": 1,
+        "applies_to_releases_at_or_below": ""
+      }
+    },
+    {
+      "description": "the retired integer form is no longer accepted",
+      "record": {
+        "id": "x",
+        "tag": "UPDATE",
+        "title": "t",
+        "body": "b",
+        "created_at_millis": 1,
+        "applies_to_versions_at_or_below": 187
+      },
+      "note": "v1's key meant a different build on each platform. Accepting it alongside the new one would let a stale admin page silently target nobody."
+    }
   ],
-
   "unread": [
-    { "description": "nothing seen yet", "last_seen_created_at": null, "broadcast_created_at": 100, "expected_unread": true },
-    { "description": "older than what was seen", "last_seen_created_at": 100, "broadcast_created_at": 50, "expected_unread": false },
-    { "description": "exactly what was seen", "last_seen_created_at": 100, "broadcast_created_at": 100, "expected_unread": false },
-    { "description": "newer than what was seen", "last_seen_created_at": 100, "broadcast_created_at": 101, "expected_unread": true }
+    {
+      "description": "nothing seen yet",
+      "last_seen_created_at": null,
+      "broadcast_created_at": 100,
+      "expected_unread": true
+    },
+    {
+      "description": "older than what was seen",
+      "last_seen_created_at": 100,
+      "broadcast_created_at": 50,
+      "expected_unread": false
+    },
+    {
+      "description": "exactly what was seen",
+      "last_seen_created_at": 100,
+      "broadcast_created_at": 100,
+      "expected_unread": false
+    },
+    {
+      "description": "newer than what was seen",
+      "last_seen_created_at": 100,
+      "broadcast_created_at": 101,
+      "expected_unread": true
+    }
+  ],
+  "_version_note": "v2 (2026-09-07, Codex review finding 5): applies_to_versions_at_or_below took a bare integer, which Android compared to versionCode (29) and iOS to CFBundleVersion (7). One broadcast could not truthfully select the same release on both platforms — the same number meant two different builds, and the admin UI's own placeholder (187) matched neither. Replaced by applies_to_releases_at_or_below, a dotted marketing version that means the same release everywhere, compared component-wise.",
+  "release_comparison": [
+    {
+      "left": "1.8.7",
+      "right": "1.8.7",
+      "expected": 0
+    },
+    {
+      "left": "1.8.6",
+      "right": "1.8.7",
+      "expected": -1
+    },
+    {
+      "left": "1.8.8",
+      "right": "1.8.7",
+      "expected": 1
+    },
+    {
+      "left": "1.9.9",
+      "right": "1.10.0",
+      "expected": -1,
+      "note": "the case string comparison gets backwards"
+    },
+    {
+      "left": "1.8",
+      "right": "1.8.0",
+      "expected": 0,
+      "note": "missing components are zero"
+    },
+    {
+      "left": "2.0",
+      "right": "1.99.99",
+      "expected": 1
+    },
+    {
+      "left": "1.8.7.1",
+      "right": "1.8.7",
+      "expected": 1,
+      "note": "a fourth component still orders"
+    }
   ]
 }

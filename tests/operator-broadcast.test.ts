@@ -4,8 +4,10 @@ import * as path from 'path';
 import {
   BROADCAST_TAGS,
   BroadcastValidationError,
+  compareReleases,
   parseOperatorBroadcast,
   toFcmData,
+  toFcmMessage,
 } from '../lib/operator-broadcast';
 
 /**
@@ -34,12 +36,41 @@ check('the tag vocabulary is exactly what the contract declares', () => {
   assert.deepStrictEqual([...BROADCAST_TAGS], declared);
 });
 
-check('every valid vector is accepted', () => {
-  assert.ok(vectors.valid.length >= 4);
+check('every valid vector is accepted, and applies where the contract says', () => {
+  assert.ok(vectors.valid.length >= 7);
   for (const vector of vectors.valid) {
     const parsed = parseOperatorBroadcast(vector.record);
     assert.strictEqual(parsed.id, vector.record.id, vector.description);
+    const ceiling = parsed.applies_to_releases_at_or_below;
+    const applies = ceiling === undefined
+      ? true
+      : compareReleases(vector.applies_to_release, ceiling) <= 0;
+    assert.strictEqual(applies, vector.expected_applies, vector.description);
   }
+});
+
+check('releases compare numerically, not as text', () => {
+  // "1.9.9" sorts above "1.10.0" as a string, which would silently exclude every device that most
+  // needs an update notice — and the failure looks like the broadcast reaching nobody.
+  for (const vector of vectors.release_comparison) {
+    assert.strictEqual(
+      compareReleases(vector.left, vector.right),
+      vector.expected,
+      `${vector.left} vs ${vector.right}${vector.note ? ` — ${vector.note}` : ''}`,
+    );
+  }
+});
+
+check('the retired integer ceiling is refused, not quietly ignored', () => {
+  // v1's key meant a different build on each platform. Accepting it alongside the new one would let
+  // a stale admin page target nobody while every test still passed.
+  assert.throws(
+    () => parseOperatorBroadcast({
+      id: 'x', tag: 'UPDATE', title: 't', body: 'b', created_at_millis: 1,
+      applies_to_versions_at_or_below: 187,
+    }),
+    BroadcastValidationError,
+  );
 });
 
 check('every invalid vector is refused, with a message for the operator', () => {
@@ -69,11 +100,11 @@ check('nothing promotional can be tagged, whatever it is called', () => {
   }
 });
 
-check('only an update notice may be limited by version', () => {
+check('only an update notice may be limited by release', () => {
   for (const tag of BROADCAST_TAGS) {
-    const record = { id: 'x', tag, title: 't', body: 'b', created_at_millis: 1, applies_to_versions_at_or_below: 187 };
+    const record = { id: 'x', tag, title: 't', body: 'b', created_at_millis: 1, applies_to_releases_at_or_below: '1.8.7' };
     if (tag === 'UPDATE') {
-      assert.strictEqual(parseOperatorBroadcast(record).applies_to_versions_at_or_below, 187);
+      assert.strictEqual(parseOperatorBroadcast(record).applies_to_releases_at_or_below, '1.8.7');
     } else {
       assert.throws(() => parseOperatorBroadcast(record), BroadcastValidationError, tag);
     }
@@ -97,11 +128,29 @@ check('the FCM payload is data-only and all strings', () => {
     assert.strictEqual(typeof value, 'string', `${key} must be a string for FCM`);
   }
   assert.strictEqual(data.created_at_millis, String(broadcast.created_at_millis));
-  assert.strictEqual(data.applies_to_versions_at_or_below, '187');
+  assert.strictEqual(data.applies_to_releases_at_or_below, '1.8.7');
   // A `notification` block would be rendered by the system before the app sees it, putting an
   // unvalidated network string straight onto a HIGH-importance channel and skipping every parser
   // this contract exists to run.
   assert.ok(!('notification' in data));
+});
+
+check('the APNs headers are a pair Apple actually accepts', () => {
+  // The defect this test exists for: apns-push-type "background" was paired with apns-priority
+  // "10", which Apple documents as an error. Nothing caught it because the only thing under test
+  // was toFcmData — the headers were written inline in the endpoint and never asserted. A wrong
+  // header here fails delivery silently in production while every local test passes.
+  const message = toFcmMessage(parseOperatorBroadcast(vectors.valid[0].record), 'broadcasts');
+  assert.strictEqual(message.apns.headers['apns-push-type'], 'background');
+  assert.strictEqual(
+    message.apns.headers['apns-priority'], '5',
+    'a background push MUST be priority 5; Apple rejects 10',
+  );
+  assert.strictEqual(message.apns.payload.aps['content-available'], 1);
+  assert.strictEqual(message.topic, 'broadcasts');
+  // Still no alert anywhere in the message — the whole point of data-only.
+  assert.ok(!('notification' in message));
+  assert.ok(!('alert' in (message.apns.payload.aps as Record<string, unknown>)));
 });
 
 check('title and body limits match the vector file exactly', () => {

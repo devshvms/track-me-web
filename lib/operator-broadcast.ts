@@ -27,8 +27,43 @@ export interface OperatorBroadcast {
   title: string;
   body: string;
   created_at_millis: number;
-  applies_to_versions_at_or_below?: number;
+  /**
+   * The newest *release* the message is true for, as a dotted marketing version ("1.8.7").
+   *
+   * Was `applies_to_versions_at_or_below`, a bare integer — which Android compared to `versionCode`
+   * (29) and iOS to `CFBundleVersion` (7), so one broadcast could not truthfully select the same
+   * release on both platforms and the admin page's own placeholder matched neither. A marketing
+   * version means the same release everywhere, which is the only thing an operator is actually
+   * thinking about when they write "this is fixed in 1.8.8".
+   */
+  applies_to_releases_at_or_below?: string;
   learn_more_url?: string;
+}
+
+/**
+ * Compares two dotted release strings component-wise: -1, 0 or 1.
+ *
+ * Numeric per component, not lexicographic. String comparison puts "1.9.9" above "1.10.0" and would
+ * silently exclude every device that most needs an update notice — the failure would look like the
+ * broadcast simply reaching nobody.
+ *
+ * Missing components are zero, so "1.8" and "1.8.0" are the same release.
+ */
+export function compareReleases(left: string, right: string): number {
+  const parse = (value: string) => value.split('.').map((part) => Number.parseInt(part, 10));
+  const a = parse(left);
+  const b = parse(right);
+  for (let i = 0; i < Math.max(a.length, b.length); i += 1) {
+    const x = a[i] ?? 0;
+    const y = b[i] ?? 0;
+    if (x !== y) return x < y ? -1 : 1;
+  }
+  return 0;
+}
+
+/** A release string is dotted digits and nothing else — see the rejection note in the vectors. */
+export function isValidRelease(value: string): boolean {
+  return /^\d+(\.\d+)*$/.test(value);
 }
 
 export class BroadcastValidationError extends Error {}
@@ -82,20 +117,28 @@ export function parseOperatorBroadcast(raw: unknown): OperatorBroadcast {
   const createdAt = asNumber(input.created_at_millis);
   if (createdAt === null) fail('created_at_millis must be a number.');
 
-  const ceiling = input.applies_to_versions_at_or_below;
-  let appliesTo: number | undefined;
-  if (ceiling !== undefined && ceiling !== null) {
-    const parsed = asNumber(ceiling);
-    if (parsed === null || !Number.isInteger(parsed)) {
-      fail('applies_to_versions_at_or_below must be a whole version code.');
+  // v1's integer key is refused outright rather than accepted alongside the new one. It meant a
+  // different build on each platform, so a stale admin page sending it would silently target
+  // nobody — and a validator that quietly accepts a retired field never finds out it is stale.
+  if (input.applies_to_versions_at_or_below !== undefined) {
+    fail('applies_to_versions_at_or_below was removed. Use applies_to_releases_at_or_below, e.g. "1.8.7".');
+  }
+
+  const ceiling = input.applies_to_releases_at_or_below;
+  let appliesTo: string | undefined;
+  if (ceiling !== undefined && ceiling !== null && ceiling !== '') {
+    if (typeof ceiling !== 'string' || !isValidRelease(ceiling)) {
+      fail('applies_to_releases_at_or_below must be a dotted release like "1.8.7".');
     }
-    // Version filtering exists so an update notice is TRUE for the device that receives it. On any
+    // Release filtering exists so an update notice is TRUE for the device that receives it. On any
     // other tag it is a segmentation lever with no operational meaning, so the shape forbids it
     // rather than trusting nobody to reach for it.
     if (tag !== 'UPDATE') {
-      fail('Only an UPDATE notice may be limited by version. This is not a targeting mechanism.');
+      fail('Only an UPDATE notice may be limited by release. This is not a targeting mechanism.');
     }
-    appliesTo = parsed as number;
+    appliesTo = ceiling as string;
+  } else if (ceiling === '') {
+    fail('applies_to_releases_at_or_below must be a dotted release like "1.8.7".');
   }
 
   const learnMore = typeof input.learn_more_url === 'string' ? input.learn_more_url.trim() : '';
@@ -111,7 +154,7 @@ export function parseOperatorBroadcast(raw: unknown): OperatorBroadcast {
     title,
     body,
     created_at_millis: createdAt as number,
-    ...(appliesTo === undefined ? {} : { applies_to_versions_at_or_below: appliesTo }),
+    ...(appliesTo === undefined ? {} : { applies_to_releases_at_or_below: appliesTo }),
     ...(learnMore ? { learn_more_url: learnMore } : {}),
   };
 }
@@ -134,9 +177,34 @@ export function toFcmData(broadcast: OperatorBroadcast): Record<string, string> 
     body: broadcast.body,
     created_at_millis: String(broadcast.created_at_millis),
   };
-  if (broadcast.applies_to_versions_at_or_below !== undefined) {
-    data.applies_to_versions_at_or_below = String(broadcast.applies_to_versions_at_or_below);
+  if (broadcast.applies_to_releases_at_or_below !== undefined) {
+    data.applies_to_releases_at_or_below = broadcast.applies_to_releases_at_or_below;
   }
   if (broadcast.learn_more_url) data.learn_more_url = broadcast.learn_more_url;
   return data;
+}
+
+
+/**
+ * The exact message handed to FCM.
+ *
+ * Extracted from the endpoint so a test can assert the **request**, not just the data map. Codex's
+ * review found `apns-priority: 10` paired with `apns-push-type: background`, which Apple documents
+ * as an error — and no test could have caught it, because the only thing under test was
+ * `toFcmData`. A wrong header here means iOS delivery fails silently in production while every
+ * local test passes.
+ */
+export function toFcmMessage(broadcast: OperatorBroadcast, topic: string) {
+  return {
+    topic,
+    data: toFcmData(broadcast),
+    android: { priority: 'high' as const },
+    apns: {
+      // Priority 5 is REQUIRED for a background push. Apple rejects priority 10 with
+      // `apns-push-type: background`, and the rejection is not visible from the send call — the
+      // send succeeds and the device never receives anything.
+      headers: { 'apns-priority': '5', 'apns-push-type': 'background' },
+      payload: { aps: { 'content-available': 1 } },
+    },
+  };
 }

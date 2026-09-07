@@ -5,7 +5,7 @@ import { db, messaging } from '../../lib/firebase';
 import {
   BroadcastValidationError,
   parseOperatorBroadcast,
-  toFcmData,
+  toFcmMessage,
 } from '../../lib/operator-broadcast';
 
 /**
@@ -105,15 +105,10 @@ export default async function handler(request: VercelRequest, response: VercelRe
     }
 
     try {
-      await messaging.send({
-        topic: BROADCAST_TOPIC,
-        data: toFcmData(broadcast),
-        android: { priority: 'high' },
-        apns: {
-          headers: { 'apns-priority': '10', 'apns-push-type': 'background' },
-          payload: { aps: { 'content-available': 1 } },
-        },
-      });
+      // The message shape lives in lib/operator-broadcast so a test can assert the actual request
+      // rather than only the data map — which is how `apns-priority: 10` on a background push
+      // survived here unnoticed.
+      await messaging.send(toFcmMessage(broadcast, BROADCAST_TOPIC));
     } catch (error) {
       console.error('Broadcast recorded but push failed:', error);
       return response.status(202).json({
