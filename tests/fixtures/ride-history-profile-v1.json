@@ -1,0 +1,241 @@
+{
+  "version": 1,
+  "canonical": "track-me-web/tests/fixtures — copy to each client, same as group-status-vectors.json",
+  "note": "SCOPE_1.8.7 §6.1.3 scenario 12a and §6.1.2 scenario 10b — what the app may infer from a rider's own history. Scenario 12 was CUT for inferring a routine and acting on it; 12a keeps the inference and hands the decision back. That distinction only holds if the suggestion is withheld whenever it would be a guess, so most of these vectors are about REFUSING to suggest. A platform that suggests where the other stays quiet is the app appearing to watch more closely on one phone than the other.",
+  "constants": {
+    "min_rides_for_suggestion": 5,
+    "min_dominant_day_share": 0.30,
+    "min_rides_on_dominant_day": 2,
+    "_day_note": "ISO-8601 weekday: 1 = Monday … 7 = Sunday. NOT java.util.Calendar's or Foundation's numbering, both of which make Sunday 1 — a vector written against either would be a trap for the other platform.",
+    "_share_note": "A rider who rides every day has no usual day. 30% is roughly double what a uniform week gives any single day."
+  },
+  "suggest_slot": [
+    {
+      "description": "a clear Saturday-morning rider",
+      "samples": [
+        { "day_of_week": 6, "hour": 8, "active_minutes": 40, "persona": "RUN" },
+        { "day_of_week": 6, "hour": 8, "active_minutes": 45, "persona": "RUN" },
+        { "day_of_week": 6, "hour": 8, "active_minutes": 38, "persona": "RUN" },
+        { "day_of_week": 3, "hour": 19, "active_minutes": 25, "persona": "RUN" },
+        { "day_of_week": 6, "hour": 9, "active_minutes": 50, "persona": "RUN" }
+      ],
+      "expected": { "day_of_week": 6, "hour": 8, "persona": "RUN", "ride_count": 5 },
+      "note": "Four of five rides on Saturday, three of them at 08:00. The 09:00 outlier does not move the hour because the modal hour wins outright."
+    },
+    {
+      "description": "four rides is not yet a history",
+      "samples": [
+        { "day_of_week": 6, "hour": 8, "active_minutes": 40, "persona": "RUN" },
+        { "day_of_week": 6, "hour": 8, "active_minutes": 45, "persona": "RUN" },
+        { "day_of_week": 6, "hour": 8, "active_minutes": 38, "persona": "RUN" },
+        { "day_of_week": 6, "hour": 8, "active_minutes": 41, "persona": "RUN" }
+      ],
+      "expected": null,
+      "note": "A perfect pattern, refused for lack of evidence. The floor is deliberately above the point where a pattern becomes visible, because the cost of a confidently wrong suggestion is higher than the cost of an empty form."
+    },
+    {
+      "description": "rides every day of the week",
+      "samples": [
+        { "day_of_week": 1, "hour": 7, "active_minutes": 30, "persona": "RUN" },
+        { "day_of_week": 2, "hour": 7, "active_minutes": 30, "persona": "RUN" },
+        { "day_of_week": 3, "hour": 7, "active_minutes": 30, "persona": "RUN" },
+        { "day_of_week": 4, "hour": 7, "active_minutes": 30, "persona": "RUN" },
+        { "day_of_week": 5, "hour": 7, "active_minutes": 30, "persona": "RUN" },
+        { "day_of_week": 6, "hour": 7, "active_minutes": 30, "persona": "RUN" },
+        { "day_of_week": 7, "hour": 7, "active_minutes": 30, "persona": "RUN" }
+      ],
+      "expected": null,
+      "note": "One ride on each day. There is no usual day to suggest, and picking Monday because it sorts first would be the app inventing a routine. Note the hour is unambiguous and it still refuses — the day gate runs first for a reason."
+    },
+    {
+      "description": "a dominant day carried by a single ride",
+      "samples": [
+        { "day_of_week": 6, "hour": 8, "active_minutes": 40, "persona": "RUN" },
+        { "day_of_week": 1, "hour": 7, "active_minutes": 30, "persona": "RUN" },
+        { "day_of_week": 2, "hour": 7, "active_minutes": 30, "persona": "RUN" },
+        { "day_of_week": 3, "hour": 7, "active_minutes": 30, "persona": "RUN" },
+        { "day_of_week": 4, "hour": 7, "active_minutes": 30, "persona": "RUN" }
+      ],
+      "expected": null,
+      "note": "Five rides, five different days, so the modal day has exactly one ride. Both the share gate and the two-ride gate refuse it."
+    },
+    {
+      "description": "a tie between two days breaks to the earlier weekday",
+      "samples": [
+        { "day_of_week": 2, "hour": 18, "active_minutes": 30, "persona": "CYCLE" },
+        { "day_of_week": 2, "hour": 18, "active_minutes": 35, "persona": "CYCLE" },
+        { "day_of_week": 6, "hour": 9, "active_minutes": 60, "persona": "CYCLE" },
+        { "day_of_week": 6, "hour": 9, "active_minutes": 65, "persona": "CYCLE" },
+        { "day_of_week": 4, "hour": 7, "active_minutes": 20, "persona": "CYCLE" }
+      ],
+      "expected": { "day_of_week": 2, "hour": 18, "persona": "CYCLE", "ride_count": 5 },
+      "note": "Tuesday and Saturday both have two rides. The tie breaks deterministically rather than by map order — a suggestion that changes between two runs over identical history is one nobody can trust."
+    },
+    {
+      "description": "the hour comes only from the dominant day's rides",
+      "samples": [
+        { "day_of_week": 6, "hour": 8, "active_minutes": 40, "persona": "RUN" },
+        { "day_of_week": 6, "hour": 8, "active_minutes": 45, "persona": "RUN" },
+        { "day_of_week": 3, "hour": 19, "active_minutes": 25, "persona": "RUN" },
+        { "day_of_week": 4, "hour": 19, "active_minutes": 25, "persona": "RUN" },
+        { "day_of_week": 5, "hour": 19, "active_minutes": 25, "persona": "RUN" }
+      ],
+      "expected": { "day_of_week": 6, "hour": 8, "persona": "RUN", "ride_count": 5 },
+      "note": "19:00 is the most common hour overall, but Saturday's rides are at 08:00. Averaging across the week would suggest an hour the rider has never once ridden at on the day being suggested."
+    },
+    {
+      "description": "the persona comes from the dominant day too",
+      "samples": [
+        { "day_of_week": 6, "hour": 8, "active_minutes": 90, "persona": "CYCLE" },
+        { "day_of_week": 6, "hour": 8, "active_minutes": 95, "persona": "CYCLE" },
+        { "day_of_week": 2, "hour": 19, "active_minutes": 25, "persona": "RUN" },
+        { "day_of_week": 3, "hour": 19, "active_minutes": 25, "persona": "RUN" },
+        { "day_of_week": 4, "hour": 19, "active_minutes": 25, "persona": "RUN" }
+      ],
+      "expected": { "day_of_week": 6, "hour": 8, "persona": "CYCLE", "ride_count": 5 },
+      "note": "RUN is the more frequent persona overall, but the Saturday slot being suggested is a cycling slot. A reminder that names the wrong activity is worse than one that names none."
+    },
+    {
+      "description": "no rides at all",
+      "samples": [],
+      "expected": null,
+      "note": "A fresh install gets an empty form, not a default dressed up as a suggestion."
+    }
+  ],
+  "typical_active_minutes": [
+    {
+      "description": "odd count takes the middle value",
+      "samples": [
+        { "day_of_week": 1, "hour": 8, "active_minutes": 20, "persona": "RUN" },
+        { "day_of_week": 2, "hour": 8, "active_minutes": 40, "persona": "RUN" },
+        { "day_of_week": 3, "hour": 8, "active_minutes": 30, "persona": "RUN" }
+      ],
+      "persona": "RUN",
+      "expected": 30
+    },
+    {
+      "description": "even count averages the middle pair, rounding down",
+      "samples": [
+        { "day_of_week": 1, "hour": 8, "active_minutes": 20, "persona": "RUN" },
+        { "day_of_week": 2, "hour": 8, "active_minutes": 31, "persona": "RUN" },
+        { "day_of_week": 3, "hour": 8, "active_minutes": 40, "persona": "RUN" },
+        { "day_of_week": 4, "hour": 8, "active_minutes": 50, "persona": "RUN" }
+      ],
+      "persona": "RUN",
+      "expected": 35,
+      "note": "(31 + 40) / 2 = 35.5, truncated to 35. Under-promising is the correct direction of error for scenario 10b."
+    },
+    {
+      "description": "a forgotten six-hour ride does not move the median",
+      "samples": [
+        { "day_of_week": 1, "hour": 8, "active_minutes": 30, "persona": "RUN" },
+        { "day_of_week": 2, "hour": 8, "active_minutes": 32, "persona": "RUN" },
+        { "day_of_week": 3, "hour": 8, "active_minutes": 28, "persona": "RUN" },
+        { "day_of_week": 4, "hour": 8, "active_minutes": 31, "persona": "RUN" },
+        { "day_of_week": 5, "hour": 8, "active_minutes": 360, "persona": "RUN" }
+      ],
+      "persona": "RUN",
+      "expected": 31,
+      "note": "The exact reason this is a median and not a mean. Scenario 4 exists because rides like the last one happen, so the statistic feeding scenario 10b has to shrug them off — a mean of 96 would promise a level the rider will not reach today."
+    },
+    {
+      "description": "a persona with one ride falls back to the whole history",
+      "samples": [
+        { "day_of_week": 1, "hour": 8, "active_minutes": 30, "persona": "RUN" },
+        { "day_of_week": 2, "hour": 8, "active_minutes": 30, "persona": "RUN" },
+        { "day_of_week": 3, "hour": 8, "active_minutes": 30, "persona": "RUN" },
+        { "day_of_week": 4, "hour": 8, "active_minutes": 90, "persona": "CYCLE" }
+      ],
+      "persona": "CYCLE",
+      "expected": 30,
+      "note": "One cycle ride is not a cycling history. Refusing to answer would silently disable 10b on exactly the first ride of a new activity, where a new level is most likely."
+    },
+    {
+      "description": "a persona with enough of its own history uses it",
+      "samples": [
+        { "day_of_week": 1, "hour": 8, "active_minutes": 30, "persona": "RUN" },
+        { "day_of_week": 2, "hour": 8, "active_minutes": 30, "persona": "RUN" },
+        { "day_of_week": 3, "hour": 8, "active_minutes": 90, "persona": "CYCLE" },
+        { "day_of_week": 4, "hour": 8, "active_minutes": 94, "persona": "CYCLE" }
+      ],
+      "persona": "CYCLE",
+      "expected": 92,
+      "note": "Two cycle rides clear the floor, so cycling is measured against cycling rather than being dragged down by the runs."
+    },
+    {
+      "description": "no history at all",
+      "samples": [],
+      "persona": "RUN",
+      "expected": null
+    }
+  ],
+  "start_button_proximity": [
+    {
+      "description": "a typical ride crosses the threshold",
+      "minutes_to_next_level": 20,
+      "next_level_name": "Explorer",
+      "typical_active_minutes": 40,
+      "expected": { "minutes": 20, "level_name": "Explorer" }
+    },
+    {
+      "description": "exactly a typical ride away",
+      "minutes_to_next_level": 40,
+      "next_level_name": "Explorer",
+      "typical_active_minutes": 40,
+      "expected": { "minutes": 40, "level_name": "Explorer" },
+      "note": "Inclusive at the boundary. A rider whose median ride is exactly the gap does cross it half the time, and the sentence is a prediction rather than a promise."
+    },
+    {
+      "description": "further away than this rider usually goes",
+      "minutes_to_next_level": 41,
+      "next_level_name": "Explorer",
+      "typical_active_minutes": 40,
+      "expected": null,
+      "note": "The honest sentence here is 'this one does not, quite'. Saying the encouraging one instead is how a prediction feature stops being believed."
+    },
+    {
+      "description": "a short rider is not told a distant level is close",
+      "minutes_to_next_level": 20,
+      "next_level_name": "Explorer",
+      "typical_active_minutes": 10,
+      "expected": null,
+      "note": "The same 20-minute gap that produces a line for a 40-minute rider produces nothing here. This is the whole point of bounding it by the rider's own history rather than a constant."
+    },
+    {
+      "description": "already at the level",
+      "minutes_to_next_level": 0,
+      "next_level_name": "Explorer",
+      "typical_active_minutes": 40,
+      "expected": null
+    },
+    {
+      "description": "past the level",
+      "minutes_to_next_level": -5,
+      "next_level_name": "Explorer",
+      "typical_active_minutes": 40,
+      "expected": null
+    },
+    {
+      "description": "at the maximum level",
+      "minutes_to_next_level": null,
+      "next_level_name": null,
+      "typical_active_minutes": 40,
+      "expected": null
+    },
+    {
+      "description": "a first-time rider gets no prediction",
+      "minutes_to_next_level": 20,
+      "next_level_name": "Explorer",
+      "typical_active_minutes": null,
+      "expected": null,
+      "note": "No history means no basis. Inventing a default ride length would be the app guessing about a stranger and then telling them what it guessed."
+    },
+    {
+      "description": "a blank level name is not a level",
+      "minutes_to_next_level": 20,
+      "next_level_name": "",
+      "typical_active_minutes": 40,
+      "expected": null
+    }
+  ]
+}
