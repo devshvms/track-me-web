@@ -7,7 +7,7 @@
     <meta name="theme-color" content="#0b1320">
     <meta property="og:type" content="website">
     <meta property="og:title" content="TrackMe | Private outdoor tracking">
-    <meta property="og:description" content="Offline-first activity tracking with live sharing, SOS support, and data exports that stay yours.">
+    <meta property="og:description" content="Offline-first activity tracking with live sharing and data exports that stay yours.">
     <meta property="og:url" content="https://trackme.shvms.in/">
     <meta property="og:image" content="https://trackme.shvms.in/assets/trackme-social-card.svg">
     <link rel="canonical" href="https://trackme.shvms.in/">
@@ -45,82 +45,55 @@
         <section id="top" class="hero section-shell" aria-labelledby="hero-title">
             <div class="hero-copy">
                 <p class="eyebrow"><span class="eyebrow-dot" aria-hidden="true"></span> Private outdoor tracking</p>
-                <h1 id="hero-title">Your route. Your pace. Your data.</h1>
-                <p class="hero-lede">Track a ride, run, hike, or solo outing offline. Share your live location when it matters, then take every route home with you.</p>
+                <h1 id="hero-title">It records where there is no signal.</h1>
+                <p class="hero-lede">Ride, run, hike or walk. TrackMe records your trail with no connection and no account &mdash; free, with nothing to unlock and nothing to cancel. Take every route home as GPX whenever you like.</p>
                 <div class="hero-actions">
-                    <div class="hero-store-badges">
-                        <a class="hero-store-badge download-cta" href="https://play.google.com/store/apps/details?id=in.shvms.trackme" target="_blank" rel="noreferrer" data-download-platform="android" aria-label="Get TrackMe on Google Play" title="Get TrackMe on Google Play">
-                            <img src="assets/store/google-play-48.png" width="28" height="28" alt="Google Play">
-                        </a>
-                        <a class="hero-store-badge download-cta" href="https://apps.apple.com/app/id6800161248" target="_blank" rel="noreferrer" data-download-platform="ios" aria-label="Download TrackMe on the App Store" title="Download TrackMe on the App Store">
-                            <img src="assets/store/app-store-48.png" width="28" height="28" alt="App Store">
-                        </a>
-                    </div>
-                    <a class="text-link" href="#features">See how it works <span aria-hidden="true">&darr;</span></a>
+                    <a class="store-cta download-cta" href="https://play.google.com/store/apps/details?id=in.shvms.trackme" target="_blank" rel="noreferrer" data-download-platform="android">
+                        <img src="assets/store/google-play-48.png" width="30" height="30" alt="" aria-hidden="true">
+                        <span><small>Get it on</small><strong>Google Play</strong></span>
+                    </a>
+                    <a class="store-cta download-cta" href="https://apps.apple.com/app/id6800161248" target="_blank" rel="noreferrer" data-download-platform="ios">
+                        <img src="assets/store/app-store-48.png" width="30" height="30" alt="" aria-hidden="true">
+                        <span><small>Download on the</small><strong>App Store</strong></span>
+                    </a>
                 </div>
-                <p class="hero-note">Local-first by default. Cloud sync is always your choice.</p>
+                <ul class="hero-proof" aria-label="What TrackMe costs and collects">
+                    <li>Free, no subscription</li>
+                    <li>No ads, no data sold</li>
+                    <li>Live on both stores</li>
+                </ul>
             </div>
-            <div class="route-visual" aria-label="A live TrackMe recording: a winding trail tracked offline and shared live, showing 12.4 kilometres in 58 minutes at a 4:42 per kilometre pace.">
-                <div class="route-visual-topline"><span>LIVE ROUTE</span><span class="route-status"><i aria-hidden="true"></i> Recording</span></div>
-                <div class="route-map" aria-hidden="true">
-                    <svg class="rv-svg" viewBox="0 0 420 300" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
-                        <defs>
-                            <linearGradient id="rvTrail" x1="0" y1="1" x2="1" y2="0">
-                                <stop offset="0" stop-color="#0277b6"/>
-                                <stop offset="1" stop-color="#29b6f6"/>
-                            </linearGradient>
-                            <radialGradient id="rvGlow" cx="0.5" cy="0.5" r="0.5">
-                                <stop offset="0" stop-color="#29b6f6" stop-opacity=".5"/>
-                                <stop offset="1" stop-color="#29b6f6" stop-opacity="0"/>
-                            </radialGradient>
-                        </defs>
-                        <g class="rv-terrain" fill="none" stroke="#94a3b8" stroke-opacity=".10" stroke-width="1.2">
-                            <path d="M-20,118 C60,90 120,140 200,108 320,66 360,120 440,88"/>
-                            <path d="M-20,172 C70,150 130,192 210,160 330,120 372,172 440,150"/>
-                            <path d="M-20,232 C80,216 140,252 220,226 340,196 382,236 440,214"/>
-                        </g>
-                        <path class="rv-remaining" d="M356,66 C378,50 396,58 414,40" fill="none" stroke="#29b6f6" stroke-opacity=".4" stroke-width="3" stroke-dasharray="1 8" stroke-linecap="round"/>
-                        <path class="rv-trail" pathLength="1" d="M46,252 C92,206 132,232 176,186 C214,146 250,190 286,132 C312,92 338,96 356,66" fill="none" stroke="url(#rvTrail)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
-                        <circle cx="46" cy="252" r="9" fill="#12161c" stroke="#29b6f6" stroke-width="3"/>
-                        <circle cx="46" cy="252" r="3.5" fill="#29b6f6"/>
-                        <circle class="rv-here-glow" cx="356" cy="66" r="26" fill="url(#rvGlow)"/>
-                        <circle class="rv-here-ring" cx="356" cy="66" r="11" fill="none" stroke="#29b6f6" stroke-width="2"/>
-                        <circle cx="356" cy="66" r="6.5" fill="#29b6f6" stroke="#12161c" stroke-width="2.5"/>
-                    </svg>
-                    <span class="rv-chip rv-chip-offline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M12 3v11m0 0l-4-4m4 4l4-4M5 21h14" stroke-linecap="round" stroke-linejoin="round"/></svg> Offline<span class="rv-chip-more"> · saved on device</span></span>
-                    <span class="rv-chip rv-chip-live"><i></i> Live<span class="rv-chip-more"> link</span> · 3<span class="rv-chip-more"> watching</span></span>
-                    <span class="rv-start-label">Start · 8:04 AM</span>
-                    <div class="rv-hud">
-                        <div><small>Distance</small><strong>12.4<em>km</em></strong></div>
-                        <div><small>Time</small><strong>58:12</strong></div>
-                        <div><small>Pace</small><strong>4:42<em>/km</em></strong></div>
-                    </div>
+            <div class="hero-shot">
+                <div class="hero-shot-glow" aria-hidden="true"></div>
+                <img src="assets/showcase/hero.webp" width="1240" height="1120" fetchpriority="high" decoding="async" alt="TrackMe recording a cycling route on Android and iPhone, showing live distance, duration and speed over the map">
+                <div class="hero-shot-tags" aria-hidden="true">
+                    <span class="hero-tag"><i class="tag-dot"></i>Recording offline</span>
+                    <span class="hero-tag">Saved on device</span>
                 </div>
-                <div class="route-visual-footer"><span>Offline recording</span><strong>0 third-party ads</strong></div>
             </div>
         </section>
 
         <section id="features" class="section-shell section-block" aria-labelledby="features-title">
             <div class="section-heading">
                 <p class="eyebrow">Made for the miles ahead</p>
-                <h2 id="features-title">The useful parts stay close.</h2>
-                <p>TrackMe gives niche outdoor users the safety and history tools they need without turning every outing into a social feed.</p>
+                <h2 id="features-title">Three things, done properly.</h2>
+                <p>No feed, no coach, no streak to protect. A recorder that works where you actually go, and gives everything back when you ask.</p>
             </div>
             <div class="feature-grid">
                 <article class="feature-item">
                     <span class="feature-number">01</span>
-                    <h3>Offline-first tracking</h3>
-                    <p>Keep recording when the trail loses signal. Your route is saved locally and can sync later when you decide.</p>
+                    <h3>Records with nothing</h3>
+                    <p>No signal and no account. Route, distance, duration, pace and elevation gain are computed on the device and saved there the moment you press start.</p>
                 </article>
                 <article class="feature-item">
                     <span class="feature-number">02</span>
-                    <h3>Live share when useful</h3>
-                    <p>Send a time-limited link to a trusted person. Viewers can follow without creating an account.</p>
+                    <h3>Share when it matters</h3>
+                    <p>Send a live link someone opens in a browser with no app and no account. Or ride as a group and see each other on one map. Both need an account and a connection.</p>
                 </article>
                 <article class="feature-item">
                     <span class="feature-number">03</span>
-                    <h3>Portable history</h3>
-                    <p>Review your activity, export GPX traces, and download your cloud data as a real archive any time.</p>
+                    <h3>Leave whenever</h3>
+                    <p>Any ride as GPX, the whole history as a ZIP, imports from the tools you already use, and account deletion that takes every cloud record with it.</p>
                 </article>
             </div>
         </section>
@@ -128,8 +101,8 @@
         <section id="showcase" class="section-shell section-block showcase-section" aria-labelledby="showcase-title">
             <div class="section-heading">
                 <p class="eyebrow">A look inside</p>
-                <h2 id="showcase-title">Built for the whole outing.</h2>
-                <p>The same instrument on Android and iOS — record offline, share when it matters, and see what you did after. Auto-playing; use the dots to jump around.</p>
+                <h2 id="showcase-title">The same instrument on both phones.</h2>
+                <p>Real screens from the shipping 1.8.7 build on Android and iPhone &mdash; nothing staged. Auto-playing; use the dots to jump around.</p>
             </div>
 
             <div class="showcase" role="group" aria-roledescription="carousel" aria-label="TrackMe feature highlights">
@@ -138,63 +111,58 @@
                 <div class="showcase-viewport">
                     <div class="showcase-track" id="showcase-track">
 
-                        <!-- 01 · Offline tracking -->
-                        <article class="showcase-card" role="group" aria-roledescription="slide" aria-label="1 of 5: Offline tracking">
+                        <article class="showcase-card" role="group" aria-roledescription="slide" aria-label="1 of 5: Share the route, not your data">
                             <div class="showcase-poster-wrap">
-                                <img class="showcase-poster" src="assets/showcase/offline-tracking.jpg" width="1120" height="611" loading="lazy" decoding="async" alt="TrackMe on Android showing real-time GPS tracking on a satellite map with a live stats panel">
+                                <img class="showcase-poster" src="assets/showcase/share-image.webp" width="1240" height="1120" loading="lazy" decoding="async" alt="TrackMe 1.8.7 on Android and iPhone showing a route-image export preview with aspect-ratio and privacy controls">
                             </div>
                             <div class="showcase-caption">
                                 <span class="showcase-index">01 / 05</span>
-                                <h3>Offline-first recording</h3>
-                                <p>Your route is saved on the device the moment you start — no signal required. The map, distance, and pace keep going where the trail loses coverage.</p>
+                                <h3>Share the route, not your data</h3>
+                                <p>Turn a finished ride into a share-ready image or a replay video, sized for whichever feed you are posting to.</p>
                             </div>
                         </article>
 
-                        <!-- 02 · Live share -->
-                        <article class="showcase-card" role="group" aria-roledescription="slide" aria-label="2 of 5: Live share">
+                        <article class="showcase-card" role="group" aria-roledescription="slide" aria-label="2 of 5: Every ride, broken down">
                             <div class="showcase-poster-wrap">
-                                <img class="showcase-poster" src="assets/showcase/live-share.jpg" width="1120" height="611" loading="lazy" decoding="async" alt="TrackMe on Android showing live sharing and the offline recording shield">
+                                <img class="showcase-poster" src="assets/showcase/ride-detail.webp" width="1240" height="1120" loading="lazy" decoding="async" alt="TrackMe 1.8.7 on Android and iPhone showing a completed bicycle ride with its route, six statistics and a speed and altitude chart">
                             </div>
                             <div class="showcase-caption">
                                 <span class="showcase-index">02 / 05</span>
-                                <h3>Live share, on your terms</h3>
-                                <p>Send a time-limited link to someone you trust. They follow along in a browser — no account, no app — and it expires when you say so.</p>
+                                <h3>Every ride, broken down</h3>
+                                <p>Distance, duration, average and max speed, elevation gain &mdash; mapped and charted the moment you stop.</p>
                             </div>
                         </article>
 
-                        <!-- 03 · Post-ride reveal -->
-                        <article class="showcase-card" role="group" aria-roledescription="slide" aria-label="3 of 5: Post-ride reveal">
+                        <article class="showcase-card" role="group" aria-roledescription="slide" aria-label="3 of 5: Take it all with you">
                             <div class="showcase-poster-wrap">
-                                <img class="showcase-poster" src="assets/showcase/post-ride-reveal.jpg" width="1120" height="611" loading="lazy" decoding="async" alt="TrackMe on Android showing ride stats and elevation and speed charts after a ride">
+                                <img class="showcase-poster" src="assets/showcase/gpx.webp" width="1240" height="1120" loading="lazy" decoding="async" alt="TrackMe 1.8.7 on Android and iPhone showing the export and share controls on a completed ride, including GPX export">
                             </div>
                             <div class="showcase-caption">
                                 <span class="showcase-index">03 / 05</span>
-                                <h3>A little reward after the ride</h3>
-                                <p>Finish recording and TrackMe surfaces one gain-framed highlight — a distance record, a milestone, a personal best. Encouraging, never nagging.</p>
+                                <h3>Take it all with you</h3>
+                                <p>Standard GPX out to Strava, Garmin and anything else that reads it. Import the files you already have.</p>
                             </div>
                         </article>
 
-                        <!-- 04 · Weekly recap + streak -->
-                        <article class="showcase-card" role="group" aria-roledescription="slide" aria-label="4 of 5: Weekly recap and streak">
+                        <article class="showcase-card" role="group" aria-roledescription="slide" aria-label="4 of 5: Every minute moves you up">
                             <div class="showcase-poster-wrap">
-                                <img class="showcase-poster" src="assets/showcase/weekly-recap.jpg" width="1120" height="611" loading="lazy" decoding="async" alt="TrackMe on Android showing multi-sport activity tracking across a map">
+                                <img class="showcase-poster" src="assets/showcase/progress.webp" width="1240" height="1120" loading="lazy" decoding="async" alt="TrackMe 1.8.7 on Android and iPhone showing activity levels, the next milestone and progress bars">
                             </div>
                             <div class="showcase-caption">
                                 <span class="showcase-index">04 / 05</span>
-                                <h3>Weekly recap &amp; active streak</h3>
-                                <p>A calm weekly summary of what you covered, plus a forgiving streak that celebrates showing up — a single quiet week won't reset it.</p>
+                                <h3>Every minute moves you up</h3>
+                                <p>Levels and milestones built on real time spent moving &mdash; not on streaks you have to buy back.</p>
                             </div>
                         </article>
 
-                        <!-- 05 · Safety / SOS -->
-                        <article class="showcase-card" role="group" aria-roledescription="slide" aria-label="5 of 5: Safety and SOS">
+                        <article class="showcase-card" role="group" aria-roledescription="slide" aria-label="5 of 5: Start as a guest">
                             <div class="showcase-poster-wrap">
-                                <img class="showcase-poster" src="assets/showcase/sos-safety.jpg" width="1120" height="611" loading="lazy" decoding="async" alt="TrackMe on Android showing the emergency SOS alert control on the tracking screen">
+                                <img class="showcase-poster" src="assets/showcase/no-account.webp" width="1240" height="1120" loading="lazy" decoding="async" alt="TrackMe 1.8.7 on Android and iPhone showing the settings screen in guest mode with language, theme and units preferences">
                             </div>
                             <div class="showcase-caption">
                                 <span class="showcase-index">05 / 05</span>
-                                <h3>Safety when you're solo</h3>
-                                <p>A deliberate slide-to-send SOS reaches your emergency contacts with your live location — hard to trigger by accident, there when you need it.</p>
+                                <h3>Start as a guest</h3>
+                                <p>Track without an account and history stays on your device. Sign in only for the connected features.</p>
                             </div>
                         </article>
 
@@ -207,14 +175,24 @@
             </div>
         </section>
 
-        <section id="safety" class="safety-band" aria-labelledby="safety-title">
-            <div class="section-shell safety-layout">
-                <div>
-                    <p class="eyebrow eyebrow-light">A little more peace of mind</p>
-                    <h2 id="safety-title">Keep the people you trust in the loop.</h2>
+        <section id="scope" class="scope-band" aria-labelledby="scope-title">
+            <div class="section-shell scope-layout">
+                <div class="scope-intro">
+                    <p class="eyebrow eyebrow-light">No asterisks</p>
+                    <h2 id="scope-title">What works offline, and what doesn&rsquo;t.</h2>
+                    <p>Most tracking apps are vague about this. Here is the whole truth in two columns.</p>
                 </div>
-                <p>Live sharing and SOS tools are designed for the moment you are moving, not for a dashboard you have to babysit. You choose when a session starts, who gets the link, and when it expires.</p>
-                <a class="btn btn-outline-light" href="#support">Read the safety FAQ</a>
+                <div class="scope-cols">
+                    <div class="scope-col scope-col-free">
+                        <h3><span class="scope-tick" aria-hidden="true"></span>No signal, no account</h3>
+                        <p>Recording your own trail. Route, distance, duration, pace and elevation gain, computed on the device and saved there. History, ride detail, charts, GPX export and import, and the ride-image export all work signed out.</p>
+                    </div>
+                    <div class="scope-col scope-col-gated">
+                        <h3><span class="scope-dot" aria-hidden="true"></span>Account and connection</h3>
+                        <p>Live share, group rides, and cloud backup. These talk to a server, so they need both. The person watching your live link needs neither &mdash; they just open it in a browser.</p>
+                    </div>
+                </div>
+                <p class="scope-foot">Map imagery comes from the map provider, so the basemap can be blank where you have no signal. Your route is recorded either way.</p>
             </div>
         </section>
 
@@ -240,15 +218,16 @@
         <section id="privacy" class="section-shell section-block privacy-section" aria-labelledby="privacy-title">
             <div class="privacy-copy">
                 <p class="eyebrow">Your data has an exit door</p>
-                <h2 id="privacy-title">Useful cloud features without lock-in.</h2>
-                <p>TrackMe works locally first. When you enable cloud sync, your data stays tied to your account, can be exported in a standard archive, and is never sold as an audience product.</p>
+                <h2 id="privacy-title">Nothing here is holding your rides hostage.</h2>
+                <p>TrackMe records to your device first. Cloud sync is something you switch on, not something you opt out of &mdash; and whatever ends up there, you can take out or destroy in a couple of taps.</p>
                 <a class="text-link" href="privacy.html">Read the privacy policy <span aria-hidden="true">&rarr;</span></a>
             </div>
-            <div class="privacy-list" aria-label="Privacy commitments">
-                <div><strong>Local by default</strong><span>Recording does not depend on a connection.</span></div>
-                <div><strong>Exportable</strong><span>Download your profile, rides, and GPX traces.</span></div>
-                <div><strong>Time-limited sharing</strong><span>Live links expire instead of lingering forever.</span></div>
-            </div>
+            <ul class="privacy-list" aria-label="Data and security commitments">
+                <li><strong>Local by default</strong><span>Recording never depends on a connection, and never on an account.</span></li>
+                <li><strong>No ad SDK, no data sale</strong><span>There is no advertising or billing library in the app, and your location is not sold to anyone.</span></li>
+                <li><strong>Standard formats out</strong><span>Any ride as GPX, the whole history as a ZIP. Both work with Strava, Garmin and the rest.</span></li>
+                <li><strong>Deletion that means it</strong><span>Delete the account and every associated cloud record goes with it.</span></li>
+            </ul>
         </section>
 
         <section id="waitlist" class="section-shell section-block waitlist-section" aria-labelledby="waitlist-title">
@@ -285,7 +264,7 @@
         <section id="releases" class="section-shell section-block releases-section" aria-labelledby="releases-title">
             <div class="section-heading section-heading-row">
                 <div><p class="eyebrow">Start where you are</p><h2 id="releases-title">Get the app.</h2></div>
-                <p>Android version 1.8.6 is available to internal testers on Google Play. iOS version 1.8.5 is live on the App Store, with 1.8.6 in TestFlight.</p>
+                <p>TrackMe is live on Google Play and the App Store. Install it from either store below; the release history under each tab is generated from the actual published releases.</p>
             </div>
             <div class="tabs" role="tablist" aria-label="Platform releases">
                 <button class="tab-btn active" id="android-tab" type="button" role="tab" aria-selected="true" aria-controls="android-releases" data-target="android-releases">Android</button>
@@ -294,9 +273,9 @@
             <div id="android-releases" class="tab-content active" role="tabpanel" aria-labelledby="android-tab">
                 <div class="download-panel">
                     <div>
-                        <span class="status-label status-coming">Internal testing</span>
-                        <h3>Google Play internal testing (v1.8.6)</h3>
-                        <p>TrackMe for Android is available to internal testers on Google Play. Download or open the store listing directly.</p>
+                        <span class="status-label status-live">Live in Production</span>
+                        <h3>Google Play</h3>
+                        <p>TrackMe for Android is available to everyone on Google Play. Download or open the store listing directly.</p>
                     </div>
                     <div class="download-actions">
                         <a class="btn btn-primary download-cta store-btn" href="https://play.google.com/store/apps/details?id=in.shvms.trackme" target="_blank" rel="noreferrer" data-download-platform="android">
@@ -313,8 +292,8 @@
                 <div class="download-panel">
                     <div>
                         <span class="status-label status-live">Live in Production</span>
-                        <h3>Apple App Store (v1.8.5)</h3>
-                        <p>TrackMe for iPhone and iPad is available on the App Store. Version 1.8.6 is in TestFlight while Apple processes it. Download or open the store listing directly.</p>
+                        <h3>Apple App Store</h3>
+                        <p>TrackMe for iPhone and iPad is available on the App Store. Download or open the store listing directly.</p>
                     </div>
                     <div class="download-actions">
                         <a class="btn btn-primary download-cta store-btn" href="https://apps.apple.com/app/id6800161248" target="_blank" rel="noreferrer" data-download-platform="ios">
@@ -332,7 +311,8 @@
         <section id="support" class="section-shell section-block support-section" aria-labelledby="support-title">
             <div class="section-heading"><p class="eyebrow">Need a hand?</p><h2 id="support-title">Clear answers before you head out.</h2><p>Start with the common questions below. For account-specific help, sign in and use the feedback form in your account area.</p></div>
             <div class="faq-list">
-                <details><summary>Will tracking work without mobile data?</summary><p>Yes. TrackMe records locally first. A connection is only needed for cloud sync, live sharing, or an SOS message.</p></details>
+                <details><summary>What works without a connection or an account?</summary><p>Recording does, completely. Start a ride with no signal and no account &mdash; route, distance, duration and pace are computed on the device and saved there. Live share, group rides and cloud backup each need an account <em>and</em> a connection. Map imagery comes from the map provider, so the basemap may be blank where you have no signal; your route is recorded either way.</p></details>
+                <details><summary>Does a live-share viewer need the app?</summary><p>No. They open a link in any browser, with no app and no account. Starting the share needs an account and a connection on your side.</p></details>
                 <details><summary>Who can see a live-share link?</summary><p>Anyone you give the link to can view the public location page until the session expires. Only the signed-in owner can start, update, or stop that session.</p></details>
                 <details><summary>Can I leave TrackMe with my data?</summary><p>Yes. Signed-in users can request a tokenized ZIP containing their profile, ride history, and GPX traces from the Account section.</p></details>
                 <details><summary>How do I report a problem?</summary><p><a class="text-link" href="mailto:dev.shvms@gmail.com">Email TrackMe support</a> or sign in and include details in the account feedback form.</p></details>
@@ -366,7 +346,66 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            const trackEvent = (event, properties = {}) => fetch('/api/telemetry/event', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ event, properties: { ...properties, page: 'home_v2' } }) }).catch(() => {});
+            // TASK-295. Every landing event used to post without a distinctId, so the server fell
+            // through to the literal 'anonymous_visitor' and all 407 landing views plus all 26
+            // download clicks collapsed into ONE PostHog person — no channel attribution and no
+            // funnel, which also made TASK-293's improvement unmeasurable.
+            //
+            // First-party, anonymous, resettable. Local storage rather than a cookie: it is never
+            // transmitted automatically with every request, carries no cross-site scope, and adds
+            // no third-party cookie. Nothing is derived from the device or browser — this is a
+            // random value the browser happens to keep, not a fingerprint — and clearing site data
+            // resets it. Disclosed in privacy.html §2 and §9; those two never ship apart.
+            const store = {
+                get(k) { try { return window.localStorage.getItem(k); } catch (e) { return null; } },
+                set(k, v) { try { window.localStorage.setItem(k, v); } catch (e) { /* private mode: id stays in memory for this page only */ } },
+            };
+            let distinctId = store.get('tm_visitor_id');
+            if (!distinctId) {
+                distinctId = (window.crypto && window.crypto.randomUUID)
+                    ? window.crypto.randomUUID()
+                    : 'v-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+                store.set('tm_visitor_id', distinctId);
+            }
+
+            // First touch wins. The campaign that brought someone here is the one that earned the
+            // install; overwriting it on a later visit would credit whichever link they clicked
+            // last, which is usually our own.
+            const UTM_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'];
+            const params = new URLSearchParams(window.location.search);
+            const currentUtm = {};
+            UTM_KEYS.forEach((k) => { const v = params.get(k); if (v) currentUtm[k] = v.slice(0, 120); });
+            let attribution = {};
+            try { attribution = JSON.parse(store.get('tm_first_touch') || '{}'); } catch (e) { attribution = {}; }
+            // Record the first touch on the FIRST visit whatever it was, including a direct one.
+            // Persisting only when UTM is present let a campaign clicked weeks later become the
+            // "first" touch for someone we had already acquired directly — the same stolen-credit
+            // error, one visit further out.
+            // TASK-305: /r/<id> is the link burned into every exported replay video. Until now it
+            // 404'd — no rewrite here and no Android app-link either — so the one channel meant to
+            // bring people back was a dead end on every artifact that had already travelled. It now
+            // lands here, and it is attributed as what it is. Counting these as 'direct' would hide
+            // the share loop inside the bucket that means "we have no idea", which is precisely the
+            // absence of evidence that got this channel scored 25/660 in the first place.
+            const fromSharedArtifact = /^\/r\//.test(window.location.pathname);
+            if (!Object.keys(attribution).length) {
+                attribution = Object.keys(currentUtm).length
+                    ? currentUtm
+                    : { utm_source: fromSharedArtifact ? 'shared_artifact' : 'direct' };
+                store.set('tm_first_touch', JSON.stringify(attribution));
+            }
+            // The canonical utm_* keys always carry FIRST touch, never the current visit —
+            // spreading currentUtm over them would silently re-credit whichever link was clicked
+            // most recently, which is exactly the attribution error this task exists to remove.
+            // The current visit is still reported, under its own prefix, so a returning-visitor
+            // path is visible without competing with the credit.
+            // Emitted whenever this visit carries UTM, not only when it differs from first touch.
+            // Suppressing the equal case made "came back through the same Reddit link" byte-identical
+            // to "came back directly", which hides a channel's repeat contribution.
+            const latestUtm = {};
+            Object.keys(currentUtm).forEach((k) => { latestUtm['latest_' + k] = currentUtm[k]; });
+
+            const trackEvent = (event, properties = {}) => fetch('/api/telemetry/event', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ event, distinctId, properties: { ...latestUtm, ...attribution, ...properties, page: 'home_v2' } }) }).catch(() => {});
             trackEvent('landing_page_viewed', { url: window.location.href, version: 'v2' });
             const timers = {};
             const observer = new IntersectionObserver((entries) => entries.forEach((entry) => {
