@@ -1,0 +1,67 @@
+{
+  "version": 1,
+  "canonical": "track-me-web/tests/fixtures — copy to each client, same as group-status-vectors.json",
+  "note": "SCOPE_1.8.7 §6.0 and §6.3 — the interruption budget. This is the object that makes 'not too many notifications' testable rather than a matter of taste. A silent divergence here is invisible until it is a review: one platform notifying weekly where the other notifies daily is the difference between a differentiator and an uninstall.",
+  "constants": {
+    "proactive_interval_millis": 604800000,
+    "return_notice_interval_millis": 7776000000,
+    "_proactive_note": "7 days. One Class C notification per week, across ALL C sources combined — not per source. Every re-engagement idea in the category lands in C, and this is the entire allowance.",
+    "_return_note": "90 days. Scenario 13's own cap, on top of the C budget. A return notice is the single most intrusive thing the app may say, so it is rationed twice."
+  },
+  "classes": [
+    { "id": "CONSEQUENTIAL", "spends_proactive_budget": false, "note": "Class A. Something happened to the user's data or ride that they must know about. Unlimited, but each is rare by construction." },
+    { "id": "REQUESTED", "spends_proactive_budget": false, "note": "Class B. The user asked for this one, at a time they chose. Exactly what they asked for, no more and no less." },
+    { "id": "PROACTIVE", "spends_proactive_budget": true, "note": "Class C. The app decided to speak. The only class the budget applies to." },
+    { "id": "OPERATOR", "spends_proactive_budget": false, "note": "Class D. A person at TrackMe needs to tell everyone something operational. Deliberately outside the C budget in BOTH directions — see the cases below." }
+  ],
+  "allows": [
+    { "class": "CONSEQUENTIAL", "now": 1000, "last_proactive_at": 1000, "expected": true,
+      "note": "A ride finalized by the system is not rationed. Losing someone's ride silently is the worst outcome in the release." },
+    { "class": "REQUESTED", "now": 1000, "last_proactive_at": 1000, "expected": true,
+      "note": "The user set this reminder themselves. Suppressing it would be the app overruling a schedule the user can see and edit." },
+
+    { "class": "PROACTIVE", "now": 604800000, "last_proactive_at": null, "expected": true,
+      "note": "Never sent one. A fresh install is not owed a week of silence first." },
+    { "class": "PROACTIVE", "now": 604800000, "last_proactive_at": 0, "expected": true,
+      "note": "Exactly 7 days. The boundary is inclusive — a weekly recap must be able to land on the same weekday it landed on last week, or it drifts a day later every week until it is arriving on a different day entirely." },
+    { "class": "PROACTIVE", "now": 604799999, "last_proactive_at": 0, "expected": false,
+      "note": "One millisecond short. Off-by-one here is the difference between weekly and twice-weekly." },
+    { "class": "PROACTIVE", "now": 1209600000, "last_proactive_at": 0, "expected": true, "note": "14 days." },
+    { "class": "PROACTIVE", "now": 0, "last_proactive_at": 0, "expected": false, "note": "Same instant." },
+
+    { "class": "PROACTIVE", "now": 1000, "last_proactive_at": 604800000, "expected": false,
+      "note": "A last-sent timestamp in the future. Clock changes, restores from backup and timezone edits all produce this. Refusing is correct: the alternative is a device whose clock jumped backwards emitting a proactive notification every single launch until real time catches up." },
+
+    { "class": "OPERATOR", "now": 1000, "last_proactive_at": 1000, "expected": true,
+      "note": "Class D is not rationed by the C budget. A maintenance notice suppressed because a weekly recap went out on Tuesday is an outage nobody was told about." }
+  ],
+  "ledger": [
+    { "description": "sending a C advances the ledger", "class": "PROACTIVE", "sent_at": 500, "last_proactive_at_before": null, "expected_last_proactive_at_after": 500 },
+    { "description": "sending an A does not advance it", "class": "CONSEQUENTIAL", "sent_at": 500, "last_proactive_at_before": null, "expected_last_proactive_at_after": null },
+    { "description": "sending a B does not advance it", "class": "REQUESTED", "sent_at": 500, "last_proactive_at_before": null, "expected_last_proactive_at_after": null },
+    { "description": "sending a D does not advance it — Class D must not become a way to mute Class C", "class": "OPERATOR", "sent_at": 500, "last_proactive_at_before": null, "expected_last_proactive_at_after": null },
+    { "description": "a later C moves the ledger forward", "class": "PROACTIVE", "sent_at": 900, "last_proactive_at_before": 500, "expected_last_proactive_at_after": 900 },
+    { "description": "an out-of-order C never moves it backwards — a backwards clock must not reopen the budget", "class": "PROACTIVE", "sent_at": 100, "last_proactive_at_before": 500, "expected_last_proactive_at_after": 500 }
+  ],
+  "proactive_priority": [
+    { "id": "RETURN_AFTER_ABSENCE", "rank": 0, "note": "Scenario 13. Ranked above the recap because it is far rarer (once per 90 days at most) and because the recap it would lose to is, for a returning user, a report of a week in which they did nothing." },
+    { "id": "WEEKLY_RECAP", "rank": 1, "note": "Scenario 8, the flagship C. Carries scenario 10a's level-proximity line, so the level fact ships without its own interruption." }
+  ],
+  "choose": [
+    { "eligible": [], "expected": null, "note": "Nothing eligible. Not an error — most weeks are this." },
+    { "eligible": ["WEEKLY_RECAP"], "expected": "WEEKLY_RECAP" },
+    { "eligible": ["RETURN_AFTER_ABSENCE"], "expected": "RETURN_AFTER_ABSENCE" },
+    { "eligible": ["WEEKLY_RECAP", "RETURN_AFTER_ABSENCE"], "expected": "RETURN_AFTER_ABSENCE",
+      "note": "Both eligible: one is chosen and the other is NOT consumed. It stays eligible for its next window, exactly as WeeklyRecapSelector already behaves. Skipping is free; that is what makes a one-per-week cap survivable instead of lossy." },
+    { "eligible": ["RETURN_AFTER_ABSENCE", "WEEKLY_RECAP"], "expected": "RETURN_AFTER_ABSENCE",
+      "note": "Same set, other order in. The result must not depend on iteration order — a Set on one platform and an Array on the other is exactly how that divergence would arrive." }
+  ],
+  "return_notice": [
+    { "now": 0, "last_return_notice_at": null, "days_since_activity": 30, "expected": true, "note": "Never sent one, and long enough away." },
+    { "now": 0, "last_return_notice_at": null, "days_since_activity": 21, "expected": true, "note": "The 21-day boundary. HomeInsight.Return computes at 14 days in-app; the notification threshold is deliberately higher than the in-app one, because interrupting someone is a bigger claim than showing them something when they open the app." },
+    { "now": 0, "last_return_notice_at": null, "days_since_activity": 20, "expected": false, "note": "Twenty days is a holiday, not a lapse." },
+    { "now": 7776000000, "last_return_notice_at": 0, "days_since_activity": 30, "expected": true, "note": "Exactly 90 days since the last one." },
+    { "now": 7775999999, "last_return_notice_at": 0, "days_since_activity": 30, "expected": false, "note": "One millisecond short of 90 days. Two return notices in a quarter is nagging someone about not exercising, which §4.2 N2 rules out." },
+    { "now": 7776000000, "last_return_notice_at": 0, "days_since_activity": 0, "expected": false, "note": "They came back. The 90-day window is open again but there is nothing to say — and saying it anyway is how a return notice becomes a streak reminder." }
+  ]
+}
