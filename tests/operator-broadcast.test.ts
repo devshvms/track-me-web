@@ -166,11 +166,39 @@ if (failed > 0) process.exit(1);
 
 // Imported last so a type or import error in the endpoint fails this suite rather than surfacing
 // only in a Vercel build log after a deploy.
-import handler, { BROADCAST_TOPIC } from '../api/admin/broadcast';
+import handler, { BROADCAST_TOPIC } from '../api/admin/[...action]';
 
 check('the endpoint module loads and declares the topic the clients subscribe to', () => {
   assert.strictEqual(typeof handler, 'function');
   assert.strictEqual(BROADCAST_TOPIC, 'broadcasts');
+});
+
+/**
+ * The five admin routes collapsed into one catch-all to fit Vercel's 12-function Hobby cap, which
+ * the 1.8.7 deploy hit exactly as the 2026-08-08 audit predicted. The failure mode of a catch-all
+ * is total and silent: get the captured-segment key wrong and *every* admin route 404s before
+ * reaching a handler, with nothing in the build log to say so.
+ *
+ * Asserted against the source rather than by invoking the handlers, because each of them calls
+ * `requireAdmin` and would need Firebase credentials to reach its dispatch.
+ */
+check('every admin route the client calls is dispatched by the catch-all', () => {
+  const source = fs.readFileSync(
+    path.join(__dirname, '..', 'api', 'admin', '[...action].ts'),
+    'utf8',
+  );
+  // Exactly the paths public/admin/admin.js fetches.
+  for (const action of ['me', 'config', 'export-metrics', 'user-search', 'broadcast']) {
+    assert.ok(
+      source.includes(`case '${action}':`),
+      `admin.js calls /api/admin/${action} but the catch-all does not dispatch it`,
+    );
+  }
+  // Vercel injects the captured segment under the literal '...action' key, ellipsis retained.
+  assert.ok(
+    source.includes("request.query['...action']"),
+    'the catch-all must read the ellipsis-retained key, or every admin route 404s',
+  );
 });
 
 if (failed > 0) process.exit(1);
