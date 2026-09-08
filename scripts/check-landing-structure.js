@@ -99,3 +99,30 @@ forbidText("any SOS or emergency claim", privacy, /\bSOS\b|emergenc/i);
 // Kept, and deliberately not phrased in terms of SOS: this is a standing capability statement
 // ("we cannot text on your behalf"), which is worth more to a reader than the history of why.
 requireText("no Android SMS permission claim", privacy, /does not request the Android SMS permission/);
+
+// TASK-305, reopened 2026-09-08. The /r/:path* rewrite serves index.html from a nested path, and
+// index.html referenced its assets relatively ("style.css", "app.js"). A browser at /r/1 resolves
+// those against /r/, and the same catch-all rewrite answers /r/style.css with index.html — so the
+// asset arrived as 200 text/html, the browser refused it on MIME grounds, and every shared link
+// rendered unstyled with no JavaScript at all.
+//
+// The lost JavaScript is app.js, which is where shared_artifact attribution lives — so the failure
+// silently disabled the exact measurement this route was built to provide, while a status check
+// still read 200. That is why this is asserted structurally and not by fetching the URL: under a
+// catch-all rewrite, 200 proves nothing.
+//
+// index.html is the only page served from more than one URL depth, so it is the only one where a
+// relative reference is a latent bug rather than a style choice.
+const relativeRefs = [...landing.matchAll(/\b(?:href|src)="([^"]+)"/g)]
+  .map((m) => m[1])
+  .filter((value) => !/^(https?:|\/\/|#|mailto:|data:|\/)/.test(value));
+if (relativeRefs.length > 0) {
+  console.error(
+    `FAIL: index.html must reference assets absolutely — it is served at /r/<id> as well as /, ` +
+      `and a relative path there resolves to the rewrite and returns HTML. Found: ` +
+      `${[...new Set(relativeRefs)].join(", ")}`,
+  );
+  process.exitCode = 1;
+} else {
+  console.log("  ✓ every index.html asset reference is absolute");
+}
