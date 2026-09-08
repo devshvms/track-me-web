@@ -291,6 +291,18 @@
         "applies_to_versions_at_or_below": 187
       },
       "note": "v1's key meant a different build on each platform. Accepting it alongside the new one would let a stale admin page silently target nobody."
+    },
+    {
+      "description": "an overflowing release component",
+      "record": {
+        "id": "x",
+        "tag": "UPDATE",
+        "title": "t",
+        "body": "b",
+        "created_at_millis": 1,
+        "applies_to_releases_at_or_below": "1.2147483648.0"
+      },
+      "note": "Every platform must either compare the same integer or reject it. Overflow previously became zero on the clients and a large number on the server."
     }
   ],
   "unread": [

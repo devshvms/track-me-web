@@ -21,6 +21,12 @@ export const MAX_TITLE_LENGTH = 80;
 /** Long enough for "what is wrong, what to do, when it will be fixed". */
 export const MAX_BODY_LENGTH = 480;
 
+/** Keeps the wire value bounded before any platform tries to split or parse it. */
+export const MAX_RELEASE_LENGTH = 64;
+
+/** Shared with Kotlin/Swift, whose release components are parsed as signed 32-bit integers. */
+export const MAX_RELEASE_COMPONENT = 2_147_483_647;
+
 export interface OperatorBroadcast {
   id: string;
   tag: BroadcastTag;
@@ -63,7 +69,12 @@ export function compareReleases(left: string, right: string): number {
 
 /** A release string is dotted digits and nothing else — see the rejection note in the vectors. */
 export function isValidRelease(value: string): boolean {
-  return /^\d+(\.\d+)*$/.test(value);
+  if (value.length === 0 || value.length > MAX_RELEASE_LENGTH) return false;
+  if (!/^\d+(\.\d+)*$/.test(value)) return false;
+  return value.split('.').every((part) => {
+    const component = Number(part);
+    return Number.isSafeInteger(component) && component <= MAX_RELEASE_COMPONENT;
+  });
 }
 
 export class BroadcastValidationError extends Error {}
