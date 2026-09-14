@@ -1,0 +1,79 @@
+{
+  "version": 1,
+  "canonical": "track-me-web/tests/fixtures — copy to each client, same as group-status-vectors.json",
+  "note": "SCOPE_1.8.9 §11 gate 2 (parity) as something a machine can check. The gate asks that Android and iOS make the same layout decisions for the same template and ride, on frame fractions. A side-by-side screenshot proves it once, for the ride and the moment it was taken; this proves it on every run, for the decisions that are shared. What is frozen here is the design space itself — the 1080-wide canvas, what each template declares, and where the route box sits as a fraction of its frame — because those are the numbers that make a template the same picture on both phones. The per-template type tables (baselines, sizes) stay private to each renderer and are covered by the render tests; this file covers the contract between them.",
+  "design_width": 1080,
+  "_design_note": "Every dimension in both renderers is designed on a 1080-px-wide canvas and scaled by the width actually rendered, which is what makes a preview the export at a smaller size. A platform that changed this would need a different scale rule, not a different number.",
+  "canvases": {
+    "story": { "width": 1080, "height": 1920, "aspect": 0.5625, "label": "9:16" },
+    "portrait": { "width": 1080, "height": 1350, "aspect": 0.8, "label": "4:5" },
+    "square": { "width": 1080, "height": 1080, "aspect": 1.0, "label": "1:1" },
+    "card": { "width": 1080, "height": 675, "aspect": 1.6, "label": "" }
+  },
+  "_canvas_note": "Destination-real sizes. Instagram wants 1080 × 1920 for a story and upscales anything smaller into the soft look that reads as 'made by an app'. The card is the Sticker's own frame: sized to its content, not to a destination.",
+  "templates": [
+    {
+      "id": "trace",
+      "scope": "both",
+      "canvases": ["story", "portrait", "square"],
+      "default_canvas": "story",
+      "transparent": false,
+      "supports_map_background": true
+    },
+    {
+      "id": "instrument",
+      "scope": "single",
+      "canvases": ["portrait", "square", "story"],
+      "default_canvas": "portrait",
+      "transparent": false,
+      "supports_map_background": false,
+      "note": "4:5 first: detail rewards a reader who stops, and a story frame gets a second and a half."
+    },
+    {
+      "id": "sticker",
+      "scope": "both",
+      "canvases": ["card"],
+      "default_canvas": "card",
+      "transparent": true,
+      "supports_map_background": false
+    },
+    {
+      "id": "hour",
+      "scope": "single",
+      "canvases": ["story", "portrait", "square"],
+      "default_canvas": "story",
+      "transparent": false,
+      "supports_map_background": false
+    },
+    {
+      "id": "award",
+      "scope": "single",
+      "canvases": ["story", "portrait", "square"],
+      "default_canvas": "story",
+      "transparent": false,
+      "supports_map_background": false,
+      "note": "Declared last so its appearing and disappearing never moves the others in the strip."
+    },
+    {
+      "id": "itinerary",
+      "scope": "aggregate",
+      "canvases": ["story", "portrait", "square"],
+      "default_canvas": "story",
+      "transparent": false,
+      "supports_map_background": false,
+      "note": "1.8.9 Part 2. Aggregate, not both: a single ride has no sequence, and an itinerary of one leg is a worse Trace."
+    }
+  ],
+  "_scope_note": "§9.3, forced by the data: the Award has no aggregate reveal, the Instrument's splits are one continuous ride's, and N rides have N lights. The strip therefore shows five cards for a single ride and three for a selection.",
+  "trace_route_box": {
+    "story":    { "left": 120, "top": 250, "right": 960, "bottom": 1080 },
+    "portrait": { "left": 120, "top": 90,  "right": 960, "bottom": 640 },
+    "square":   { "left": 120, "top": 70,  "right": 960, "bottom": 470 }
+  },
+  "trace_route_box_fractions": {
+    "_note": "The same box as a fraction of its frame — the form §11 gate 2 states the parity in. Left and right are fractions of width, top and bottom of height. Derived, and asserted as derived: a client that changed a canvas size without moving the box would fail here rather than silently reframe the route.",
+    "story":    { "left": 0.1111111111, "top": 0.1302083333, "right": 0.8888888889, "bottom": 0.5625 },
+    "portrait": { "left": 0.1111111111, "top": 0.0666666667, "right": 0.8888888889, "bottom": 0.4740740741 },
+    "square":   { "left": 0.1111111111, "top": 0.0648148148, "right": 0.8888888889, "bottom": 0.4351851852 }
+  }
+}

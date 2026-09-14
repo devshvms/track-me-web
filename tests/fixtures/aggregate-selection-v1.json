@@ -1,0 +1,281 @@
+{
+  "version": 1,
+  "canonical": "track-me-web/tests/fixtures — copy to each client, same as group-status-vectors.json",
+  "note": "SCOPE_1.8.9 Part 2 §9.3 — what a selection of rides IS, before anything is drawn. The shape decides which aggregate templates a rider is offered, so a platform that calls the same selection a tour where the other calls it a collection offers a different feature on each phone. Part 1 shipped with no vectors at all and the two implementations only agreed because one was ported from the other within a day; this file is what stops the next change to either side being a silent divergence. Coordinates are real places, because the 25 km chain tolerance and the 50 km spread threshold are only meaningful against distances a rider covers.",
+  "constants": {
+    "chain_join_meters": 25000,
+    "territory_spread_meters": 50000,
+    "_chain_note": "How close one ride's finish must be to the next ride's start for the two to read as one journey. Generous on purpose: a rider who stops recording at a hotel and restarts at a petrol station next morning has not broken the trip.",
+    "_spread_note": "How far apart the starts must be before a selection is coverage rather than repetition.",
+    "_haversine": "Both clients use R = 6371000 m and the same formula. A different radius moves every threshold."
+  },
+  "shape": [
+    {
+      "description": "legs that continue one another are a tour",
+      "legs": [
+        { "start": [12.9716, 77.5946], "finish": [15.3350, 76.4600] },
+        { "start": [15.3350, 76.4600], "finish": [15.9149, 75.6768] },
+        { "start": [15.9149, 75.6768], "finish": [15.2993, 74.1240] }
+      ],
+      "expected": "tour",
+      "note": "Bengaluru → Hampi → Badami → Panaji."
+    },
+    {
+      "description": "one ride is never an aggregate",
+      "legs": [{ "start": [12.9716, 77.5946], "finish": [15.3350, 76.4600] }],
+      "expected": "collection"
+    },
+    {
+      "description": "an empty selection has nothing to be",
+      "legs": [],
+      "expected": "collection"
+    },
+    {
+      "description": "one broken link stops it being a tour",
+      "legs": [
+        { "start": [12.9716, 77.5946], "finish": [15.3350, 76.4600] },
+        { "start": [15.9149, 75.6768], "finish": [15.2993, 74.1240] }
+      ],
+      "expected": "territory",
+      "note": "Strictness is the point: drawing this as one journey would invent a leg between Hampi and Badami that nobody rode."
+    },
+    {
+      "description": "the same commute twelve times is a collection, not a map",
+      "legs": [
+        { "start": [12.9716, 77.5946], "finish": [12.9352, 77.6245] },
+        { "start": [12.9716, 77.5946], "finish": [12.9352, 77.6245] },
+        { "start": [12.9716, 77.5946], "finish": [12.9352, 77.6245] },
+        { "start": [12.9716, 77.5946], "finish": [12.9352, 77.6245] },
+        { "start": [12.9716, 77.5946], "finish": [12.9352, 77.6245] },
+        { "start": [12.9716, 77.5946], "finish": [12.9352, 77.6245] },
+        { "start": [12.9716, 77.5946], "finish": [12.9352, 77.6245] },
+        { "start": [12.9716, 77.5946], "finish": [12.9352, 77.6245] },
+        { "start": [12.9716, 77.5946], "finish": [12.9352, 77.6245] },
+        { "start": [12.9716, 77.5946], "finish": [12.9352, 77.6245] },
+        { "start": [12.9716, 77.5946], "finish": [12.9352, 77.6245] },
+        { "start": [12.9716, 77.5946], "finish": [12.9352, 77.6245] }
+      ],
+      "expected": "collection",
+      "note": "The case that forced the distinct-stop rule. A commute chains perfectly — you finish at the office and start again from the office — and it is not a journey."
+    },
+    {
+      "description": "scattered rides with no chain are a territory",
+      "legs": [
+        { "start": [12.9716, 77.5946], "finish": [12.9716, 77.5946] },
+        { "start": [15.9149, 75.6768], "finish": [15.9149, 75.6768] },
+        { "start": [15.2993, 74.1240], "finish": [15.2993, 74.1240] }
+      ],
+      "expected": "territory"
+    },
+    {
+      "description": "a short gap between recordings still chains",
+      "legs": [
+        { "start": [12.9716, 77.5946], "finish": [15.3350, 76.4600] },
+        { "start": [15.4000, 76.5000], "finish": [15.9149, 75.6768] }
+      ],
+      "expected": "tour",
+      "note": "About 8 km between the finish and the next start — a hotel and a petrol station."
+    },
+    {
+      "description": "a long gap does not chain",
+      "legs": [
+        { "start": [12.9716, 77.5946], "finish": [15.3350, 76.4600] },
+        { "start": [15.2993, 74.1240], "finish": [15.9149, 75.6768] }
+      ],
+      "expected": "territory"
+    },
+    {
+      "description": "a round trip is still a tour",
+      "legs": [
+        { "start": [12.9716, 77.5946], "finish": [15.3350, 76.4600] },
+        { "start": [15.3350, 76.4600], "finish": [15.9149, 75.6768] },
+        { "start": [15.9149, 75.6768], "finish": [12.9716, 77.5946] }
+      ],
+      "expected": "tour",
+      "note": "Net displacement is zero and it is unmistakably a journey, which is why displacement cannot be the test."
+    }
+  ],
+  "regions": [
+    {
+      "description": "a region a ride starts from is visited; one only ever reached is crossed",
+      "level": "district",
+      "legs": [
+        {
+          "start": [12.9716, 77.5946], "finish": [15.3350, 76.4600],
+          "start_place": { "locality": "Bengaluru", "sub_admin_area": "Bengaluru Urban", "admin_area": "Karnataka" },
+          "finish_place": { "locality": "Hampi", "sub_admin_area": "Vijayanagara", "admin_area": "Karnataka" }
+        },
+        {
+          "start": [15.3350, 76.4600], "finish": [15.9149, 75.6768],
+          "start_place": { "locality": "Hampi", "sub_admin_area": "Vijayanagara", "admin_area": "Karnataka" },
+          "finish_place": { "locality": "Badami", "sub_admin_area": "Bagalkot", "admin_area": "Karnataka" }
+        },
+        {
+          "start": [15.9149, 75.6768], "finish": [15.2993, 74.1240],
+          "start_place": { "locality": "Badami", "sub_admin_area": "Bagalkot", "admin_area": "Karnataka" },
+          "finish_place": { "locality": "Panaji", "sub_admin_area": "North Goa", "admin_area": "Goa" }
+        }
+      ],
+      "expected": [
+        { "name": "Bengaluru Urban", "role": "visited" },
+        { "name": "Vijayanagara", "role": "visited" },
+        { "name": "Bagalkot", "role": "visited" },
+        { "name": "North Goa", "role": "crossed" }
+      ],
+      "note": "Order is the order ridden. North Goa is where the trip ended; no selected ride sets off from it, so the data cannot show the rider stayed."
+    },
+    {
+      "description": "states roll up the same way",
+      "level": "state",
+      "legs": [
+        {
+          "start": [12.9716, 77.5946], "finish": [15.3350, 76.4600],
+          "start_place": { "admin_area": "Karnataka" },
+          "finish_place": { "admin_area": "Karnataka" }
+        },
+        {
+          "start": [15.9149, 75.6768], "finish": [15.2993, 74.1240],
+          "start_place": { "admin_area": "Karnataka" },
+          "finish_place": { "admin_area": "Goa" }
+        }
+      ],
+      "expected": [
+        { "name": "Karnataka", "role": "visited" },
+        { "name": "Goa", "role": "crossed" }
+      ]
+    },
+    {
+      "description": "a region that is anywhere a start is visited, and keeps that start's position in the order",
+      "level": "state",
+      "legs": [
+        {
+          "start": [12.9716, 77.5946], "finish": [15.2993, 74.1240],
+          "start_place": { "admin_area": "Karnataka" },
+          "finish_place": { "admin_area": "Goa" }
+        },
+        {
+          "start": [19.0760, 72.8777], "finish": [18.5204, 73.8567],
+          "start_place": { "admin_area": "Maharashtra" },
+          "finish_place": { "admin_area": "Maharashtra" }
+        },
+        {
+          "start": [15.2993, 74.1240], "finish": [12.9716, 77.5946],
+          "start_place": { "admin_area": "Goa" },
+          "finish_place": { "admin_area": "Karnataka" }
+        }
+      ],
+      "expected": [
+        { "name": "Karnataka", "role": "visited" },
+        { "name": "Maharashtra", "role": "visited" },
+        { "name": "Goa", "role": "visited" }
+      ],
+      "note": "Goa is leg 1's finish and leg 3's start. It takes the later position, because a region that is anywhere a start is left for that start to insert — the ordering rule the two clients had to be made to agree on."
+    },
+    {
+      "description": "a selection with no geocoding claims no regions",
+      "level": "state",
+      "legs": [{ "start": [12.9716, 77.5946], "finish": [15.3350, 76.4600] }],
+      "expected": []
+    }
+  ],
+  "itinerary": [
+    {
+      "description": "a tour yields one more stop than it has hops",
+      "legs": [
+        {
+          "start": [12.9716, 77.5946], "finish": [15.3350, 76.4600],
+          "distance_meters": 340000, "moving_millis": 31200000,
+          "start_place": { "locality": "Bengaluru", "sub_admin_area": "Bengaluru Urban", "admin_area": "Karnataka" },
+          "finish_place": { "locality": "Hampi", "sub_admin_area": "Vijayanagara", "admin_area": "Karnataka" }
+        },
+        {
+          "start": [15.3350, 76.4600], "finish": [15.9149, 75.6768],
+          "distance_meters": 140000, "moving_millis": 12000000,
+          "start_place": { "locality": "Hampi", "sub_admin_area": "Vijayanagara", "admin_area": "Karnataka" },
+          "finish_place": { "locality": "Badami", "sub_admin_area": "Bagalkot", "admin_area": "Karnataka" }
+        },
+        {
+          "start": [15.9149, 75.6768], "finish": [15.2993, 74.1240],
+          "distance_meters": 230000, "moving_millis": 21900000,
+          "start_place": { "locality": "Badami", "sub_admin_area": "Bagalkot", "admin_area": "Karnataka" },
+          "finish_place": { "locality": "Panaji", "sub_admin_area": "North Goa", "admin_area": "Goa" }
+        }
+      ],
+      "expected": {
+        "stops": [
+          { "name": "Bengaluru", "region": "Bengaluru Urban" },
+          { "name": "Hampi", "region": "Vijayanagara" },
+          { "name": "Badami", "region": "Bagalkot" },
+          { "name": "Panaji", "region": "North Goa" }
+        ],
+        "hops": [
+          { "distance_meters": 340000, "moving_millis": 31200000 },
+          { "distance_meters": 140000, "moving_millis": 12000000 },
+          { "distance_meters": 230000, "moving_millis": 21900000 }
+        ],
+        "total_meters": 710000,
+        "total_millis": 65100000
+      }
+    },
+    {
+      "description": "a tour with no geocoding still has its shape",
+      "legs": [
+        { "start": [12.9716, 77.5946], "finish": [15.3350, 76.4600], "distance_meters": 340000, "moving_millis": 31200000 },
+        { "start": [15.3350, 76.4600], "finish": [15.9149, 75.6768], "distance_meters": 140000, "moving_millis": 12000000 }
+      ],
+      "expected": {
+        "stops": [
+          { "name": null, "region": null },
+          { "name": null, "region": null },
+          { "name": null, "region": null }
+        ],
+        "hops": [
+          { "distance_meters": 340000, "moving_millis": 31200000 },
+          { "distance_meters": 140000, "moving_millis": 12000000 }
+        ],
+        "total_meters": 480000,
+        "total_millis": 43200000
+      },
+      "note": "Offline is the ordinary case for this app. A failed lookup costs names, never the template."
+    },
+    {
+      "description": "anything that is not a tour has no itinerary",
+      "legs": [
+        { "start": [12.9716, 77.5946], "finish": [12.9716, 77.5946] },
+        { "start": [15.2993, 74.1240], "finish": [15.2993, 74.1240] }
+      ],
+      "expected": null
+    },
+    {
+      "description": "a street in the sub-locality slot is never a stop name",
+      "legs": [
+        {
+          "start": [12.9716, 77.5946], "finish": [15.3350, 76.4600],
+          "distance_meters": 340000, "moving_millis": 31200000,
+          "start_place": { "sub_locality": "MG Road", "locality": "Bengaluru", "sub_admin_area": "Bengaluru Urban", "admin_area": "Karnataka", "thoroughfare": "MG Road" },
+          "finish_place": { "locality": "Hampi", "sub_admin_area": "Vijayanagara", "admin_area": "Karnataka" }
+        },
+        {
+          "start": [15.3350, 76.4600], "finish": [15.9149, 75.6768],
+          "distance_meters": 140000, "moving_millis": 12000000,
+          "start_place": { "locality": "Hampi", "sub_admin_area": "Vijayanagara", "admin_area": "Karnataka" },
+          "finish_place": { "locality": "Badami", "sub_admin_area": "Bagalkot", "admin_area": "Karnataka" }
+        }
+      ],
+      "expected": {
+        "stops": [
+          { "name": "Bengaluru", "region": "Bengaluru Urban" },
+          { "name": "Hampi", "region": "Vijayanagara" },
+          { "name": "Badami", "region": "Bagalkot" }
+        ],
+        "hops": [
+          { "distance_meters": 340000, "moving_millis": 31200000 },
+          { "distance_meters": 140000, "moving_millis": 12000000 }
+        ],
+        "total_meters": 480000,
+        "total_millis": 43200000
+      },
+      "note": "§7's rule reaching the aggregate path: the route's ends are trimmed 200 m, and a street name beside that would be a finer disclosure than the geometry."
+    }
+  ]
+}
