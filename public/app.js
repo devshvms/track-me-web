@@ -253,6 +253,18 @@ if (exportBtn) {
 const pinnedReleases = {
     'track-me-android': [
         {
+            tag_name: 'v1.9.0',
+            name: 'TrackMe v1.9.0',
+            published_at: '2026-10-23T00:00:00Z',
+            body: [
+                'Every Way You Move: Multi-modal tracking across Car Drive, Motorcycle, Walk, Cycling, Run & Auto with clean speedometers and route tracking.',
+                'Floating PiP Speedometer: Discoverable 1-tap mini HUD keeps live speed and distance visible over Google Maps and navigation apps.',
+                'Zero-Install Browser Live Share: Share live location links with family or friends without requiring them to install any app or create an account, now with real-time battery saver awareness.',
+                'Post-Ride Reveal & Route Cards: Embedded route preview card with 1-tap social image export directly from completed rides.',
+                'Indoor GPS Guidance: Helper hints during stationary starts and clean prompt to discard short indoor tests (<50m).'
+            ].join('\n\n')
+        },
+        {
             tag_name: 'v1.8.6',
             name: 'TrackMe v1.8.6',
             published_at: '2026-09-02T17:54:30Z',
@@ -284,6 +296,17 @@ const pinnedReleases = {
         }
     ],
     'track-me-ios': [
+        {
+            tag_name: 'v1.9.0',
+            name: 'TrackMe v1.9.0',
+            published_at: '2026-10-23T00:00:00Z',
+            body: [
+                'Every Way You Move: Multi-modal tracking across Drive, Moto, Walk, Bike, Run & Auto with real-time speed, pace, and altitude stats.',
+                'Live Location Sharing in Browser: Share your live trip link with anyone; viewers watch in real-time in any mobile browser with battery saver and delayed update indicators.',
+                'Post-Ride Celebration & Share: Embedded route card thumbnail on ride completion with direct 1-tap share.',
+                'GPX import distance and moving time calculation fix, and stationary test discard prompt.'
+            ].join('\n\n')
+        },
         {
             tag_name: 'v1.8.6',
             name: 'TrackMe v1.8.6',
@@ -441,7 +464,7 @@ function initReleases() {
     fetchReleases(
         'track-me-ios',
         'dynamic-ios-releases',
-        'iOS release notes will appear here as they are published. The latest App Store release is v1.8.3.'
+        'iOS release notes will appear here as they are published. The latest App Store release is v1.9.0.'
     );
 }
 
