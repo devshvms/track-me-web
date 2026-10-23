@@ -61,7 +61,7 @@ export default async function handler(
         throw new AuthError(403, 'Forbidden. You do not own this live share session.');
       }
 
-      const { lat, lng, lon, batteryLevel, speed, heading, timestamp } = request.body || {};
+      const { lat, lng, lon, batteryLevel, speed, heading, timestamp, powerSaveMode } = request.body || {};
       // Canonical field is `lng`; `lon` is accepted for backward compatibility with
       // mobile clients (<= v1.5.7) that still send it. Do not drop `lon` support
       // until both stores' installed bases have migrated.
@@ -77,6 +77,7 @@ export default async function handler(
         batteryLevel,
         speed,
         heading,
+        powerSaveMode: typeof powerSaveMode === 'boolean' ? powerSaveMode : false,
         timestamp: timestamp || new Date().toISOString()
       };
 
