@@ -85,6 +85,27 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .store-cta span { display: flex; flex-direction: column; line-height: 1.2; }
 .store-cta small { color: var(--muted); font-size: .68rem; letter-spacing: .04em; text-transform: uppercase; }
 .store-cta strong { font-family: "Space Grotesk", system-ui, sans-serif; font-size: 1.02rem; font-weight: 600; letter-spacing: -.01em; }
+body.is-ios .store-cta[data-download-platform="ios"],
+body.is-android .store-cta[data-download-platform="android"] {
+    background: var(--cyan);
+    color: #0b1320;
+    border-color: var(--cyan);
+    box-shadow: 0 4px 20px rgba(41, 182, 246, 0.35);
+    order: -1;
+}
+body.is-ios .store-cta[data-download-platform="ios"] small,
+body.is-android .store-cta[data-download-platform="android"] small {
+    color: #16202f;
+    font-weight: 700;
+}
+body.is-ios .store-cta[data-download-platform="ios"] strong,
+body.is-android .store-cta[data-download-platform="android"] strong {
+    color: #0b1320;
+}
+body.is-ios .store-cta[data-download-platform="ios"] img,
+body.is-android .store-cta[data-download-platform="android"] img {
+    filter: brightness(0.2);
+}
 .hero-proof { display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 22px 0 0; padding: 0; list-style: none; }
 .hero-proof li { position: relative; padding-left: 17px; color: var(--muted); font-size: .86rem; }
 .hero-proof li::before { content: ""; position: absolute; left: 0; top: .52em; width: 6px; height: 6px; border-radius: 50%; background: var(--cyan); }

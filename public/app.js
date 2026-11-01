@@ -29,6 +29,12 @@ const accountSignedIn = document.getElementById("account-signed-in");
 const accountSignInButton = document.getElementById("account-sign-in");
 const isV2Landing = document.body.dataset.landingVariant === "v2";
 
+// Personalize store CTA hierarchy by visitor device platform
+const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+const isAndroid = /Android/i.test(navigator.userAgent);
+if (isIOS) document.body.classList.add("is-ios");
+else if (isAndroid) document.body.classList.add("is-android");
+
 let currentUser = null;
 
 onAuthStateChanged(auth, (user) => {
