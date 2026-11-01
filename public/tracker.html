@@ -29,6 +29,19 @@
             padding: 10px 14px; color: #e8eef6; font-size: 0.9em; font-weight: 600;
         }
         #getApp a:hover, #getApp a:focus-visible { background: #1d2a3d; border-color: #3a5170; }
+        body.is-ios #getApp a[data-download-platform="ios"],
+        body.is-android #getApp a[data-download-platform="android"] {
+            background: #00e5ff;
+            color: #0b1320;
+            font-weight: 700;
+            border-color: #00e5ff;
+            box-shadow: 0 0 12px rgba(0, 229, 255, 0.45);
+            order: -1;
+        }
+        body.is-ios #getApp a[data-download-platform="ios"] img,
+        body.is-android #getApp a[data-download-platform="android"] img {
+            filter: brightness(0.2);
+        }
         /* Two badges must share one row on a phone. Stacked, the second falls past the fold and a
            badge below the fold is a badge that does not exist. Short labels, not shrunk text. */
         #getApp .lbl-short { display: none; }
@@ -136,6 +149,12 @@
             viewerId = Math.random().toString(36).substring(2, 15);
             sessionStorage.setItem('viewerId', viewerId);
         }
+
+        // Detect viewer platform to highlight and promote native store badge
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+        const isAndroid = /Android/i.test(navigator.userAgent);
+        if (isIOS) document.body.classList.add('is-ios');
+        else if (isAndroid) document.body.classList.add('is-android');
 
         const map = L.map('map').setView([0, 0], 2);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
