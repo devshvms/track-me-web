@@ -117,6 +117,28 @@
   .promise strong { color: var(--muted-strong); font-weight: 600; }
   .foot { text-align: center; color: var(--muted); font-size: .78rem; margin-top: 18px; }
   .foot a { color: var(--muted-strong); }
+  .badge-strip {
+    display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin: 12px 0 16px;
+  }
+  .badge-pill {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 0.78rem; font-weight: 600; padding: 4px 10px; border-radius: 999px;
+    background: rgba(148, 163, 184, .12); color: var(--muted-strong); border: 1px solid rgba(148, 163, 184, .2);
+  }
+  .badge-pill.live-badge {
+    background: rgba(22, 163, 74, .18); color: #4ade80; border-color: rgba(22, 163, 74, .4);
+  }
+  .features-list {
+    text-align: left; margin: 20px 0 16px; padding: 14px 16px; background: rgba(15, 23, 42, .5);
+    border: 1px solid rgba(148, 163, 184, .12); border-radius: 10px; font-size: 0.86rem; color: var(--muted-strong);
+  }
+  .feature-item {
+    display: flex; align-items: flex-start; gap: 10px; margin-bottom: 8px;
+  }
+  .feature-item:last-child { margin-bottom: 0; }
+  .feature-icon { font-size: 1rem; flex-shrink: 0; }
+  .feature-desc { line-height: 1.4; }
+  .feature-desc strong { color: var(--ink); }
   [hidden] { display: none !important; }
 </style>
 </head>
@@ -130,6 +152,12 @@
     <p class="live" id="liveRow" hidden><span class="dot"></span><span id="liveText"></span></p>
     <p class="sub" id="sub"></p>
 
+    <div class="badge-strip" id="badgeStrip" hidden>
+      <span class="badge-pill" id="badgePrivacy">🔒 100% E2E Encrypted</span>
+      <span class="badge-pill" id="badgeCapacity">👥 Group Convoy</span>
+      <span class="badge-pill" id="badgeFree">🆓 Free Forever ($0)</span>
+    </div>
+
     <div id="detail" hidden>
       <div class="code-block">
         <p class="code-label">Open TrackMe and enter this code</p>
@@ -137,46 +165,40 @@
         <button class="copy" id="copyBtn" type="button">Copy code</button>
       </div>
 
-      <!--
-        One button, two outcomes. `intent://` opens the app when it is installed and falls back to
-        the Play Store when it is not — the browser decides, so the page does not have to guess
-        whether an install exists (it cannot).
+      <a class="cta" id="openApp" href="#">Join this Group Ride on TrackMe (Free, 1-Tap Setup)</a>
 
-        Deliberately NOT relying on the App Link alone: that needs Digital Asset Links to have
-        verified, which is an external dependency that can slip (§6.1 B5, and the reason §15.1
-        deferred join-by-link at all). The custom scheme in this intent needs no verification, so
-        the button works the moment the app is installed.
+      <div class="features-list">
+        <div class="feature-item">
+          <span class="feature-icon">📍</span>
+          <div class="feature-desc"><strong>Live Convoy Radar:</strong> See everyone's real-time position and distance on one map.</div>
+        </div>
+        <div class="feature-item">
+          <span class="feature-icon">🛡️</span>
+          <div class="feature-desc"><strong>Zero Server Tracking:</strong> Encrypted on-device. Coordinates never reach the server in plaintext.</div>
+        </div>
+        <div class="feature-item">
+          <span class="feature-icon">⚡</span>
+          <div class="feature-desc"><strong>Every Way You Move:</strong> Works for Drive, Moto, Walk, Cycling & Run — 100% offline-ready.</div>
+        </div>
+      </div>
 
-        The token travels as an intent EXTRA (S.token), never as a URL — so it is not in a path, a
-        query, or anything a server could log (A6, §10).
-      -->
-      <a class="cta" id="openApp" href="#">Open in TrackMe</a>
-      <!--
-        The same store artwork the landing page uses (`assets/store/*-48.png`), rather than the
-        hand-drawn SVG that used to live here — its paths were an approximation of the Play glyph
-        and did not match anything else in the product.
-
-        Absolute paths on purpose. `/g`, `/g/` and `/g/:path*` all rewrite to this file, so a
-        relative `assets/...` resolves against whichever form the invite link happened to use and
-        404s on the trailing-slash one.
-      -->
       <a class="cta secondary store-cta" id="storeLink"
          href="https://play.google.com/store/apps/details?id=in.shvms.trackme"
-         target="_blank" rel="noopener noreferrer">
+         target="_blank" rel="noopener noreferrer" data-download-platform="android">
         <img src="/assets/store/google-play-48.png" width="24" height="24" alt="" aria-hidden="true">
         <span>GET IT ON Google Play</span>
       </a>
       <a class="cta secondary store-cta" id="iosStore"
          href="https://apps.apple.com/app/id6800161248"
-         target="_blank" rel="noopener noreferrer">
+         target="_blank" rel="noopener noreferrer" data-download-platform="ios">
         <img src="/assets/store/app-store-48.png" width="24" height="24" alt="" aria-hidden="true">
         <span>Download on the App Store</span>
       </a>
 
       <ol class="steps">
-        <li>Install TrackMe and sign in.</li>
+        <li>Install TrackMe free and open it on your phone.</li>
         <li>Open <strong>Community</strong> and tap <strong>Join with a code</strong>.</li>
-        <li>Enter the code above.</li>
+        <li>Enter the code above to connect with your group.</li>
       </ol>
 
       <p class="promise">
@@ -203,6 +225,7 @@ function showEnded(headline, sub) {
   el('headline').textContent = headline;
   el('sub').textContent = sub || '';
   el('liveRow').hidden = true;
+  el('badgeStrip').hidden = true;
   el('detail').hidden = true;
 }
 
@@ -219,6 +242,21 @@ function remainingText(expiresAt) {
   return rest === 0
     ? `Ends in ${plural(hours, 'hour', 'hours')}`
     : `Ends in ${hours}h ${rest}m`;
+}
+
+function trackDownload(platform, cta) {
+  fetch('/api/telemetry/event', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      event: 'download_cta_clicked',
+      properties: {
+        platform,
+        surface: 'group_invite_preview',
+        cta
+      }
+    })
+  }).catch(() => {});
 }
 
 /**
@@ -284,17 +322,21 @@ async function main() {
     // for (§2.4).
   }
 
-  el('eyebrow').textContent = leader ? `${leader} invited you` : 'You have been invited';
+  el('eyebrow').textContent = leader ? `${leader} invited you to ride` : 'You have been invited to a group ride';
   el('headline').textContent = name;
 
   const joined = plural(data.memberCount, 'person', 'people');
   el('liveText').textContent = data.state === 'LIVE'
     ? `${joined} riding now`
-    : `${joined} joined · not started yet`;
+    : `${joined} joined · waiting to roll`;
 
   el('sub').textContent = [remainingText(data.expiresAt), `Up to ${data.maxMembers} people`]
     .filter(Boolean)
     .join(' · ');
+
+  if (data.maxMembers) {
+    el('badgeCapacity').textContent = `👥 Up to ${data.maxMembers} people`;
+  }
 
   if (data.joinCode) {
     el('joinCode').textContent = data.joinCode;
@@ -328,10 +370,22 @@ async function main() {
     if (data.joinCode) params.set('code', data.joinCode);
     el('openApp').setAttribute('href', `trackme://group?${params.toString()}`);
   } else {
-    el('openApp').hidden = true;
+    el('openApp').textContent = 'Open TrackMe to Join';
+    el('openApp').setAttribute('href', 'https://play.google.com/store/apps/details?id=in.shvms.trackme');
   }
 
+  el('openApp').addEventListener('click', () => {
+    trackDownload(isAndroid ? 'android' : (isIOS ? 'ios' : 'desktop'), 'open_app_cta');
+  });
+
+  document.querySelectorAll('a[data-download-platform]').forEach((link) => {
+    link.addEventListener('click', () => {
+      trackDownload(link.dataset.downloadPlatform, 'store_badge');
+    });
+  });
+
   el('liveRow').hidden = false;
+  el('badgeStrip').hidden = false;
   el('detail').hidden = false;
   document.title = `${name} · TrackMe`;
 }
@@ -343,6 +397,7 @@ main();
 // a group they were not invited to. Cheap to handle, ugly to discover.
 window.addEventListener('hashchange', () => {
   el('liveRow').hidden = true;
+  el('badgeStrip').hidden = true;
   el('detail').hidden = true;
   el('headline').textContent = 'Loading the invite…';
   el('sub').textContent = '';
