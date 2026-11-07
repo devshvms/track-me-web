@@ -402,11 +402,64 @@
             // Emitted whenever this visit carries UTM, not only when it differs from first touch.
             // Suppressing the equal case made "came back through the same Reddit link" byte-identical
             // to "came back directly", which hides a channel's repeat contribution.
+            const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+            const isAndroid = /Android/i.test(navigator.userAgent);
+            const visitorOS = isIOS ? 'ios' : (isAndroid ? 'android' : 'desktop');
+
             const latestUtm = {};
             Object.keys(currentUtm).forEach((k) => { latestUtm['latest_' + k] = currentUtm[k]; });
 
-            const trackEvent = (event, properties = {}) => fetch('/api/telemetry/event', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ event, distinctId, properties: { ...latestUtm, ...attribution, ...properties, page: 'home_v2' } }) }).catch(() => {});
-            trackEvent('landing_page_viewed', { url: window.location.href, version: 'v2' });
+            // TASK-360: Dynamic Play Store install referrer decoration
+            const referrerParams = [];
+            const refSource = attribution.utm_source || currentUtm.utm_source || (fromSharedArtifact ? 'route_card' : 'landing');
+            const refMedium = attribution.utm_medium || currentUtm.utm_medium || 'web';
+            const refCampaign = attribution.utm_campaign || currentUtm.utm_campaign || 'homepage';
+            referrerParams.push('utm_source=' + encodeURIComponent(refSource));
+            referrerParams.push('utm_medium=' + encodeURIComponent(refMedium));
+            referrerParams.push('utm_campaign=' + encodeURIComponent(refCampaign));
+            const referrerString = referrerParams.join('&');
+
+            document.querySelectorAll('.download-cta[data-download-platform="android"]').forEach((button) => {
+                const baseHref = button.getAttribute('href');
+                if (baseHref && !baseHref.includes('referrer=')) {
+                    const separator = baseHref.includes('?') ? '&' : '?';
+                    button.setAttribute('href', baseHref + separator + 'referrer=' + encodeURIComponent(referrerString));
+                }
+            });
+
+            const trackEvent = (event, properties = {}) => fetch('/api/telemetry/event', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    event,
+                    distinctId,
+                    properties: {
+                        os: visitorOS,
+                        ...latestUtm,
+                        ...attribution,
+                        ...properties,
+                        page: 'home_v2'
+                    }
+                })
+            }).catch(() => {});
+
+            trackEvent('landing_page_viewed', { url: window.location.href, version: 'v2', os: visitorOS });
+
+            // TASK-360: Track when store CTA buttons enter view
+            const ctaObserver = new IntersectionObserver((entries) => {
+                entries.forEach((entry) => {
+                    if (entry.isIntersecting) {
+                        trackEvent('store_cta_in_view', {
+                            section: entry.target.id || 'hero_actions',
+                            os: visitorOS
+                        });
+                        ctaObserver.unobserve(entry.target);
+                    }
+                });
+            }, { threshold: 0.5 });
+            const heroActions = document.querySelector('.hero-actions');
+            if (heroActions) ctaObserver.observe(heroActions);
+
             const timers = {};
             const observer = new IntersectionObserver((entries) => entries.forEach((entry) => {
                 const id = entry.target.id;
@@ -414,7 +467,7 @@
                 else if (timers[id]) { const dwell = Math.round((Date.now() - timers[id]) / 1000); if (dwell >= 2) trackEvent('section_viewed', { section_id: id, dwell_time_seconds: dwell }); delete timers[id]; }
             }), { threshold: 0.4 });
             document.querySelectorAll('section[id]').forEach((section) => observer.observe(section));
-            document.querySelectorAll('.download-cta').forEach((button) => button.addEventListener('click', () => trackEvent('download_cta_clicked', { platform: button.dataset.downloadPlatform || 'unknown', target: button.getAttribute('href') })));
+            document.querySelectorAll('.download-cta').forEach((button) => button.addEventListener('click', () => trackEvent('download_cta_clicked', { platform: button.dataset.downloadPlatform || 'unknown', os: visitorOS, target: button.getAttribute('href') })));
             const waitlistForm = document.getElementById('waitlist-form');
             if (waitlistForm) {
                 const message = document.getElementById('waitlist-message');
