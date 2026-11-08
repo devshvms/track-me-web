@@ -26,6 +26,18 @@
       "destination": "/group.html"
     },
     {
+      "source": "/get",
+      "destination": "/get.html"
+    },
+    {
+      "source": "/r",
+      "destination": "/get.html"
+    },
+    {
+      "source": "/r/",
+      "destination": "/get.html"
+    },
+    {
       "source": "/r/:path*",
       "destination": "/index.html"
     },
