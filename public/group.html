@@ -183,13 +183,13 @@
       </div>
 
       <a class="cta secondary store-cta" id="storeLink"
-         href="https://play.google.com/store/apps/details?id=in.shvms.trackme"
+         href="https://play.google.com/store/apps/details?id=in.shvms.trackme&referrer=utm_source%3Dgroup_invite%26utm_medium%3Dweb%26utm_campaign%3Dgroup_invite_preview"
          target="_blank" rel="noopener noreferrer" data-download-platform="android">
         <img src="/assets/store/google-play-48.png" width="24" height="24" alt="" aria-hidden="true">
         <span>GET IT ON Google Play</span>
       </a>
       <a class="cta secondary store-cta" id="iosStore"
-         href="https://apps.apple.com/app/id6800161248"
+         href="https://apps.apple.com/app/id6800161248?pt=128001612&ct=group_invite_preview&mt=8"
          target="_blank" rel="noopener noreferrer" data-download-platform="ios">
         <img src="/assets/store/app-store-48.png" width="24" height="24" alt="" aria-hidden="true">
         <span>Download on the App Store</span>
@@ -244,6 +244,11 @@ function remainingText(expiresAt) {
     : `Ends in ${hours}h ${rest}m`;
 }
 
+const isAndroid = /android/i.test(navigator.userAgent);
+const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent)
+  || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const visitorOS = isAndroid ? 'android' : (isIOS ? 'ios' : 'desktop');
+
 function trackDownload(platform, cta) {
   fetch('/api/telemetry/event', {
     method: 'POST',
@@ -252,6 +257,7 @@ function trackDownload(platform, cta) {
       event: 'download_cta_clicked',
       properties: {
         platform,
+        os: visitorOS,
         surface: 'group_invite_preview',
         cta
       }
@@ -278,6 +284,21 @@ function pathToken() {
 
 async function main() {
   const token = tokenFromFragment(location.hash);
+
+  // TASK-360: Group invite page view telemetry
+  fetch('/api/telemetry/event', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      event: 'group_invite_viewed',
+      properties: {
+        surface: 'group_invite_preview',
+        hasToken: Boolean(token),
+        os: visitorOS
+      }
+    })
+  }).catch(() => {});
+
   if (!token) {
     if (pathToken()) {
       showEnded(
@@ -360,7 +381,7 @@ async function main() {
   if (isAndroid) {
     const extras = [`S.token=${encodeURIComponent(token)}`];
     if (data.joinCode) extras.push(`S.code=${encodeURIComponent(data.joinCode)}`);
-    const fallback = encodeURIComponent('https://play.google.com/store/apps/details?id=in.shvms.trackme');
+    const fallback = encodeURIComponent('https://play.google.com/store/apps/details?id=in.shvms.trackme&referrer=utm_source%3Dgroup_invite%26utm_medium%3Dweb%26utm_campaign%3Dgroup_intent_fallback');
     el('openApp').setAttribute(
       'href',
       `intent://group#Intent;scheme=trackme;package=in.shvms.trackme;${extras.join(';')};S.browser_fallback_url=${fallback};end`,
@@ -371,11 +392,11 @@ async function main() {
     el('openApp').setAttribute('href', `trackme://group?${params.toString()}`);
   } else {
     el('openApp').textContent = 'Open TrackMe to Join';
-    el('openApp').setAttribute('href', 'https://play.google.com/store/apps/details?id=in.shvms.trackme');
+    el('openApp').setAttribute('href', 'https://play.google.com/store/apps/details?id=in.shvms.trackme&referrer=utm_source%3Dgroup_invite%26utm_medium%3Dweb%26utm_campaign%3Dgroup_invite_preview');
   }
 
   el('openApp').addEventListener('click', () => {
-    trackDownload(isAndroid ? 'android' : (isIOS ? 'ios' : 'desktop'), 'open_app_cta');
+    trackDownload(visitorOS, 'open_app_cta');
   });
 
   document.querySelectorAll('a[data-download-platform]').forEach((link) => {
