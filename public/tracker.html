@@ -414,7 +414,7 @@
                             body: JSON.stringify({
                                 event: 'live_share_location_rendered',
                                 distinctId: viewerId,
-                                properties: { sessionId, username, viewerId, os: viewerOS }
+                                properties: { sessionId, viewerId, os: viewerOS }
                             })
                         }).catch(() => {});
                         revealGetApp();

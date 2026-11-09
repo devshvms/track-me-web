@@ -427,6 +427,14 @@
                 }
             });
 
+            document.querySelectorAll('.download-cta[data-download-platform="ios"]').forEach((button) => {
+                const baseHref = button.getAttribute('href');
+                if (baseHref && !baseHref.includes('ct=')) {
+                    const separator = baseHref.includes('?') ? '&' : '?';
+                    button.setAttribute('href', baseHref + separator + 'pt=128001612&ct=' + encodeURIComponent(refSource) + '&mt=8');
+                }
+            });
+
             const trackEvent = (event, properties = {}) => fetch('/api/telemetry/event', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
