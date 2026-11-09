@@ -118,12 +118,12 @@
     <section id="getApp" hidden aria-label="Get TrackMe">
         <p id="getAppCopy">📍 Live via TrackMe — Free offline GPS speedometer & live location sharing · Zero account needed to record</p>
         <div class="getapp-badges">
-            <a href="https://play.google.com/store/apps/details?id=in.shvms.trackme"
+            <a href="https://play.google.com/store/apps/details?id=in.shvms.trackme&referrer=utm_source%3Dlive_share_viewer%26utm_medium%3Dweb%26utm_campaign%3Dlive_tracker"
                target="_blank" rel="noopener noreferrer" data-download-platform="android">
                 <img src="/assets/store/google-play-48.png" width="24" height="24" alt="" aria-hidden="true">
                 <span class="lbl-long">GET IT ON Google Play</span><span class="lbl-short">Google Play</span>
             </a>
-            <a href="https://apps.apple.com/app/id6800161248"
+            <a href="https://apps.apple.com/app/id6800161248?pt=128001612&ct=live_share_viewer&mt=8"
                target="_blank" rel="noopener noreferrer" data-download-platform="ios">
                 <img src="/assets/store/app-store-48.png" width="24" height="24" alt="" aria-hidden="true">
                 <span class="lbl-long">Download on the App Store</span><span class="lbl-short">App Store</span>
@@ -153,8 +153,25 @@
         // Detect viewer platform to highlight and promote native store badge
         const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
         const isAndroid = /Android/i.test(navigator.userAgent);
+        const viewerOS = isIOS ? 'ios' : (isAndroid ? 'android' : 'desktop');
         if (isIOS) document.body.classList.add('is-ios');
         else if (isAndroid) document.body.classList.add('is-android');
+
+        // TASK-360: Immediate page-view telemetry so viewers who land on ended/expired trips are not lost
+        fetch('/api/telemetry/event', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                event: 'live_share_viewed',
+                distinctId: viewerId,
+                properties: {
+                    sessionId,
+                    viewerId,
+                    os: viewerOS,
+                    surface: 'live_share_viewer'
+                }
+            })
+        }).catch(() => {});
 
         const map = L.map('map').setView([0, 0], 2);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -164,7 +181,7 @@
         let marker = null;
         let isFirstLoad = true;
 
-        // TASK-294 / TASK-342. Idempotent: called from the first render and from every terminal state.
+        // TASK-294 / TASK-342 / TASK-360. Idempotent: called from the first render and from every terminal state.
         let getAppShown = false;
         let isTripEnded = false;
         function revealGetApp(ended = false) {
@@ -180,6 +197,22 @@
             // The map container just changed height; Leaflet must be told or the tiles and the
             // marker position go stale.
             map.invalidateSize();
+
+            // TASK-360: Banner impression telemetry
+            fetch('/api/telemetry/event', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    event: 'download_cta_shown',
+                    distinctId: viewerId,
+                    properties: {
+                        sessionId,
+                        surface: 'live_share_viewer',
+                        os: viewerOS,
+                        state: isTripEnded ? 'ended' : 'live'
+                    }
+                })
+            }).catch(() => {});
         }
         document.querySelectorAll('#getApp a[data-download-platform]').forEach((link) => {
             link.addEventListener('click', () => {
@@ -193,6 +226,7 @@
                         properties: {
                             sessionId,
                             platform: link.dataset.downloadPlatform,
+                            os: viewerOS,
                             surface: 'live_share_viewer',
                             state: isTripEnded ? 'ended' : 'live'
                         }
@@ -377,7 +411,11 @@
                         fetch('/api/telemetry/event', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ event: 'live_share_viewed', distinctId: viewerId, properties: { sessionId, username, viewerId } })
+                            body: JSON.stringify({
+                                event: 'live_share_location_rendered',
+                                distinctId: viewerId,
+                                properties: { sessionId, viewerId, os: viewerOS }
+                            })
                         }).catch(() => {});
                         revealGetApp();
                     }
