@@ -1,6 +1,11 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { getRedisClient } from '../../../lib/redis';
 import { AuthError, requireUser, sendAuthError } from '../../../lib/auth';
+import {
+  appendPathPoint,
+  isValidLatLng,
+  STALE_VIEWER_WINDOW_MS,
+} from '../../../lib/track/trail';
 
 
 /**
@@ -21,13 +26,14 @@ export const VIEWER_VISIBLE_FIELDS = [
   'etaAt',
   'deadlineAt',
   'lastLocation',
+  'path',
 ] as const;
 
 export default async function handler(
   request: VercelRequest,
   response: VercelResponse,
 ) {
-  const { sessionId, viewerId } = request.query;
+  const { sessionId } = request.query;
 
   if (typeof sessionId !== 'string') {
     return response.status(400).json({ error: 'Missing or invalid sessionId' });
@@ -70,13 +76,24 @@ export default async function handler(
       if (lat === undefined || longitude === undefined) {
         return response.status(400).json({ error: 'Missing lat or lng in body' });
       }
+      if (!isValidLatLng(lat, longitude)) {
+        return response.status(400).json({ error: 'Invalid lat or lng coordinate values' });
+      }
+
+      const { path, heading: resolvedHeading } = appendPathPoint(
+        sessionData.path,
+        lat,
+        longitude,
+        heading,
+      );
+      sessionData.path = path;
 
       sessionData.lastLocation = {
         lat,
         lng: longitude,
         batteryLevel,
         speed,
-        heading,
+        heading: resolvedHeading !== null ? resolvedHeading : heading,
         powerSaveMode: typeof powerSaveMode === 'boolean' ? powerSaveMode : false,
         timestamp: timestamp || new Date().toISOString()
       };
@@ -88,7 +105,16 @@ export default async function handler(
         });
       }
 
-      return response.status(200).json({ success: true });
+      let activeViewers = 0;
+      try {
+        const viewersKey = `session:${sessionId}:viewers`;
+        await redis.zRemRangeByScore(viewersKey, 0, Date.now() - STALE_VIEWER_WINDOW_MS);
+        activeViewers = await redis.zCard(viewersKey);
+      } catch (viewerErr) {
+        console.error('Active viewer count lookup error:', viewerErr);
+      }
+
+      return response.status(200).json({ success: true, activeViewers });
     }
 
     return response.status(405).json({ error: 'Method Not Allowed' });
