@@ -142,6 +142,36 @@
             border: 3px solid #0a2540;
             box-shadow: 0 2px 6px rgba(0,0,0,0.4);
         }
+        .map-controls {
+            position: fixed;
+            right: 14px;
+            bottom: 20px;
+            z-index: 950;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        body.has-getapp .map-controls {
+            bottom: calc(var(--getapp-strip) + 16px);
+        }
+        .map-ctrl-btn {
+            background: rgba(11, 19, 32, 0.9);
+            color: #e8eef6;
+            border: 1px solid #26364d;
+            border-radius: 999px;
+            padding: 8px 13px;
+            font-size: 0.8em;
+            font-weight: 600;
+            cursor: pointer;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.28);
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .map-ctrl-btn.active {
+            border-color: #00e5ff;
+            color: #00e5ff;
+        }
     </style>
 </head>
 <body>
@@ -158,6 +188,10 @@
         </div>
     </div>
     <div id="map"></div>
+    <div class="map-controls" id="mapControls" hidden>
+        <button type="button" id="followBtn" class="map-ctrl-btn active" hidden>🎯 Follow</button>
+        <button type="button" id="fitRouteBtn" class="map-ctrl-btn" hidden>🗺️ Fit Route</button>
+    </div>
 
     <!--
         TASK-294. 141 non-users watched a live ride and were shown no way to get the app. They
@@ -516,15 +550,7 @@
                         window.lastKnownDuration = data.initialDuration;
                     }
 
-                    if (data.status === 'stopped') {
-                        document.getElementById('statusText').innerText = 'Sharing Stopped';
-                        document.getElementById('statusText').className = 'status offline';
-                        document.getElementById('detailsText').innerText = data.stopReason || 'The rider has ended this trip.';
-                        if (pollingInterval) clearInterval(pollingInterval);
-                        if (pingInterval) clearInterval(pingInterval);
-                        revealGetApp(true);
-                        return;
-                    }
+                    const isStopped = data.status === 'stopped' || data.status === 'ended';
 
                     if (data.lastLocation) {
                         const { lat, batteryLevel, speed, timestamp, powerSaveMode, heading } = data.lastLocation;
@@ -557,6 +583,8 @@
                                 trailPoints.push(pos);
                             }
                         }
+                        window.lastTrailPoints = trailPoints;
+                        window.lastRiderPos = pos;
 
                         // Start pin at first breadcrumb point
                         const startPos = trailPoints[0];
@@ -623,14 +651,14 @@
                             if (nameBadge) nameBadge.textContent = username;
                             const coneWrap = markerEl.querySelector('.heading-cone-wrap');
                             if (coneWrap) {
-                                coneWrap.innerHTML = buildHeadingConeSvg(headingDeg !== null);
-                                coneWrap.style.transform = headingDeg !== null ? `rotate(${Math.round(headingDeg)}deg)` : 'none';
+                                coneWrap.innerHTML = buildHeadingConeSvg(headingDeg !== null && !isStopped);
+                                coneWrap.style.transform = headingDeg !== null && !isStopped ? `rotate(${Math.round(headingDeg)}deg)` : 'none';
                             }
                         }
 
                         if (isFirstLoad) {
                             isFirstLoad = false;
-                            revealGetApp();
+                            revealGetApp(isStopped);
                             if (trailPoints.length >= 2) {
                                 map.fitBounds(L.latLngBounds(trailPoints), { padding: [70, 70], maxZoom: 16 });
                             } else {
@@ -639,16 +667,43 @@
                             emitTelemetry('live_share_location_rendered', {
                                 pathPoints: trailPoints.length,
                                 hasHeading: headingDeg !== null,
+                                isStopped,
                             });
+                        } else if (!isStopped && window.isFollowingRider) {
+                            map.panTo(pos, { animate: true });
                         }
 
-                        const timeAgo = Math.round((new Date() - new Date(timestamp)) / 1000);
+                        const mapControls = document.getElementById('mapControls');
+                        const followBtn = document.getElementById('followBtn');
+                        const fitRouteBtn = document.getElementById('fitRouteBtn');
+                        if (mapControls && followBtn && fitRouteBtn) {
+                            mapControls.hidden = false;
+                            followBtn.hidden = isStopped;
+                            fitRouteBtn.hidden = trailPoints.length < 2;
+                        }
+
+                        const rawTimeAgo = Math.round((new Date() - new Date(timestamp)) / 1000);
+                        const timeAgo = Math.max(0, Number.isFinite(rawTimeAgo) ? rawTimeAgo : 0);
                         const timeAgoStr = timeAgo < 60 ? `${timeAgo}s ago` : `${Math.round(timeAgo/60)}m ago`;
                         const isDelayed = Boolean(powerSaveMode) || timeAgo >= 45;
 
                         const powerSaveContainer = document.getElementById('powerSaveContainer');
                         if (powerSaveContainer) {
-                            powerSaveContainer.style.display = powerSaveMode ? 'block' : 'none';
+                            powerSaveContainer.style.display = !isStopped && powerSaveMode ? 'block' : 'none';
+                        }
+
+                        const batteryDisplay = typeof batteryLevel === 'number' ? `${batteryLevel}%` : 'N/A';
+
+                        if (isStopped) {
+                            document.getElementById('statusText').innerText = 'Sharing Stopped';
+                            document.getElementById('statusText').className = 'status offline';
+                            document.getElementById('userNameText').innerText = `${username}'s Final Location`;
+                            document.getElementById('detailsText').innerText =
+                                `${data.stopReason || 'The rider has ended this trip.'} · Updated ${timeAgoStr}`;
+                            if (pollingInterval) clearInterval(pollingInterval);
+                            if (pingInterval) clearInterval(pingInterval);
+                            revealGetApp(true);
+                            return;
                         }
 
                         if (isDelayed) {
@@ -667,10 +722,18 @@
 
                         document.getElementById('userNameText').innerText = `${username}'s Live Location`;
                         document.getElementById('detailsText').innerText =
-                            `Updated: ${timeAgoStr} | Battery: ${batteryLevel ? batteryLevel + '%' : 'N/A'} | Speed: ${speedDisplay}`;
+                            `Updated: ${timeAgoStr} | Battery: ${batteryDisplay} | Speed: ${speedDisplay}`;
+                    } else if (isStopped) {
+                        document.getElementById('statusText').innerText = 'Sharing Stopped';
+                        document.getElementById('statusText').className = 'status offline';
+                        document.getElementById('detailsText').innerText = data.stopReason || 'The rider has ended this trip.';
+                        if (pollingInterval) clearInterval(pollingInterval);
+                        if (pingInterval) clearInterval(pingInterval);
+                        revealGetApp(true);
+                        return;
                     } else {
                         document.getElementById('statusText').innerText = 'Waiting...';
-                        document.getElementById('statusText').className = 'status offline';
+                        document.getElementById('statusText').className = 'status delayed';
                         document.getElementById('userNameText').innerText = `${data.username || 'Anonymous'}'s Live Location`;
                         document.getElementById('detailsText').innerText = 'Session active, waiting for first location ping from rider.';
                     }
@@ -681,11 +744,64 @@
                 }
             }
 
-            // Fetch immediately, then poll every 5 seconds
+            window.isFollowingRider = true;
+            window.lastTrailPoints = [];
+            window.lastRiderPos = null;
+
+            function updateFollowButtonState() {
+                const followBtn = document.getElementById('followBtn');
+                if (!followBtn) return;
+                followBtn.classList.toggle('active', Boolean(window.isFollowingRider));
+            }
+
+            map.on('dragstart', () => {
+                window.isFollowingRider = false;
+                updateFollowButtonState();
+            });
+
+            document.getElementById('followBtn')?.addEventListener('click', () => {
+                window.isFollowingRider = true;
+                updateFollowButtonState();
+                if (window.lastRiderPos) {
+                    map.setView(window.lastRiderPos, Math.max(map.getZoom(), 15), { animate: true });
+                }
+            });
+
+            document.getElementById('fitRouteBtn')?.addEventListener('click', () => {
+                window.isFollowingRider = false;
+                updateFollowButtonState();
+                if (window.lastTrailPoints && window.lastTrailPoints.length >= 2) {
+                    map.fitBounds(L.latLngBounds(window.lastTrailPoints), { padding: [70, 70], maxZoom: 16 });
+                } else if (window.lastRiderPos) {
+                    map.setView(window.lastRiderPos, 15);
+                }
+            });
+
+            function startPollingTimers() {
+                if (isTripEnded) return;
+                if (!pollingInterval) pollingInterval = setInterval(fetchLocation, 5000);
+                if (!pingInterval) pingInterval = setInterval(pingPresence, 15000);
+            }
+
+            function stopPollingTimers() {
+                if (pollingInterval) { clearInterval(pollingInterval); pollingInterval = null; }
+                if (pingInterval) { clearInterval(pingInterval); pingInterval = null; }
+            }
+
+            document.addEventListener('visibilitychange', () => {
+                if (document.hidden) {
+                    stopPollingTimers();
+                } else if (!isTripEnded) {
+                    fetchLocation();
+                    pingPresence();
+                    startPollingTimers();
+                }
+            });
+
+            // Fetch immediately, then poll every 5 seconds while tab is visible
             fetchLocation();
             pingPresence();
-            pollingInterval = setInterval(fetchLocation, 5000);
-            pingInterval = setInterval(pingPresence, 15000);
+            startPollingTimers();
         }
     </script>
 </body>
