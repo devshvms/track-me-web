@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="apple-itunes-app" id="smartAppBanner" content="app-id=6800161248, app-argument=https://trackme.shvms.in/live/">
     <title>Live Location Tracker</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
@@ -54,42 +55,92 @@
         }
         #overlay {
             position: absolute;
-            top: 20px;
+            top: 16px;
             left: 50%;
             transform: translateX(-50%);
-            background: white;
-            padding: 10px 20px;
-            border-radius: 8px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            background: rgba(255, 255, 255, 0.96);
+            padding: 10px 18px;
+            border-radius: 12px;
+            box-shadow: 0 4px 14px rgba(0,0,0,0.16);
             z-index: 1000;
             text-align: center;
+            max-width: calc(100vw - 32px);
         }
         .status { font-weight: bold; }
         .active { color: green; }
         .offline { color: red; }
         .status.delayed { color: #d97706; }
-        .user-name { font-size: 1.1em; font-weight: bold; margin-top: 5px; color: #333; }
-        .details { font-size: 0.9em; color: #666; margin-top: 5px; }
+        .user-name { font-size: 1.05em; font-weight: bold; margin-top: 4px; color: #111827; }
+        .details { font-size: 0.88em; color: #4b5563; margin-top: 4px; }
         .power-save-badge { display: inline-flex; align-items: center; justify-content: center; gap: 4px; background: #fef3c7; color: #92400e; border: 1px solid #f59e0b; padding: 4px 10px; border-radius: 6px; font-size: 0.82em; font-weight: bold; margin-top: 8px; }
         .power-save-banner { margin-top: 6px; padding: 6px 10px; background: #fffbeb; border: 1px solid #fde68a; border-radius: 6px; color: #78350f; font-size: 0.8em; line-height: 1.35; max-width: 320px; text-align: left; }
+        .open-app-row {
+            margin-top: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .open-app-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: #0a2540;
+            color: #00e5ff;
+            border: 1px solid #00e5ff;
+            border-radius: 999px;
+            padding: 6px 14px;
+            font-size: 0.84em;
+            font-weight: 700;
+            text-decoration: none;
+            cursor: pointer;
+        }
+        .open-app-btn:hover, .open-app-btn:focus-visible {
+            background: #113256;
+        }
+        .rider-pin-root {
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            pointer-events: auto;
+        }
+        .heading-cone-wrap {
+            width: 44px;
+            height: 44px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.35s ease;
+        }
         .human-marker {
             background-color: white;
             border: 2px solid #007bff;
             border-radius: 20px;
-            padding: 4px 10px;
+            padding: 3px 9px;
             font-weight: bold;
-            font-size: 14px;
-            color: #007bff;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            font-size: 13px;
+            color: #0a2540;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
             white-space: nowrap;
-            display: flex;
+            display: inline-flex;
             align-items: center;
             justify-content: center;
+            margin-bottom: 2px;
         }
         .human-marker::before {
             content: "👤";
-            margin-right: 6px;
-            font-size: 16px;
+            margin-right: 5px;
+            font-size: 14px;
+        }
+        .start-pin {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #00e676;
+            border: 3px solid #0a2540;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.4);
         }
     </style>
 </head>
@@ -98,6 +149,9 @@
         <div class="status" id="statusText">Connecting...</div>
         <div class="user-name" id="userNameText"></div>
         <div class="details" id="detailsText">Waiting for location data</div>
+        <div class="open-app-row" id="openAppRow">
+            <a href="#getApp" id="openAppBtn" class="open-app-btn">Open in TrackMe App</a>
+        </div>
         <div id="powerSaveContainer" style="display: none;">
             <div class="power-save-badge">⚠️ Device in Power Saving Mode</div>
             <div class="power-save-banner">Location updates arrive at longer intervals while Power Saving Mode is active, and live speed readings may be delayed or inaccurate.</div>
@@ -133,15 +187,24 @@
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
-        // Extract sessionId from URL (e.g., /live/abc-123)
-        const pathParts = window.location.pathname.split('/');
-        const sessionId = pathParts[pathParts.length - 1];
+        // Keep iOS Smart App Banner synced with the exact current session URL.
+        const smartAppBanner = document.getElementById('smartAppBanner');
+        if (smartAppBanner) {
+            smartAppBanner.setAttribute('content', `app-id=6800161248, app-argument=${window.location.href}`);
+        }
+
+        // Extract sessionId from URL (e.g., /live/abc-123 or /live/watcher)
+        const pathParts = window.location.pathname.split('/').filter(Boolean);
+        const sessionId = pathParts[pathParts.length - 1] || '';
 
         if (!sessionId || sessionId === 'live') {
             document.getElementById('statusText').innerText = 'Error';
             document.getElementById('detailsText').innerText = 'No session ID provided in URL';
             throw new Error('No session ID');
         }
+
+        const queryParams = new URLSearchParams(window.location.search);
+        const isWatcherInvite = sessionId === 'watcher';
 
         // Generate a random viewer ID to track concurrent users
         let viewerId = sessionStorage.getItem('viewerId');
@@ -157,28 +220,88 @@
         if (isIOS) document.body.classList.add('is-ios');
         else if (isAndroid) document.body.classList.add('is-android');
 
-        // TASK-360: Immediate page-view telemetry so viewers who land on ended/expired trips are not lost
-        fetch('/api/telemetry/event', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                event: 'live_share_viewed',
-                distinctId: viewerId,
-                properties: {
-                    sessionId,
-                    viewerId,
-                    os: viewerOS,
-                    surface: 'live_share_viewer'
-                }
-            })
-        }).catch(() => {});
+        // Telemetry helper (keepalive=true survives app-switch / store redirects)
+        function emitTelemetry(event, properties) {
+            fetch('/api/telemetry/event', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                keepalive: true,
+                body: JSON.stringify({
+                    event,
+                    distinctId: viewerId,
+                    properties: Object.assign({
+                        sessionId,
+                        viewerId,
+                        os: viewerOS,
+                        surface: isWatcherInvite ? 'watcher_invite_viewer' : 'live_share_viewer',
+                    }, properties || {}),
+                }),
+            }).catch(() => {});
+        }
 
-        const map = L.map('map').setView([0, 0], 2);
+        if (!isWatcherInvite) {
+            // TASK-360: Immediate page-view telemetry so viewers who land on ended/expired trips are not lost
+            emitTelemetry('live_share_viewed');
+        }
+
+        // Configure "Open in TrackMe App" CTA button for live sessions & watcher invites
+        function configureOpenInAppButton() {
+            const btn = document.getElementById('openAppBtn');
+            if (!btn) return;
+
+            const playFallback = 'https://play.google.com/store/apps/details?id=in.shvms.trackme&referrer=utm_source%3Dlive_share_viewer%26utm_medium%3Dweb%26utm_campaign%3Dlive_tracker_open_app';
+            const appStoreUrl = 'https://apps.apple.com/app/id6800161248?pt=128001612&ct=live_share_viewer_open_app&mt=8';
+
+            if (isWatcherInvite) {
+                btn.textContent = 'Accept Invite in TrackMe App';
+            }
+
+            if (isAndroid) {
+                const pathWithQuery = `${window.location.pathname}${window.location.search}`;
+                btn.href = `intent://trackme.shvms.in${pathWithQuery}#Intent;scheme=https;package=in.shvms.trackme;S.browser_fallback_url=${encodeURIComponent(playFallback)};end`;
+            } else if (isIOS) {
+                if (isWatcherInvite) {
+                    const inviterUid = queryParams.get('inviterUid') || '';
+                    const inviterName = queryParams.get('inviterName') || '';
+                    btn.href = `trackme://live/watcher?inviterUid=${encodeURIComponent(inviterUid)}&inviterName=${encodeURIComponent(inviterName)}`;
+                } else {
+                    btn.href = `trackme://live?sessionId=${encodeURIComponent(sessionId)}`;
+                }
+            } else {
+                btn.href = '#getApp';
+            }
+
+            btn.addEventListener('click', (event) => {
+                emitTelemetry('open_in_app_tapped', { isWatcherInvite });
+                if (isIOS) {
+                    const timer = setTimeout(() => {
+                        if (document.visibilityState === 'visible') {
+                            window.location.href = appStoreUrl;
+                        }
+                    }, 1200);
+                    const cancelFallback = () => clearTimeout(timer);
+                    window.addEventListener('pagehide', cancelFallback, { once: true });
+                    document.addEventListener('visibilitychange', () => {
+                        if (document.hidden) cancelFallback();
+                    }, { once: true });
+                } else if (!isAndroid) {
+                    event.preventDefault();
+                    revealGetApp(false);
+                    document.getElementById('getApp')?.scrollIntoView({ behavior: 'smooth' });
+                }
+            });
+        }
+        configureOpenInAppButton();
+
+        const map = L.map('map').setView([20, 0], 2);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '© OpenStreetMap contributors'
         }).addTo(map);
 
         let marker = null;
+        let startMarker = null;
+        let trailCasing = null;
+        let trailLine = null;
         let isFirstLoad = true;
 
         // TASK-294 / TASK-342 / TASK-360. Idempotent: called from the first render and from every terminal state.
@@ -199,271 +322,371 @@
             map.invalidateSize();
 
             // TASK-360: Banner impression telemetry
-            fetch('/api/telemetry/event', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    event: 'download_cta_shown',
-                    distinctId: viewerId,
-                    properties: {
-                        sessionId,
-                        surface: 'live_share_viewer',
-                        os: viewerOS,
-                        state: isTripEnded ? 'ended' : 'live'
-                    }
-                })
-            }).catch(() => {});
+            emitTelemetry('download_cta_shown', { state: isTripEnded ? 'ended' : 'live' });
         }
         document.querySelectorAll('#getApp a[data-download-platform]').forEach((link) => {
             link.addEventListener('click', () => {
-                fetch('/api/telemetry/event', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        // Same name the landing page uses. One action, one event, one funnel.
-                        event: 'download_cta_clicked',
-                        distinctId: viewerId,
-                        properties: {
-                            sessionId,
-                            platform: link.dataset.downloadPlatform,
-                            os: viewerOS,
-                            surface: 'live_share_viewer',
-                            state: isTripEnded ? 'ended' : 'live'
-                        }
-                    })
-                }).catch(() => {});
+                emitTelemetry('download_cta_clicked', {
+                    platform: link.dataset.downloadPlatform,
+                    state: isTripEnded ? 'ended' : 'live',
+                });
             });
         });
 
-        function buildLocationPopup(lat, lon, username, timestamp) {
-            const container = document.createElement('div');
-            container.style.textAlign = 'center';
-            container.style.padding = '5px';
+        // Handle /live/watcher?inviterUid=...&inviterName=... cleanly without polling /api/track/watcher/location
+        if (isWatcherInvite) {
+            const inviterUid = (queryParams.get('inviterUid') || '').trim();
+            const inviterName = (queryParams.get('inviterName') || 'A TrackMe rider').trim();
+            const statusEl = document.getElementById('statusText');
+            const nameEl = document.getElementById('userNameText');
+            const detailsEl = document.getElementById('detailsText');
 
-            const title = document.createElement('p');
-            title.textContent = 'Location Actions';
-            title.style.margin = '0 0 10px 0';
-            title.style.fontWeight = 'bold';
-            container.appendChild(title);
-
-            const shareButton = document.createElement('button');
-            shareButton.type = 'button';
-            shareButton.textContent = 'Share Location';
-            shareButton.style.padding = '8px 12px';
-            shareButton.style.background = '#007bff';
-            shareButton.style.color = 'white';
-            shareButton.style.border = 'none';
-            shareButton.style.borderRadius = '4px';
-            shareButton.style.cursor = 'pointer';
-            shareButton.style.marginBottom = '10px';
-            shareButton.style.width = '100%';
-            shareButton.addEventListener('click', () => window.shareLocation(lat, lon, username, timestamp));
-            container.appendChild(shareButton);
-            container.appendChild(document.createElement('br'));
-
-            const maps = [
-                ['Google Maps', 'https://maps.google.com/?q='],
-                ['Apple Maps', 'https://maps.apple.com/?q=']
-            ];
-            const coordinates = encodeURIComponent(`${lat},${lon}`);
-            maps.forEach(([label, baseUrl], index) => {
-                if (index > 0) container.appendChild(document.createTextNode(' | '));
-                const link = document.createElement('a');
-                link.href = `${baseUrl}${coordinates}`;
-                link.target = '_blank';
-                link.rel = 'noopener noreferrer';
-                link.textContent = label;
-                link.style.fontSize = '0.9em';
-                container.appendChild(link);
-            });
-
-            return container;
-        }
-        
-        window.shareLocation = function(lat, lon, username, timestamp) {
-            fetch('/api/telemetry/event', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ event: 'share_location_clicked', distinctId: viewerId, properties: { sessionId, username } })
-            }).catch(() => {});
-            const googleMapsLink = `https://maps.google.com/?q=${lat},${lon}`;
-            const appleMapsLink = `https://maps.apple.com/?q=${lat},${lon}`;
-            const timeString = new Date(timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-            const text = `${username}'s last location was fetched here at ${timeString}:\nGoogle Maps: ${googleMapsLink}\nApple Maps: ${appleMapsLink}`;
-            
-            if (navigator.share) {
-                navigator.share({ title: `${username}'s Location`, text: text }).catch(console.error);
+            if (!inviterUid) {
+                statusEl.innerText = 'Invalid Invite';
+                statusEl.className = 'status offline';
+                nameEl.innerText = 'Trusted Watcher Invite';
+                detailsEl.innerText = 'This invite link is missing the rider identifier.';
             } else {
-                navigator.clipboard.writeText(text).then(() => alert('Copied to clipboard!'));
+                statusEl.innerText = 'Trusted Watcher Invite';
+                statusEl.className = 'status active';
+                nameEl.innerText = `${inviterName} wants to add you as a Trusted Watcher`;
+                detailsEl.innerText = 'Accept in the TrackMe app to get instant live location alerts whenever they start sharing — zero phone contacts permission required.';
             }
-        };
+            emitTelemetry('trusted_watcher_invite_viewed', { hasInviterUid: Boolean(inviterUid) });
+            revealGetApp(false);
+        } else {
+            // Standard Live Session Tracking flow
+            function computeBearingDeg(fromLat, fromLon, toLat, toLon) {
+                if (Math.abs(fromLat - toLat) < 1e-6 && Math.abs(fromLon - toLon) < 1e-6) return null;
+                const toRad = (d) => (d * Math.PI) / 180;
+                const toDeg = (r) => (r * 180) / Math.PI;
+                const lat1 = toRad(fromLat);
+                const lat2 = toRad(toLat);
+                const dLon = toRad(toLon - fromLon);
+                const y = Math.sin(dLon) * Math.cos(lat2);
+                const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
+                return ((toDeg(Math.atan2(y, x)) % 360) + 360) % 360;
+            }
 
-        let pollingInterval = null;
-        let pingInterval = null;
+            function buildHeadingConeSvg(hasHeading) {
+                if (!hasHeading) {
+                    return `<svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true">
+                        <circle cx="13" cy="13" r="10" fill="rgba(0, 229, 255, 0.25)"/>
+                        <circle cx="13" cy="13" r="6" fill="#00e5ff" stroke="#0a2540" stroke-width="2.5"/>
+                    </svg>`;
+                }
+                return `<svg width="42" height="42" viewBox="0 0 42 42" aria-hidden="true">
+                    <defs>
+                        <linearGradient id="coneGrad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stop-color="#00e5ff" stop-opacity="0.05"/>
+                            <stop offset="100%" stop-color="#00e5ff" stop-opacity="0.55"/>
+                        </linearGradient>
+                    </defs>
+                    <path d="M21 21 L7 4 Q21 0 35 4 Z" fill="url(#coneGrad)"/>
+                    <polygon points="21,11 26,22 21,19 16,22" fill="#00e5ff" stroke="#0a2540" stroke-width="1.5" stroke-linejoin="round"/>
+                    <circle cx="21" cy="21" r="5.5" fill="#00e5ff" stroke="#0a2540" stroke-width="2.5"/>
+                </svg>`;
+            }
 
-        async function pingPresence() {
-            try {
-                const response = await fetch(`/api/track/${sessionId}/ping`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ viewerId })
+            function buildLocationPopup(lat, lon, username, timestamp) {
+                const container = document.createElement('div');
+                container.style.textAlign = 'center';
+                container.style.padding = '5px';
+
+                const title = document.createElement('p');
+                title.textContent = 'Location Actions';
+                title.style.margin = '0 0 10px 0';
+                title.style.fontWeight = 'bold';
+                container.appendChild(title);
+
+                const shareButton = document.createElement('button');
+                shareButton.type = 'button';
+                shareButton.textContent = 'Share Location';
+                shareButton.style.padding = '8px 12px';
+                shareButton.style.background = '#007bff';
+                shareButton.style.color = 'white';
+                shareButton.style.border = 'none';
+                shareButton.style.borderRadius = '4px';
+                shareButton.style.cursor = 'pointer';
+                shareButton.style.marginBottom = '10px';
+                shareButton.style.width = '100%';
+                shareButton.addEventListener('click', () => window.shareLocation(lat, lon, username, timestamp));
+                container.appendChild(shareButton);
+                container.appendChild(document.createElement('br'));
+
+                const maps = [
+                    ['Google Maps', 'https://maps.google.com/?q='],
+                    ['Apple Maps', 'https://maps.apple.com/?q=']
+                ];
+                const coordinates = encodeURIComponent(`${lat},${lon}`);
+                maps.forEach(([label, baseUrl], index) => {
+                    if (index > 0) container.appendChild(document.createTextNode(' | '));
+                    const link = document.createElement('a');
+                    link.href = `${baseUrl}${coordinates}`;
+                    link.target = '_blank';
+                    link.rel = 'noopener noreferrer';
+                    link.textContent = label;
+                    link.style.fontSize = '0.9em';
+                    container.appendChild(link);
                 });
-                
-                if (!response.ok) {
-                    if (response.status === 404) {
-                        document.getElementById('statusText').innerText = 'Session Expired';
-                        document.getElementById('statusText').className = 'status offline';
-                        const timeStr = window.lastKnownDuration ? `Location was shared for ${window.lastKnownDuration} minutes and time elapsed.` : 'Location sharing time elapsed or session ended.';
-                        document.getElementById('detailsText').innerText = timeStr;
-                        if (pollingInterval) clearInterval(pollingInterval);
-                        if (pingInterval) clearInterval(pingInterval);
-                        revealGetApp();
-                        return;
-                    }
-                    if (response.status === 429) {
-                        document.getElementById('statusText').innerText = 'Session Full';
-                        document.getElementById('statusText').className = 'status offline';
-                        document.getElementById('detailsText').innerText = 'Maximum number of viewers reached. Try again later.';
-                        if (pollingInterval) clearInterval(pollingInterval);
-                        if (pingInterval) clearInterval(pingInterval);
-                        revealGetApp();
-                        return;
-                    }
-                }
-            } catch (err) {
-                console.error('Ping failed:', err);
+
+                return container;
             }
-        }
 
-        async function fetchLocation() {
-            try {
-                const response = await fetch(`/api/track/${sessionId}/location`);
-                if (!response.ok) {
-                    if (response.status === 404) {
-                        document.getElementById('statusText').innerText = 'Session Expired';
-                        document.getElementById('statusText').className = 'status offline';
-                        const timeStr = window.lastKnownDuration ? `Location was shared for ${window.lastKnownDuration} minutes and time elapsed.` : 'Location sharing time elapsed or session ended.';
-                        document.getElementById('detailsText').innerText = timeStr;
-                        if (pollingInterval) clearInterval(pollingInterval);
-                        if (pingInterval) clearInterval(pingInterval);
-                        revealGetApp(true);
-                        return;
-                    }
-                    if (response.status === 429) {
-                        document.getElementById('statusText').innerText = 'Session Full';
-                        document.getElementById('statusText').className = 'status offline';
-                        document.getElementById('detailsText').innerText = 'Maximum number of viewers reached. Try again later.';
-                        if (pollingInterval) clearInterval(pollingInterval);
-                        if (pingInterval) clearInterval(pingInterval);
-                        revealGetApp(true);
-                        return;
-                    }
-                    throw new Error('Failed to fetch');
-                }
+            window.shareLocation = function(lat, lon, username, timestamp) {
+                emitTelemetry('share_location_clicked', { username });
+                const googleMapsLink = `https://maps.google.com/?q=${lat},${lon}`;
+                const appleMapsLink = `https://maps.apple.com/?q=${lat},${lon}`;
+                const timeString = new Date(timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+                const text = `${username}'s last location was fetched here at ${timeString}:\nGoogle Maps: ${googleMapsLink}\nApple Maps: ${appleMapsLink}`;
 
-                const data = await response.json();
-                
-                if (data.initialDuration) {
-                    window.lastKnownDuration = data.initialDuration;
+                if (navigator.share) {
+                    navigator.share({ title: `${username}'s Location`, text: text }).catch(console.error);
+                } else {
+                    navigator.clipboard.writeText(text).then(() => alert('Copied to clipboard!'));
                 }
-                
-                if (data.status === 'stopped') {
-                    document.getElementById('statusText').innerText = 'Sharing Stopped';
-                    document.getElementById('statusText').className = 'status offline';
-                    document.getElementById('detailsText').innerText = data.stopReason || 'The rider has ended this trip.';
-                    if (pollingInterval) clearInterval(pollingInterval);
-                    if (pingInterval) clearInterval(pingInterval);
-                    revealGetApp(true);
-                    return;
-                }
-                
-                if (data.lastLocation) {
-                    const { lat, batteryLevel, speed, timestamp, powerSaveMode } = data.lastLocation;
-                    // Canonical field is `lng`; fall back to legacy `lon` for sessions
-                    // written before the schema migration.
-                    const lon = data.lastLocation.lng !== undefined ? data.lastLocation.lng : data.lastLocation.lon;
-                    const pos = [lat, lon];
-                    const username = data.username || 'Anonymous';
-                    
-                    const humanIcon = L.divIcon({
-                        className: 'custom-div-icon',
-                        html: `<div class="human-marker"></div>`,
-                        iconSize: [null, null],
-                        iconAnchor: [0, 0]
+            };
+
+            let pollingInterval = null;
+            let pingInterval = null;
+
+            async function pingPresence() {
+                try {
+                    const response = await fetch(`/api/track/${sessionId}/ping`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ viewerId })
                     });
 
-                    const popupContent = buildLocationPopup(lat, lon, username, timestamp);
-
-                    if (!marker) {
-                        marker = L.marker(pos, { icon: humanIcon }).bindPopup(popupContent).addTo(map);
-                    } else {
-                        marker.setLatLng(pos);
-                        marker.setIcon(humanIcon);
-                        marker.setPopupContent(popupContent);
+                    if (!response.ok) {
+                        if (response.status === 404) {
+                            document.getElementById('statusText').innerText = 'Session Expired';
+                            document.getElementById('statusText').className = 'status offline';
+                            const timeStr = window.lastKnownDuration ? `Location was shared for ${window.lastKnownDuration} minutes and time elapsed.` : 'Location sharing time elapsed or session ended.';
+                            document.getElementById('detailsText').innerText = timeStr;
+                            if (pollingInterval) clearInterval(pollingInterval);
+                            if (pingInterval) clearInterval(pingInterval);
+                            revealGetApp(true);
+                            return;
+                        }
+                        if (response.status === 429) {
+                            document.getElementById('statusText').innerText = 'Session Full';
+                            document.getElementById('statusText').className = 'status offline';
+                            document.getElementById('detailsText').innerText = 'Maximum number of viewers reached. Try again later.';
+                            if (pollingInterval) clearInterval(pollingInterval);
+                            if (pingInterval) clearInterval(pingInterval);
+                            revealGetApp(true);
+                            return;
+                        }
                     }
-
-                    const markerElement = marker.getElement()?.querySelector('.human-marker');
-                    if (markerElement) markerElement.textContent = username;
-
-                    if (isFirstLoad) {
-                        map.setView(pos, 15);
-                        isFirstLoad = false;
-                        fetch('/api/telemetry/event', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                event: 'live_share_location_rendered',
-                                distinctId: viewerId,
-                                properties: { sessionId, viewerId, os: viewerOS }
-                            })
-                        }).catch(() => {});
-                        revealGetApp();
-                    }
-
-                    const timeAgo = Math.round((new Date() - new Date(timestamp)) / 1000);
-                    const timeAgoStr = timeAgo < 60 ? `${timeAgo}s ago` : `${Math.round(timeAgo/60)}m ago`;
-                    const isDelayed = Boolean(powerSaveMode) || timeAgo >= 45;
-
-                    const powerSaveContainer = document.getElementById('powerSaveContainer');
-                    if (powerSaveContainer) {
-                        powerSaveContainer.style.display = powerSaveMode ? 'block' : 'none';
-                    }
-
-                    if (isDelayed) {
-                        document.getElementById('statusText').innerText = 'Delayed Updates';
-                        document.getElementById('statusText').className = 'status delayed';
-                    } else {
-                        document.getElementById('statusText').innerText = 'Live';
-                        document.getElementById('statusText').className = 'status active';
-                    }
-
-                    let speedDisplay = 'N/A';
-                    if (speed !== undefined && speed !== null) {
-                        const roundedSpeed = Math.round(speed);
-                        speedDisplay = isDelayed ? `~${roundedSpeed} km/h ⚠️ (delayed)` : `${roundedSpeed} km/h`;
-                    }
-
-                    document.getElementById('userNameText').innerText = `${data.username || 'Anonymous'}'s Live Location`;
-                    document.getElementById('detailsText').innerText = 
-                        `Updated: ${timeAgoStr} | Battery: ${batteryLevel ? batteryLevel + '%' : 'N/A'} | Speed: ${speedDisplay}`;
-                } else {
-                    document.getElementById('statusText').innerText = 'Waiting...';
-                    document.getElementById('statusText').className = 'status offline';
-                    document.getElementById('userNameText').innerText = `${data.username || 'Anonymous'}'s Live Location`;
-                    document.getElementById('detailsText').innerText = 'Session active, waiting for first location ping from rider.';
+                } catch (err) {
+                    console.error('Ping failed:', err);
                 }
-            } catch (err) {
-                console.error(err);
-                document.getElementById('statusText').innerText = 'Connection Error';
-                document.getElementById('statusText').className = 'status offline';
             }
-        }
 
-        // Fetch immediately, then poll every 5 seconds
-        fetchLocation();
-        pingPresence();
-        pollingInterval = setInterval(fetchLocation, 5000);
-        pingInterval = setInterval(pingPresence, 15000);
+            async function fetchLocation() {
+                try {
+                    const response = await fetch(`/api/track/${sessionId}/location`);
+                    if (!response.ok) {
+                        if (response.status === 404) {
+                            document.getElementById('statusText').innerText = 'Session Expired';
+                            document.getElementById('statusText').className = 'status offline';
+                            const timeStr = window.lastKnownDuration ? `Location was shared for ${window.lastKnownDuration} minutes and time elapsed.` : 'Location sharing time elapsed or session ended.';
+                            document.getElementById('detailsText').innerText = timeStr;
+                            if (pollingInterval) clearInterval(pollingInterval);
+                            if (pingInterval) clearInterval(pingInterval);
+                            revealGetApp(true);
+                            return;
+                        }
+                        if (response.status === 429) {
+                            document.getElementById('statusText').innerText = 'Session Full';
+                            document.getElementById('statusText').className = 'status offline';
+                            document.getElementById('detailsText').innerText = 'Maximum number of viewers reached. Try again later.';
+                            if (pollingInterval) clearInterval(pollingInterval);
+                            if (pingInterval) clearInterval(pingInterval);
+                            revealGetApp(true);
+                            return;
+                        }
+                        throw new Error('Failed to fetch');
+                    }
+
+                    const data = await response.json();
+
+                    if (data.initialDuration) {
+                        window.lastKnownDuration = data.initialDuration;
+                    }
+
+                    if (data.status === 'stopped') {
+                        document.getElementById('statusText').innerText = 'Sharing Stopped';
+                        document.getElementById('statusText').className = 'status offline';
+                        document.getElementById('detailsText').innerText = data.stopReason || 'The rider has ended this trip.';
+                        if (pollingInterval) clearInterval(pollingInterval);
+                        if (pingInterval) clearInterval(pingInterval);
+                        revealGetApp(true);
+                        return;
+                    }
+
+                    if (data.lastLocation) {
+                        const { lat, batteryLevel, speed, timestamp, powerSaveMode, heading } = data.lastLocation;
+                        // Canonical field is `lng`; fall back to legacy `lon` for sessions written before schema migration.
+                        const lon = data.lastLocation.lng !== undefined ? data.lastLocation.lng : data.lastLocation.lon;
+                        const pos = [lat, lon];
+                        const username = data.username || 'Anonymous';
+
+                        // Build breadcrumb polyline coordinates from accumulated path ([lat, lng] tuples) + latest live point
+                        const trailPoints = Array.isArray(data.path)
+                            ? data.path
+                                .map((pt) => {
+                                    if (Array.isArray(pt) && pt.length >= 2 && typeof pt[0] === 'number' && typeof pt[1] === 'number') {
+                                        return [pt[0], pt[1]];
+                                    }
+                                    if (pt && typeof pt === 'object' && typeof pt.lat === 'number') {
+                                        const ptLon = typeof pt.lng === 'number' ? pt.lng : pt.lon;
+                                        return typeof ptLon === 'number' ? [pt.lat, ptLon] : null;
+                                    }
+                                    return null;
+                                })
+                                .filter(Boolean)
+                            : [];
+
+                        if (trailPoints.length === 0) {
+                            trailPoints.push(pos);
+                        } else {
+                            const lastTrailPt = trailPoints[trailPoints.length - 1];
+                            if (Math.abs(lastTrailPt[0] - lat) > 1e-5 || Math.abs(lastTrailPt[1] - lon) > 1e-5) {
+                                trailPoints.push(pos);
+                            }
+                        }
+
+                        // Start pin at first breadcrumb point
+                        const startPos = trailPoints[0];
+                        if (!startMarker) {
+                            const startIcon = L.divIcon({
+                                className: 'start-pin-icon',
+                                html: '<div class="start-pin" title="Trip start"></div>',
+                                iconSize: [22, 22],
+                                iconAnchor: [11, 11],
+                            });
+                            startMarker = L.marker(startPos, { icon: startIcon, interactive: false }).addTo(map);
+                        } else {
+                            startMarker.setLatLng(startPos);
+                        }
+
+                        // Two-layer breadcrumb polyline (dark casing + bright cyan trail)
+                        if (trailPoints.length >= 2) {
+                            if (!trailCasing) {
+                                trailCasing = L.polyline(trailPoints, {
+                                    color: '#0a2540',
+                                    weight: 7,
+                                    opacity: 0.78,
+                                    lineCap: 'round',
+                                    lineJoin: 'round',
+                                }).addTo(map);
+                                trailLine = L.polyline(trailPoints, {
+                                    color: '#00e5ff',
+                                    weight: 4,
+                                    opacity: 0.95,
+                                    lineCap: 'round',
+                                    lineJoin: 'round',
+                                }).addTo(map);
+                            } else {
+                                trailCasing.setLatLngs(trailPoints);
+                                trailLine.setLatLngs(trailPoints);
+                            }
+                        }
+
+                        // Heading cone direction: explicit GPS heading -> fallback bearing from previous trail point
+                        let headingDeg = typeof heading === 'number' && Number.isFinite(heading) && heading >= 0 ? heading : null;
+                        if (headingDeg === null && trailPoints.length >= 2) {
+                            const prev = trailPoints[trailPoints.length - 2];
+                            headingDeg = computeBearingDeg(prev[0], prev[1], lat, lon);
+                        }
+
+                        const popupContent = buildLocationPopup(lat, lon, username, timestamp);
+
+                        if (!marker) {
+                            const humanIcon = L.divIcon({
+                                className: 'custom-div-icon',
+                                html: '<div class="rider-pin-root"><div class="human-marker"></div><div class="heading-cone-wrap"></div></div>',
+                                iconSize: [140, 68],
+                                iconAnchor: [70, 46]
+                            });
+                            marker = L.marker(pos, { icon: humanIcon }).bindPopup(popupContent).addTo(map);
+                        } else {
+                            marker.setLatLng(pos);
+                            marker.setPopupContent(popupContent);
+                        }
+
+                        const markerEl = marker.getElement();
+                        if (markerEl) {
+                            const nameBadge = markerEl.querySelector('.human-marker');
+                            if (nameBadge) nameBadge.textContent = username;
+                            const coneWrap = markerEl.querySelector('.heading-cone-wrap');
+                            if (coneWrap) {
+                                coneWrap.innerHTML = buildHeadingConeSvg(headingDeg !== null);
+                                coneWrap.style.transform = headingDeg !== null ? `rotate(${Math.round(headingDeg)}deg)` : 'none';
+                            }
+                        }
+
+                        if (isFirstLoad) {
+                            isFirstLoad = false;
+                            revealGetApp();
+                            if (trailPoints.length >= 2) {
+                                map.fitBounds(L.latLngBounds(trailPoints), { padding: [70, 70], maxZoom: 16 });
+                            } else {
+                                map.setView(pos, 15);
+                            }
+                            emitTelemetry('live_share_location_rendered', {
+                                pathPoints: trailPoints.length,
+                                hasHeading: headingDeg !== null,
+                            });
+                        }
+
+                        const timeAgo = Math.round((new Date() - new Date(timestamp)) / 1000);
+                        const timeAgoStr = timeAgo < 60 ? `${timeAgo}s ago` : `${Math.round(timeAgo/60)}m ago`;
+                        const isDelayed = Boolean(powerSaveMode) || timeAgo >= 45;
+
+                        const powerSaveContainer = document.getElementById('powerSaveContainer');
+                        if (powerSaveContainer) {
+                            powerSaveContainer.style.display = powerSaveMode ? 'block' : 'none';
+                        }
+
+                        if (isDelayed) {
+                            document.getElementById('statusText').innerText = 'Delayed Updates';
+                            document.getElementById('statusText').className = 'status delayed';
+                        } else {
+                            document.getElementById('statusText').innerText = 'Live';
+                            document.getElementById('statusText').className = 'status active';
+                        }
+
+                        let speedDisplay = 'N/A';
+                        if (speed !== undefined && speed !== null) {
+                            const roundedSpeed = Math.round(speed);
+                            speedDisplay = isDelayed ? `~${roundedSpeed} km/h ⚠️ (delayed)` : `${roundedSpeed} km/h`;
+                        }
+
+                        document.getElementById('userNameText').innerText = `${username}'s Live Location`;
+                        document.getElementById('detailsText').innerText =
+                            `Updated: ${timeAgoStr} | Battery: ${batteryLevel ? batteryLevel + '%' : 'N/A'} | Speed: ${speedDisplay}`;
+                    } else {
+                        document.getElementById('statusText').innerText = 'Waiting...';
+                        document.getElementById('statusText').className = 'status offline';
+                        document.getElementById('userNameText').innerText = `${data.username || 'Anonymous'}'s Live Location`;
+                        document.getElementById('detailsText').innerText = 'Session active, waiting for first location ping from rider.';
+                    }
+                } catch (err) {
+                    console.error(err);
+                    document.getElementById('statusText').innerText = 'Connection Error';
+                    document.getElementById('statusText').className = 'status offline';
+                }
+            }
+
+            // Fetch immediately, then poll every 5 seconds
+            fetchLocation();
+            pingPresence();
+            pollingInterval = setInterval(fetchLocation, 5000);
+            pingInterval = setInterval(pingPresence, 15000);
+        }
     </script>
 </body>
 </html>
