@@ -357,10 +357,70 @@
         }
         configureOpenInAppButton();
 
+        // CIE-007: Resilient Leaflet Tile Layer with automatic mirror fallback
+        const TILE_PROVIDERS = [
+            {
+                name: 'OpenStreetMap Primary',
+                url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+                options: {
+                    subdomains: ['a', 'b', 'c'],
+                    maxZoom: 19,
+                    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                }
+            },
+            {
+                name: 'OSM France Humanitarian',
+                url: 'https://tile.openstreetmap.fr/hot/{z}/{x}/{y}.png',
+                options: {
+                    maxZoom: 19,
+                    attribution: '&copy; OpenStreetMap contributors, Tiles style by Humanitarian OpenStreetMap Team hosted by OSM France'
+                }
+            },
+            {
+                name: 'CartoDB Voyager',
+                url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+                options: {
+                    subdomains: ['a', 'b', 'c', 'd'],
+                    maxZoom: 19,
+                    attribution: '&copy; OpenStreetMap contributors &copy; CARTO'
+                }
+            }
+        ];
+
+        let activeTileProviderIndex = 0;
+        let consecutiveTileErrors = 0;
+        let currentTileLayer = null;
+
+        function attachTileLayer(providerIndex) {
+            if (currentTileLayer) {
+                map.removeLayer(currentTileLayer);
+            }
+            const config = TILE_PROVIDERS[providerIndex] || TILE_PROVIDERS[0];
+            currentTileLayer = L.tileLayer(config.url, config.options);
+
+            currentTileLayer.on('tileerror', function() {
+                consecutiveTileErrors++;
+                if (consecutiveTileErrors >= 3 && activeTileProviderIndex < TILE_PROVIDERS.length - 1) {
+                    activeTileProviderIndex++;
+                    consecutiveTileErrors = 0;
+                    console.warn(`Tile errors on ${config.name}. Switching to fallback mirror: ${TILE_PROVIDERS[activeTileProviderIndex].name}`);
+                    attachTileLayer(activeTileProviderIndex);
+                    emitTelemetry('live_share_tile_mirror_fallback', {
+                        provider: TILE_PROVIDERS[activeTileProviderIndex].name,
+                        attempt: activeTileProviderIndex
+                    });
+                }
+            });
+
+            currentTileLayer.on('load', function() {
+                consecutiveTileErrors = 0;
+            });
+
+            currentTileLayer.addTo(map);
+        }
+
         const map = L.map('map').setView([20, 0], 2);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '© OpenStreetMap contributors'
-        }).addTo(map);
+        attachTileLayer(0);
 
         let marker = null;
         let startMarker = null;
@@ -517,6 +577,36 @@
             let fetchTimeoutId = null;
             let pingTimeoutId = null;
 
+            // CIE-007: Online / Offline Viewer State Management
+            let isViewerOnline = typeof navigator !== 'undefined' && 'onLine' in navigator ? navigator.onLine : true;
+
+            window.addEventListener('online', function() {
+                isViewerOnline = true;
+                consecutiveFetchErrors = 0;
+                const statusEl = document.getElementById('statusText');
+                if (statusEl && statusEl.innerText.includes('Offline')) {
+                    statusEl.innerText = 'Reconnecting...';
+                    statusEl.className = 'status delayed';
+                }
+                // Immediately resume polling and presence ping on reconnection without waiting for backoff
+                if (!isTripEnded && !isFetchInProgress) {
+                    fetchLocation();
+                    pingPresence();
+                }
+                emitTelemetry('live_share_viewer_reconnected', { sessionId });
+            });
+
+            window.addEventListener('offline', function() {
+                isViewerOnline = false;
+                stopPollingTimers();
+                const statusEl = document.getElementById('statusText');
+                if (statusEl && !isTripEnded) {
+                    statusEl.innerText = 'Viewer Offline';
+                    statusEl.className = 'status offline';
+                }
+                emitTelemetry('live_share_viewer_offline', { sessionId });
+            });
+
             function computeViewerBackoffMs(failures) {
                 if (failures <= 0) return 5000;
                 const increments = [1000, 3000, 6000, 10000];
@@ -544,8 +634,8 @@
 
             async function pingPresence() {
                 if (isTripEnded) return;
-                // Suppress presence pinging during connectivity outages to conserve Redis writes ($0/mo cost mandate)
-                if (consecutiveFetchErrors >= 2) {
+                // Suppress presence pinging if viewer is offline or connectivity is unstable ($0/mo cost mandate)
+                if (!isViewerOnline || consecutiveFetchErrors >= 2) {
                     scheduleNextPing(15000);
                     return;
                 }
@@ -584,6 +674,10 @@
 
             async function fetchLocation() {
                 if (isTripEnded || isFetchInProgress) return;
+                if (!isViewerOnline) {
+                    scheduleNextFetch(5000);
+                    return;
+                }
                 isFetchInProgress = true;
                 try {
                     const response = await fetch(`/api/track/${sessionId}/location`);
@@ -759,8 +853,12 @@
                         if (powerSaveContainer) {
                             powerSaveContainer.style.display = !isStopped && powerSaveMode ? 'block' : 'none';
                         }
-
-                        const batteryDisplay = typeof batteryLevel === 'number' ? `${batteryLevel}%` : 'N/A';
+                        // CIE-007: Battery display with low battery alert (<15%)
+                        let batteryDisplay = 'N/A';
+                        if (typeof batteryLevel === 'number' && Number.isFinite(batteryLevel) && batteryLevel >= 0 && batteryLevel <= 100) {
+                            const roundedBat = Math.round(batteryLevel);
+                            batteryDisplay = roundedBat <= 15 ? `🪫 ${roundedBat}% (Low)` : `🔋 ${roundedBat}%`;
+                        }
 
                         if (isStopped) {
                             document.getElementById('statusText').innerText = 'Sharing Stopped';
