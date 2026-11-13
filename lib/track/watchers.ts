@@ -50,31 +50,45 @@ export async function dispatchTrustedWatcherNotifications(
     return 0;
   }
 
+  // CIE-023: Concurrently verify all target watchers via Promise.all
+  // Rather than sequential relation reads followed by user token reads (~360ms latency for 5 watchers),
+  // execute all Firestore lookups in parallel to minimize serverless duration ($0/mo cost mandate).
+  const lookupResults = await Promise.all(
+    targetUids.map(async (watcherUid): Promise<{ uid: string; fcmToken?: string } | null> => {
+      try {
+        const relationSnap = await params.db
+          .collection('users')
+          .doc(params.ownerUid)
+          .collection('trusted_watchers')
+          .doc(watcherUid)
+          .get();
+
+        if (!relationSnap?.exists) return null;
+        const relationData = relationSnap.data?.() || {};
+        if (relationData.autoNotify === false) return null;
+
+        const userSnap = await params.db.collection('users').doc(watcherUid).get();
+        const token = userSnap?.data?.()?.fcmToken;
+        const fcmToken =
+          typeof token === 'string' && token.trim().length > 0 ? token.trim() : undefined;
+
+        return { uid: watcherUid, fcmToken };
+      } catch (err) {
+        console.error(`Watcher verification error for watcherUid=${watcherUid}:`, err);
+        return null;
+      }
+    }),
+  );
+
   const verifiedUids: string[] = [];
   const fcmTokens: string[] = [];
 
-  for (const watcherUid of targetUids) {
-    try {
-      const relationSnap = await params.db
-        .collection('users')
-        .doc(params.ownerUid)
-        .collection('trusted_watchers')
-        .doc(watcherUid)
-        .get();
-
-      if (!relationSnap?.exists) continue;
-      const relationData = relationSnap.data?.() || {};
-      if (relationData.autoNotify === false) continue;
-
-      verifiedUids.push(watcherUid);
-
-      const userSnap = await params.db.collection('users').doc(watcherUid).get();
-      const token = userSnap?.data?.()?.fcmToken;
-      if (typeof token === 'string' && token.trim().length > 0) {
-        fcmTokens.push(token.trim());
+  for (const res of lookupResults) {
+    if (res) {
+      verifiedUids.push(res.uid);
+      if (res.fcmToken) {
+        fcmTokens.push(res.fcmToken);
       }
-    } catch (err) {
-      console.error(`Watcher verification error for watcherUid=${watcherUid}:`, err);
     }
   }
 
