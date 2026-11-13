@@ -1,3 +1,4 @@
+import assert from 'node:assert';
 import {
   resolveInitialUnits,
   toggleUnitSystem,
@@ -6,81 +7,98 @@ import {
   PREFERRED_UNITS_STORAGE_KEY,
 } from '../lib/track/units';
 
-describe('Unit System & Preference Utilities (CIE-030)', () => {
-  describe('resolveInitialUnits', () => {
-    it('prioritizes explicit URL query parameters', () => {
-      expect(resolveInitialUnits('imperial', 'metric', ['fr-FR'])).toBe('imperial');
-      expect(resolveInitialUnits('mi', 'metric', ['fr-FR'])).toBe('imperial');
-      expect(resolveInitialUnits('mph', 'metric', ['fr-FR'])).toBe('imperial');
-      expect(resolveInitialUnits('metric', 'imperial', ['en-US'])).toBe('metric');
-      expect(resolveInitialUnits('km', 'imperial', ['en-US'])).toBe('metric');
-      expect(resolveInitialUnits('kmh', 'imperial', ['en-US'])).toBe('metric');
-    });
+type TestCase = { name: string; fn: () => void | Promise<void> };
+const tests: TestCase[] = [];
 
-    it('falls back to stored preference when query parameter is omitted or invalid', () => {
-      expect(resolveInitialUnits(null, 'imperial', ['fr-FR'])).toBe('imperial');
-      expect(resolveInitialUnits('', 'metric', ['en-US'])).toBe('metric');
-      expect(resolveInitialUnits('invalid', 'imperial', ['fr-FR'])).toBe('imperial');
-    });
+function test(name: string, fn: () => void | Promise<void>) {
+  tests.push({ name, fn });
+}
 
-    it('falls back to browser locale detection when query and storage are omitted', () => {
-      expect(resolveInitialUnits(null, null, ['en-US'])).toBe('imperial');
-      expect(resolveInitialUnits(null, null, ['es-US', 'es-ES'])).toBe('imperial');
-      expect(resolveInitialUnits(null, null, ['en-LR'])).toBe('imperial');
-      expect(resolveInitialUnits(null, null, ['my-MM'])).toBe('imperial');
-      expect(resolveInitialUnits(null, null, ['en-GB'])).toBe('metric');
-      expect(resolveInitialUnits(null, null, ['de-DE'])).toBe('metric');
-      expect(resolveInitialUnits(null, null, ['ja-JP'])).toBe('metric');
-      expect(resolveInitialUnits(null, null, [])).toBe('metric');
-      expect(resolveInitialUnits(null, null, null)).toBe('metric');
-    });
-  });
-
-  describe('toggleUnitSystem', () => {
-    it('toggles metric to imperial and vice versa', () => {
-      expect(toggleUnitSystem('metric')).toBe('imperial');
-      expect(toggleUnitSystem('imperial')).toBe('metric');
-    });
-  });
-
-  describe('formatViewerSpeed', () => {
-    it('formats metric speeds accurately', () => {
-      expect(formatViewerSpeed(25.4, 'metric')).toBe('25 km/h');
-      expect(formatViewerSpeed(25.6, 'metric')).toBe('26 km/h');
-      expect(formatViewerSpeed(0, 'metric')).toBe('0 km/h');
-      expect(formatViewerSpeed(null, 'metric')).toBe('0 km/h');
-      expect(formatViewerSpeed(-5, 'metric')).toBe('0 km/h');
-    });
-
-    it('formats imperial speeds accurately', () => {
-      // 25 km/h * 0.621371 = 15.534 -> 16 mph
-      expect(formatViewerSpeed(25.0, 'imperial')).toBe('16 mph');
-      // 50 km/h * 0.621371 = 31.068 -> 31 mph
-      expect(formatViewerSpeed(50.0, 'imperial')).toBe('31 mph');
-      expect(formatViewerSpeed(0, 'imperial')).toBe('0 mph');
-      expect(formatViewerSpeed(undefined, 'imperial')).toBe('0 mph');
-    });
-  });
-
-  describe('formatViewerDistance', () => {
-    it('formats metric distances in km', () => {
-      expect(formatViewerDistance(1500, 'metric')).toBe('1.5 km');
-      expect(formatViewerDistance(10200, 'metric')).toBe('10.2 km');
-      expect(formatViewerDistance(0, 'metric')).toBe('0.0 km');
-      expect(formatViewerDistance(null, 'metric')).toBe('0.0 km');
-    });
-
-    it('formats imperial distances in mi', () => {
-      // 1609.344 m = 1.0 mi
-      expect(formatViewerDistance(1609.344, 'imperial')).toBe('1.0 mi');
-      // 8046.72 m = 5.0 mi
-      expect(formatViewerDistance(8046.72, 'imperial')).toBe('5.0 mi');
-      expect(formatViewerDistance(0, 'imperial')).toBe('0.0 mi');
-      expect(formatViewerDistance(undefined, 'imperial')).toBe('0.0 mi');
-    });
-  });
-
-  it('exports correct storage key constant', () => {
-    expect(PREFERRED_UNITS_STORAGE_KEY).toBe('trackme_preferred_units');
-  });
+test('resolveInitialUnits prioritizes explicit URL query parameters', () => {
+  assert.strictEqual(resolveInitialUnits('imperial', 'metric', ['fr-FR']), 'imperial');
+  assert.strictEqual(resolveInitialUnits('mi', 'metric', ['fr-FR']), 'imperial');
+  assert.strictEqual(resolveInitialUnits('mph', 'metric', ['fr-FR']), 'imperial');
+  assert.strictEqual(resolveInitialUnits('metric', 'imperial', ['en-US']), 'metric');
+  assert.strictEqual(resolveInitialUnits('km', 'imperial', ['en-US']), 'metric');
+  assert.strictEqual(resolveInitialUnits('kmh', 'imperial', ['en-US']), 'metric');
 });
+
+test('resolveInitialUnits falls back to stored preference when query parameter is omitted or invalid', () => {
+  assert.strictEqual(resolveInitialUnits(null, 'imperial', ['fr-FR']), 'imperial');
+  assert.strictEqual(resolveInitialUnits('', 'metric', ['en-US']), 'metric');
+  assert.strictEqual(resolveInitialUnits('invalid', 'imperial', ['fr-FR']), 'imperial');
+});
+
+test('resolveInitialUnits falls back to browser locale detection when query and storage are omitted', () => {
+  assert.strictEqual(resolveInitialUnits(null, null, ['en-US']), 'imperial');
+  assert.strictEqual(resolveInitialUnits(null, null, ['es-US', 'es-ES']), 'imperial');
+  assert.strictEqual(resolveInitialUnits(null, null, ['en-LR']), 'imperial');
+  assert.strictEqual(resolveInitialUnits(null, null, ['my-MM']), 'imperial');
+  assert.strictEqual(resolveInitialUnits(null, null, ['en-GB']), 'metric');
+  assert.strictEqual(resolveInitialUnits(null, null, ['de-DE']), 'metric');
+  assert.strictEqual(resolveInitialUnits(null, null, ['ja-JP']), 'metric');
+  assert.strictEqual(resolveInitialUnits(null, null, []), 'metric');
+  assert.strictEqual(resolveInitialUnits(null, null, null), 'metric');
+});
+
+test('toggleUnitSystem toggles metric to imperial and vice versa', () => {
+  assert.strictEqual(toggleUnitSystem('metric'), 'imperial');
+  assert.strictEqual(toggleUnitSystem('imperial'), 'metric');
+});
+
+test('formatViewerSpeed formats metric speeds accurately', () => {
+  assert.strictEqual(formatViewerSpeed(25.4, 'metric'), '25 km/h');
+  assert.strictEqual(formatViewerSpeed(25.6, 'metric'), '26 km/h');
+  assert.strictEqual(formatViewerSpeed(0, 'metric'), '0 km/h');
+  assert.strictEqual(formatViewerSpeed(null, 'metric'), '0 km/h');
+  assert.strictEqual(formatViewerSpeed(-5, 'metric'), '0 km/h');
+});
+
+test('formatViewerSpeed formats imperial speeds accurately', () => {
+  assert.strictEqual(formatViewerSpeed(25.0, 'imperial'), '16 mph');
+  assert.strictEqual(formatViewerSpeed(50.0, 'imperial'), '31 mph');
+  assert.strictEqual(formatViewerSpeed(0, 'imperial'), '0 mph');
+  assert.strictEqual(formatViewerSpeed(undefined, 'imperial'), '0 mph');
+});
+
+test('formatViewerDistance formats metric distances in km', () => {
+  assert.strictEqual(formatViewerDistance(1500, 'metric'), '1.5 km');
+  assert.strictEqual(formatViewerDistance(10200, 'metric'), '10.2 km');
+  assert.strictEqual(formatViewerDistance(0, 'metric'), '0.0 km');
+  assert.strictEqual(formatViewerDistance(null, 'metric'), '0.0 km');
+});
+
+test('formatViewerDistance formats imperial distances in mi', () => {
+  assert.strictEqual(formatViewerDistance(1609.344, 'imperial'), '1.0 mi');
+  assert.strictEqual(formatViewerDistance(8046.72, 'imperial'), '5.0 mi');
+  assert.strictEqual(formatViewerDistance(0, 'imperial'), '0.0 mi');
+  assert.strictEqual(formatViewerDistance(undefined, 'imperial'), '0.0 mi');
+});
+
+test('exports correct storage key constant', () => {
+  assert.strictEqual(PREFERRED_UNITS_STORAGE_KEY, 'trackme_preferred_units');
+});
+
+async function main() {
+  let passed = 0;
+  const failures: string[] = [];
+
+  for (const t of tests) {
+    try {
+      await t.fn();
+      passed += 1;
+      process.stdout.write(`  ✓ ${t.name}\n`);
+    } catch (err) {
+      failures.push(`${t.name}: ${(err as Error).message}`);
+      process.stdout.write(`  ✗ ${t.name}\n`);
+    }
+  }
+
+  process.stdout.write(`\nunits: ${passed} passed, ${failures.length} failed\n`);
+  if (failures.length > 0) {
+    for (const f of failures) process.stderr.write(`  - ${f}\n`);
+    process.exit(1);
+  }
+}
+
+main();

@@ -4,7 +4,18 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="apple-itunes-app" id="smartAppBanner" content="app-id=6800161248, app-argument=https://trackme.shvms.in/live/">
-    <title>Live Location Tracker</title>
+    <meta name="theme-color" content="#0b1320">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="TrackMe">
+    <meta property="og:title" id="ogTitle" content="TrackMe Live Ride Tracking · Real-Time GPS Sharing">
+    <meta property="og:description" id="ogDesc" content="Follow this ride live in real time with private GPS breadcrumbs, speed, and ETA. Free & open-source.">
+    <meta property="og:image" id="ogImage" content="https://trackme.shvms.in/assets/trackme-social-card.svg">
+    <meta property="og:url" id="ogUrl" content="https://trackme.shvms.in/live">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" id="twTitle" content="TrackMe Live Ride Tracking">
+    <meta name="twitter:description" id="twDesc" content="Follow this ride live in real time with private GPS breadcrumbs, speed, and ETA. Free & open-source.">
+    <meta name="twitter:image" id="twImage" content="https://trackme.shvms.in/assets/trackme-social-card.svg">
+    <title id="pageTitle">TrackMe Live Ride Tracking · Real-Time GPS Sharing</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
@@ -449,6 +460,56 @@
         } else {
             updateUnitToggleButton();
         }
+
+        // CIE-031: Live Share Social Cards & Dynamic Metadata Resolution
+        function sanitizeRiderNameClient(rawName) {
+            if (!rawName || typeof rawName !== 'string') return null;
+            const stripped = rawName.replace(/<[^>]*>/g, '').replace(/[\r\n\t]/g, ' ').trim();
+            return stripped ? stripped.slice(0, 60) : null;
+        }
+
+        function updateSocialMetadata(riderName, isStopped) {
+            const cleanName = sanitizeRiderNameClient(riderName) || sanitizeRiderNameClient(queryParams.get('name'));
+            let titleText;
+            let descText;
+            if (cleanName) {
+                if (isStopped) {
+                    titleText = `${cleanName}'s Ride on TrackMe · Trip Completed`;
+                    descText = `View ${cleanName}'s completed route, distance, and duration on TrackMe. Private, free & open-source.`;
+                } else {
+                    titleText = `${cleanName}'s Live Ride · TrackMe`;
+                    descText = `Follow ${cleanName} live in real time on TrackMe with private GPS breadcrumbs, speed, and ETA. Free & open-source.`;
+                }
+            } else {
+                if (isStopped) {
+                    titleText = 'TrackMe Live Ride Tracking · Trip Completed';
+                    descText = 'View this completed route, distance, and duration on TrackMe. Private, free & open-source.';
+                } else {
+                    titleText = 'TrackMe Live Ride Tracking · Real-Time GPS Sharing';
+                    descText = 'Follow this ride live in real time with private GPS breadcrumbs, speed, and ETA. Free & open-source.';
+                }
+            }
+
+            document.title = titleText;
+            const ogTitle = document.getElementById('ogTitle');
+            if (ogTitle) ogTitle.setAttribute('content', titleText);
+            const twTitle = document.getElementById('twTitle');
+            if (twTitle) twTitle.setAttribute('content', titleText);
+
+            const ogDesc = document.getElementById('ogDesc');
+            if (ogDesc) ogDesc.setAttribute('content', descText);
+            const twDesc = document.getElementById('twDesc');
+            if (twDesc) twDesc.setAttribute('content', descText);
+
+            const canonicalUrl = sessionId
+                ? `${window.location.origin}/live/${encodeURIComponent(sessionId)}${cleanName ? `?name=${encodeURIComponent(cleanName)}` : ''}`
+                : `${window.location.origin}/live`;
+            const ogUrl = document.getElementById('ogUrl');
+            if (ogUrl) ogUrl.setAttribute('content', canonicalUrl);
+        }
+
+        // Initialize social metadata from query parameters immediately
+        updateSocialMetadata(null, false);
 
         // Generate a random viewer ID to track concurrent users
         let viewerId = sessionStorage.getItem('viewerId');
@@ -1176,6 +1237,7 @@
                         const pos = [lat, lon];
                         const username = data.username || 'Anonymous';
                         window.lastKnownUserName = data.username || '';
+                        updateSocialMetadata(data.username, isStopped);
 
                         // Build breadcrumb polyline coordinates from accumulated path ([lat, lng] tuples) + latest live point
                         const trailPoints = Array.isArray(data.path)
@@ -1551,16 +1613,19 @@
             document.getElementById('staleRefreshBtn')?.addEventListener('click', () => manualRefresh('stale_banner'));
             document.getElementById('connectionRetryBtn')?.addEventListener('click', () => manualRefresh('connection_retry'));
             document.getElementById('shareLiveSessionBtn')?.addEventListener('click', () => {
-                const liveUrl = window.location.href;
-                const user = window.lastKnownUserName;
-                const shareText = user ? `Track ${user}'s live ride on TrackMe: ${liveUrl}` : `Track this live ride on TrackMe: ${liveUrl}`;
+                const user = sanitizeRiderNameClient(window.lastKnownUserName) || sanitizeRiderNameClient(queryParams.get('name'));
+                const origin = window.location.origin;
+                const shareUrl = sessionId
+                    ? `${origin}/live/${encodeURIComponent(sessionId)}${user ? `?name=${encodeURIComponent(user)}` : ''}`
+                    : window.location.href;
+                const shareText = user ? `Track ${user}'s live ride on TrackMe: ${shareUrl}` : `Track this live ride on TrackMe: ${shareUrl}`;
                 emitTelemetry('live_share_viewer_share_clicked', { sessionId });
                 if (navigator.share) {
-                    navigator.share({ title: 'TrackMe Live Ride', text: shareText, url: liveUrl }).catch(() => {
-                        copyTextWithFallback(liveUrl, 'Live ride link copied!');
+                    navigator.share({ title: 'TrackMe Live Ride', text: shareText, url: shareUrl }).catch(() => {
+                        copyTextWithFallback(shareUrl, 'Live ride link copied!');
                     });
                 } else {
-                    copyTextWithFallback(liveUrl, 'Live ride link copied!');
+                    copyTextWithFallback(shareUrl, 'Live ride link copied!');
                 }
             });
 
