@@ -66,8 +66,8 @@ export default async function handler(
     const finalTtl = Math.min(MAX_SESSION_TTL_SECONDS, Math.max(remainingTtl, MIN_POST_RIDE_BUFFER_SECONDS));
 
     // Pipelined Redis persistence:
-    // Execute state update and stats increment in a single roundtrip via multi() when available,
-    // reducing serverless invocation time and defending free-tier Redis command budget.
+    // Execute state update, stats increment, and viewers set cleanup in a single roundtrip via multi()
+    // when available, reducing serverless invocation time and defending free-tier Redis quotas.
     try {
       if (typeof redis.multi === 'function') {
         const multi = redis.multi();
@@ -77,6 +77,7 @@ export default async function handler(
         if (elapsedHours > 0) {
           multi.incrByFloat('stats:total_hours', elapsedHours);
         }
+        multi.del(`session:${cleanSessionId}:viewers`);
         await multi.exec();
       } else {
         await redis.set(`session:${cleanSessionId}`, JSON.stringify(sessionData), {
@@ -85,12 +86,16 @@ export default async function handler(
         if (elapsedHours > 0) {
           await redis.incrByFloat('stats:total_hours', elapsedHours);
         }
+        await redis.del(`session:${cleanSessionId}:viewers`);
       }
     } catch (pipelineErr) {
       console.error('Error saving stopped session in pipeline, falling back:', pipelineErr);
       await redis.set(`session:${cleanSessionId}`, JSON.stringify(sessionData), {
         EX: finalTtl,
       });
+      try {
+        await redis.del(`session:${cleanSessionId}:viewers`);
+      } catch (_) {}
     }
 
     await captureTelemetryEvent(cleanSessionId, 'web_live_share_session_stopped', {
