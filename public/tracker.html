@@ -66,6 +66,13 @@
             text-align: center;
             max-width: calc(100vw - 32px);
         }
+        .status-row {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
         .status { font-weight: bold; }
         .active { color: green; }
         .offline { color: red; }
@@ -92,6 +99,47 @@
         .details { font-size: 0.88em; color: #4b5563; margin-top: 4px; }
         .power-save-badge { display: inline-flex; align-items: center; justify-content: center; gap: 4px; background: #fef3c7; color: #92400e; border: 1px solid #f59e0b; padding: 4px 10px; border-radius: 6px; font-size: 0.82em; font-weight: bold; margin-top: 8px; }
         .power-save-banner { margin-top: 6px; padding: 6px 10px; background: #fffbeb; border: 1px solid #fde68a; border-radius: 6px; color: #78350f; font-size: 0.8em; line-height: 1.35; max-width: 320px; text-align: left; }
+        .stale-signal-banner {
+            margin-top: 8px;
+            padding: 6px 12px;
+            background: #fef2f2;
+            border: 1px solid #fecaca;
+            border-radius: 8px;
+            color: #991b1b;
+            font-size: 0.82em;
+            display: inline-flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            max-width: 340px;
+        }
+        .stale-refresh-btn, .retry-btn {
+            background: #ffffff;
+            color: #991b1b;
+            border: 1px solid #fca5a5;
+            border-radius: 999px;
+            padding: 3px 10px;
+            font-size: 0.8em;
+            font-weight: 700;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+            transition: all 0.15s ease;
+        }
+        .retry-btn {
+            color: #d97706;
+            border-color: #fcd34d;
+        }
+        .stale-refresh-btn:hover {
+            background: #fee2e2;
+            border-color: #f87171;
+        }
+        .retry-btn:hover {
+            background: #fef3c7;
+            border-color: #f59e0b;
+        }
         .open-app-row {
             margin-top: 8px;
             display: flex;
@@ -207,7 +255,10 @@
 </head>
 <body>
     <div id="overlay">
-        <div class="status" id="statusText">Connecting...</div>
+        <div class="status-row">
+            <span class="status" id="statusText">Connecting...</span>
+            <button type="button" id="connectionRetryBtn" class="retry-btn" style="display: none;" title="Retry connection">Retry</button>
+        </div>
         <div class="user-name" id="userNameText"></div>
         <div class="destination-badge" id="destinationBadge" style="display: none;">
             <span>🏁</span> <span id="destinationText"></span>
@@ -219,6 +270,12 @@
         <div id="powerSaveContainer" style="display: none;">
             <div class="power-save-badge">⚠️ Device in Power Saving Mode</div>
             <div class="power-save-banner">Location updates arrive at longer intervals while Power Saving Mode is active, and live speed readings may be delayed or inaccurate.</div>
+        </div>
+        <div id="staleSignalContainer" style="display: none;">
+            <div class="stale-signal-banner">
+                <span id="staleSignalText">⚠️ Signal paused · Waiting for rider GPS</span>
+                <button type="button" id="staleRefreshBtn" class="stale-refresh-btn" title="Refresh live location">🔄 Refresh</button>
+            </div>
         </div>
     </div>
     <div id="map"></div>
@@ -630,6 +687,20 @@
             // CIE-007: Online / Offline Viewer State Management
             let isViewerOnline = typeof navigator !== 'undefined' && 'onLine' in navigator ? navigator.onLine : true;
 
+            // CIE-019: Manual Refresh & Connection Retry Trigger
+            function manualRefresh(triggerSource) {
+                if (isTripEnded) return;
+                emitTelemetry('live_share_viewer_manual_refresh', { sessionId, trigger: triggerSource });
+                const staleBtn = document.getElementById('staleRefreshBtn');
+                const retryBtn = document.getElementById('connectionRetryBtn');
+                if (staleBtn) staleBtn.innerText = 'Refreshing...';
+                if (retryBtn) retryBtn.innerText = 'Retrying...';
+                consecutiveFetchErrors = 0;
+                stopPollingTimers();
+                fetchLocation();
+                pingPresence();
+            }
+
             window.addEventListener('online', function() {
                 isViewerOnline = true;
                 consecutiveFetchErrors = 0;
@@ -638,6 +709,8 @@
                     statusEl.innerText = 'Reconnecting...';
                     statusEl.className = 'status delayed';
                 }
+                const retryBtn = document.getElementById('connectionRetryBtn');
+                if (retryBtn) retryBtn.style.display = 'none';
                 // Immediately resume polling and presence ping on reconnection without waiting for backoff
                 if (!isTripEnded && !isFetchInProgress) {
                     fetchLocation();
@@ -653,6 +726,11 @@
                 if (statusEl && !isTripEnded) {
                     statusEl.innerText = 'Viewer Offline';
                     statusEl.className = 'status offline';
+                }
+                const retryBtn = document.getElementById('connectionRetryBtn');
+                if (retryBtn && !isTripEnded) {
+                    retryBtn.innerText = 'Retry';
+                    retryBtn.style.display = 'inline-flex';
                 }
                 emitTelemetry('live_share_viewer_offline', { sessionId });
             });
@@ -754,6 +832,11 @@
 
                     const data = await response.json();
                     consecutiveFetchErrors = 0;
+                    const retryBtn = document.getElementById('connectionRetryBtn');
+                    if (retryBtn) {
+                        retryBtn.innerText = 'Retry';
+                        retryBtn.style.display = 'none';
+                    }
 
                     if (data.initialDuration) {
                         window.lastKnownDuration = data.initialDuration;
@@ -951,6 +1034,10 @@
                             const durationLabel = durationStr ? ` · Duration: ${durationStr}` : '';
                             document.getElementById('detailsText').innerText =
                                 endedTimeStr ? `${stopText} at ${endedTimeStr}${durationLabel} · Final location shown` : `${stopText}${durationLabel} · Final location shown`;
+                            const staleContainer = document.getElementById('staleSignalContainer');
+                            if (staleContainer) staleContainer.style.display = 'none';
+                            const retryBtn = document.getElementById('connectionRetryBtn');
+                            if (retryBtn) retryBtn.style.display = 'none';
                             stopPollingTimers();
                             revealGetApp(true);
                             return;
@@ -959,12 +1046,25 @@
                         if (isStale) {
                             document.getElementById('statusText').innerText = 'Signal Paused';
                             document.getElementById('statusText').className = 'status delayed';
-                        } else if (isDelayed) {
-                            document.getElementById('statusText').innerText = 'Delayed Updates';
-                            document.getElementById('statusText').className = 'status delayed';
+                            const staleContainer = document.getElementById('staleSignalContainer');
+                            const staleText = document.getElementById('staleSignalText');
+                            const staleBtn = document.getElementById('staleRefreshBtn');
+                            if (staleContainer && staleText) {
+                                const mins = Math.floor(timeAgo / 60);
+                                staleText.innerText = mins >= 1 ? `⚠️ Signal paused · Waiting for rider GPS (${mins}m ago)` : '⚠️ Signal paused · Waiting for rider GPS';
+                                staleContainer.style.display = 'block';
+                                if (staleBtn) staleBtn.innerText = '🔄 Refresh';
+                            }
                         } else {
-                            document.getElementById('statusText').innerText = 'Live';
-                            document.getElementById('statusText').className = 'status active';
+                            const staleContainer = document.getElementById('staleSignalContainer');
+                            if (staleContainer) staleContainer.style.display = 'none';
+                            if (isDelayed) {
+                                document.getElementById('statusText').innerText = 'Delayed Updates';
+                                document.getElementById('statusText').className = 'status delayed';
+                            } else {
+                                document.getElementById('statusText').innerText = 'Live';
+                                document.getElementById('statusText').className = 'status active';
+                            }
                         }
 
                         let speedDisplay = 'N/A';
@@ -992,6 +1092,10 @@
                         document.getElementById('statusText').innerText = 'Sharing Stopped';
                         document.getElementById('statusText').className = 'status offline';
                         document.getElementById('detailsText').innerText = data.stopReason || data.endReason || 'The rider has ended this live trip.';
+                        const staleContainer = document.getElementById('staleSignalContainer');
+                        if (staleContainer) staleContainer.style.display = 'none';
+                        const retryBtn = document.getElementById('connectionRetryBtn');
+                        if (retryBtn) retryBtn.style.display = 'none';
                         stopPollingTimers();
                         revealGetApp(true);
                         return;
@@ -1031,6 +1135,11 @@
                         document.getElementById('statusText').className = 'status offline';
                     }
                     if (!isTripEnded) {
+                        const retryBtn = document.getElementById('connectionRetryBtn');
+                        if (retryBtn) {
+                            retryBtn.innerText = 'Retry';
+                            retryBtn.style.display = 'inline-flex';
+                        }
                         const backoffDelay = computeViewerBackoffMs(consecutiveFetchErrors);
                         scheduleNextFetch(backoffDelay);
                     }
@@ -1071,6 +1180,9 @@
                     map.setView(window.lastRiderPos, 15);
                 }
             });
+
+            document.getElementById('staleRefreshBtn')?.addEventListener('click', () => manualRefresh('stale_banner'));
+            document.getElementById('connectionRetryBtn')?.addEventListener('click', () => manualRefresh('connection_retry'));
 
             document.addEventListener('visibilitychange', () => {
                 if (document.hidden) {

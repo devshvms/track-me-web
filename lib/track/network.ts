@@ -173,3 +173,66 @@ export class ViewerNetworkStateMachine {
         return true;
     }
 }
+
+/**
+ * Stale signal threshold in seconds.
+ * If 180 seconds (3 minutes) have passed without a fresh coordinate update from an active trip,
+ * the viewer considers the signal paused (e.g., rider in a dead zone, tunnel, or app suspended).
+ */
+export const STALE_SIGNAL_THRESHOLD_SECONDS = 180;
+
+/**
+ * Checks whether an active location timestamp has gone stale (>= 180s without updates).
+ *
+ * @param timestampIso ISO timestamp string or epoch ms number
+ * @param nowMs Current timestamp in epoch ms (defaults to Date.now())
+ * @param thresholdSeconds Stale threshold in seconds (defaults to 180s)
+ */
+export function isSignalStale(
+    timestampIso: string | number | null | undefined,
+    nowMs: number = Date.now(),
+    thresholdSeconds: number = STALE_SIGNAL_THRESHOLD_SECONDS
+): boolean {
+    if (!timestampIso) return false;
+    let parsedMs: number;
+    if (typeof timestampIso === 'number') {
+        parsedMs = timestampIso;
+    } else {
+        const num = Number(timestampIso);
+        if (!isNaN(num) && num > 0) {
+            parsedMs = num;
+        } else {
+            parsedMs = new Date(timestampIso).getTime();
+        }
+    }
+    if (isNaN(parsedMs) || parsedMs <= 0) return false;
+
+    const diffSeconds = Math.max(0, (nowMs - parsedMs) / 1000);
+    return diffSeconds >= thresholdSeconds;
+}
+
+/**
+ * Formats user-facing stale signal banner text including elapsed minutes.
+ *
+ * @param elapsedSeconds Seconds elapsed since last coordinate
+ */
+export function formatStaleSignalText(elapsedSeconds: number): string {
+    const safeSec = Math.max(0, Math.floor(elapsedSeconds));
+    if (safeSec < 60) {
+        return 'Signal paused · Waiting for rider GPS';
+    }
+    const mins = Math.floor(safeSec / 60);
+    return `Signal paused · Waiting for rider GPS (${mins}m ago)`;
+}
+
+/**
+ * Evaluates whether the connection retry button should be visible.
+ * Visible if the client is currently offline or has encountered 1 or more consecutive fetch errors.
+ *
+ * @param consecutiveFetchErrors Number of consecutive fetch failures
+ * @param isOnline Whether the browser reports online connectivity
+ */
+export function shouldShowConnectionRetry(consecutiveFetchErrors: number, isOnline: boolean = true): boolean {
+    return !isOnline || consecutiveFetchErrors >= 1;
+}
+

@@ -7,6 +7,10 @@ import {
     LOW_BATTERY_THRESHOLD,
     shouldSwitchTileMirror,
     ViewerNetworkStateMachine,
+    STALE_SIGNAL_THRESHOLD_SECONDS,
+    isSignalStale,
+    formatStaleSignalText,
+    shouldShowConnectionRetry,
 } from '../lib/track/network';
 
 describe('Live Viewer Network Resilience & Tile Fallback (CIE-007)', () => {
@@ -159,6 +163,60 @@ describe('Live Viewer Network Resilience & Tile Fallback (CIE-007)', () => {
             assert.equal(sm.consumeReconnection(), true);
             assert.equal(sm.wasOffline, false);
             assert.equal(sm.consumeReconnection(), false);
+        });
+    });
+
+    describe('Stale Signal Detection & Banner Formatting (CIE-019)', () => {
+        it('identifies fresh coordinates within 180s threshold as active', () => {
+            const now = 1_700_000_000_000;
+            const freshIso = new Date(now - 30_000).toISOString(); // 30s ago
+            assert.equal(isSignalStale(freshIso, now), false);
+
+            const exactlyUnder = new Date(now - 179_000).toISOString();
+            assert.equal(isSignalStale(exactlyUnder, now), false);
+        });
+
+        it('identifies coordinates older than 180s as stale', () => {
+            const now = 1_700_000_000_000;
+            const staleIso = new Date(now - 180_000).toISOString(); // exactly 180s ago
+            assert.equal(isSignalStale(staleIso, now), true);
+
+            const veryStaleIso = new Date(now - 300_000).toISOString(); // 5m ago
+            assert.equal(isSignalStale(veryStaleIso, now), true);
+
+            const numericEpoch = now - 200_000;
+            assert.equal(isSignalStale(numericEpoch, now), true);
+        });
+
+        it('handles null, undefined, and malformed timestamps gracefully', () => {
+            assert.equal(isSignalStale(null), false);
+            assert.equal(isSignalStale(undefined), false);
+            assert.equal(isSignalStale('invalid-date'), false);
+            assert.equal(isSignalStale(0), false);
+            assert.equal(isSignalStale(-500), false);
+        });
+
+        it('formats user-facing stale signal banner message with elapsed time', () => {
+            assert.equal(formatStaleSignalText(45), 'Signal paused · Waiting for rider GPS');
+            assert.equal(formatStaleSignalText(180), 'Signal paused · Waiting for rider GPS (3m ago)');
+            assert.equal(formatStaleSignalText(245), 'Signal paused · Waiting for rider GPS (4m ago)');
+            assert.equal(formatStaleSignalText(0), 'Signal paused · Waiting for rider GPS');
+        });
+    });
+
+    describe('Connection Retry Visibility (CIE-019)', () => {
+        it('hides retry button when online with zero consecutive errors', () => {
+            assert.equal(shouldShowConnectionRetry(0, true), false);
+        });
+
+        it('shows retry button when offline even with zero consecutive errors', () => {
+            assert.equal(shouldShowConnectionRetry(0, false), true);
+        });
+
+        it('shows retry button when 1 or more consecutive fetch errors occur', () => {
+            assert.equal(shouldShowConnectionRetry(1, true), true);
+            assert.equal(shouldShowConnectionRetry(3, true), true);
+            assert.equal(shouldShowConnectionRetry(2, false), true);
         });
     });
 });
