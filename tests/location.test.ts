@@ -375,6 +375,9 @@ test('location GET sets Cache-Control header based on session state and 404', as
   await locationHandler({ method: 'GET', query: { sessionId: stoppedSessionId } } as any, stoppedRes as any);
   assert.strictEqual(stoppedRes.captured.statusCode, 200);
   assert.strictEqual(stoppedRes.captured.headers['Cache-Control'], 's-maxage=300, max-age=60, stale-while-revalidate');
+  assert.strictEqual(stoppedRes.captured.body.status, 'stopped');
+  assert.strictEqual(stoppedRes.captured.body.stopReason, 'Arrived at destination');
+  assert.ok(typeof stoppedRes.captured.body.endedAt === 'string');
 
   // Test missing session GET (404)
   const missingRes = fakeResponse();

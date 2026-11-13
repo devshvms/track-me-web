@@ -864,8 +864,10 @@
                             document.getElementById('statusText').innerText = 'Sharing Stopped';
                             document.getElementById('statusText').className = 'status offline';
                             document.getElementById('userNameText').innerText = `${username}'s Final Location`;
+                            const stopText = data.stopReason || data.endReason || 'The rider has ended this live trip.';
+                            const endedTimeStr = data.endedAt ? new Date(data.endedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : null;
                             document.getElementById('detailsText').innerText =
-                                `${data.stopReason || 'The rider has ended this trip.'} · Updated ${timeAgoStr}`;
+                                endedTimeStr ? `${stopText} at ${endedTimeStr} · Final location shown` : `${stopText} · Final location shown`;
                             stopPollingTimers();
                             revealGetApp(true);
                             return;
@@ -891,7 +893,7 @@
                     } else if (isStopped) {
                         document.getElementById('statusText').innerText = 'Sharing Stopped';
                         document.getElementById('statusText').className = 'status offline';
-                        document.getElementById('detailsText').innerText = data.stopReason || 'The rider has ended this trip.';
+                        document.getElementById('detailsText').innerText = data.stopReason || data.endReason || 'The rider has ended this live trip.';
                         stopPollingTimers();
                         revealGetApp(true);
                         return;

@@ -34,7 +34,10 @@ export default async function handler(
     }
 
     sessionData.status = 'stopped';
-    sessionData.stopReason = stopReason;
+    sessionData.stopReason = (typeof stopReason === 'string' && stopReason.trim().length > 0)
+      ? stopReason.trim()
+      : 'The rider has ended this live trip.';
+    sessionData.endedAt = sessionData.endedAt || new Date().toISOString();
 
     const startTimestamp = sessionData.startedAt || (Date.now() - (sessionData.initialDuration || 0) * 60 * 1000);
     const elapsedMinutes = Math.max(0, (Date.now() - startTimestamp) / (1000 * 60));
