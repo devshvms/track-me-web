@@ -742,3 +742,119 @@ export function decimatePolyline(
     return result;
 }
 
+/**
+ * CIE-039: Calculates total elapsed duration in seconds between two ISO timestamps or millisecond epochs.
+ * Returns null if start timestamp is missing, invalid, or in the future relative to end.
+ */
+export function computeElapsedSeconds(
+    startedAt: number | string | null | undefined,
+    endedAt?: number | string | null | undefined
+): number | null {
+    if (!startedAt) return null;
+    const startMs = typeof startedAt === 'number' ? startedAt : new Date(startedAt).getTime();
+    if (!Number.isFinite(startMs) || startMs <= 0) return null;
+
+    const endMs = endedAt
+        ? (typeof endedAt === 'number' ? endedAt : new Date(endedAt).getTime())
+        : Date.now();
+    if (!Number.isFinite(endMs)) return null;
+
+    const diffSeconds = Math.floor((endMs - startMs) / 1000);
+    return diffSeconds >= 0 ? diffSeconds : null;
+}
+
+/**
+ * CIE-039: Calculates average speed in km/h or mph for a completed or active trip.
+ * Rejects negative distances, non-finite inputs, short durations (< 5 seconds),
+ * and supersonic single-hop glitches (> 200 km/h).
+ */
+export function computeAverageSpeed(
+    distanceMeters: number | null | undefined,
+    durationSeconds: number | null | undefined,
+    useMiles: boolean = false
+): number | null {
+    if (distanceMeters === null || distanceMeters === undefined || !Number.isFinite(distanceMeters) || distanceMeters < 0) {
+        return null;
+    }
+    if (durationSeconds === null || durationSeconds === undefined || !Number.isFinite(durationSeconds) || durationSeconds < 5) {
+        return null;
+    }
+    if (distanceMeters === 0) {
+        return 0;
+    }
+
+    const speedKmh = (distanceMeters / 1000) / (durationSeconds / 3600);
+    if (!Number.isFinite(speedKmh) || speedKmh > 200) {
+        return null;
+    }
+
+    const speed = useMiles ? speedKmh * 0.621371 : speedKmh;
+    return Math.round(speed * 10) / 10;
+}
+
+/**
+ * CIE-039: Formats numeric average speed into a localized/unit-aware string ("21.4 km/h" or "13.3 mph").
+ */
+export function formatAverageSpeed(
+    averageSpeed: number | null | undefined,
+    useMiles: boolean = false
+): string | null {
+    if (averageSpeed === null || averageSpeed === undefined || !Number.isFinite(averageSpeed) || averageSpeed < 0) {
+        return null;
+    }
+    const unit = useMiles ? 'mph' : 'km/h';
+    return `${averageSpeed.toFixed(1)} ${unit}`;
+}
+
+export interface ConcludedSummary {
+    statusText: string;
+    detailsText: string;
+    a11yText: string;
+    avgSpeedStr: string | null;
+    durationStr: string;
+    distanceStr: string;
+}
+
+/**
+ * CIE-039: Constructs a unified summary display and screen-reader accessibility description
+ * for a concluded live share session.
+ */
+export function formatConcludedSummary(
+    stopReason: string | null | undefined,
+    totalDistanceMeters: number,
+    durationSeconds: number,
+    useMiles: boolean = false
+): ConcludedSummary {
+    const cleanStop = stopReason?.trim() || 'The rider has ended this live trip.';
+    const safeDurationSec = Math.max(0, Number.isFinite(durationSeconds) ? durationSeconds : 0);
+    const durationMinutes = Math.floor(safeDurationSec / 60);
+    const hours = Math.floor(durationMinutes / 60);
+    const minutes = durationMinutes % 60;
+    const durationStr = durationMinutes < 1 ? '< 1m' : (hours === 0 ? `${minutes}m` : (minutes === 0 ? `${hours}h` : `${hours}h ${minutes}m`));
+
+    const distanceUnit = useMiles ? 'mi' : 'km';
+    const distanceVal = useMiles ? totalDistanceMeters / 1609.344 : totalDistanceMeters / 1000.0;
+    const distanceStr = totalDistanceMeters <= 0 ? (useMiles ? '0.0 mi' : '0.0 km') : `${distanceVal.toFixed(1)} ${distanceUnit}`;
+
+    const avgSpeed = computeAverageSpeed(totalDistanceMeters, safeDurationSec, useMiles);
+    const avgSpeedStr = formatAverageSpeed(avgSpeed, useMiles);
+
+    const parts = [cleanStop];
+    if (durationStr) parts.push(`Duration: ${durationStr}`);
+    if (distanceStr) parts.push(`Distance: ${distanceStr}`);
+    if (avgSpeedStr) parts.push(`Avg Speed: ${avgSpeedStr}`);
+
+    const detailsText = parts.join(' · ');
+    const a11yText = `Trip ended. ${cleanStop}. Total distance ${distanceStr}. Duration ${durationStr}.${avgSpeedStr ? ` Average speed ${avgSpeedStr}.` : ''}`;
+
+    return {
+        statusText: 'Trip Completed',
+        detailsText,
+        a11yText,
+        avgSpeedStr,
+        durationStr,
+        distanceStr,
+    };
+}
+
+
