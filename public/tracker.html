@@ -497,6 +497,34 @@
                 border-color: rgba(16, 185, 129, 0.5);
             }
         }
+
+        /* CIE-036: Reduced Motion & Screen Reader Accessibility */
+        .sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border-width: 0;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.001ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.001ms !important;
+                scroll-behavior: auto !important;
+            }
+            .heading-cone-wrap {
+                transition: none !important;
+            }
+            .web-toast {
+                transition: none !important;
+            }
+        }
     </style>
 </head>
 <body>
@@ -1237,6 +1265,22 @@
                 }
             }
 
+            // CIE-036: Reduced Motion & Screen Reader Accessibility
+            function isReducedMotionPreferred() {
+                return typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+            }
+
+            function announceA11y(message) {
+                if (!message) return;
+                const announcer = document.getElementById('a11yLiveAnnouncer');
+                if (announcer) {
+                    announcer.textContent = '';
+                    setTimeout(() => {
+                        announcer.textContent = message;
+                    }, 50);
+                }
+            }
+
             function copyTextWithFallback(text, successMessage) {
                 const feedback = successMessage || 'Link copied to clipboard!';
                 if (navigator.clipboard && window.isSecureContext) {
@@ -1327,6 +1371,7 @@
                 if (retryBtn) retryBtn.style.display = 'none';
                 if (!isTripEnded) {
                     showNetworkReconnectedToast();
+                    announceA11y('Network reconnected · Updating location');
                 }
                 // Immediately resume polling and presence ping on reconnection without waiting for backoff
                 if (!isTripEnded && !isFetchInProgress) {
@@ -1351,6 +1396,7 @@
                 }
                 if (!isTripEnded) {
                     showNetworkOfflineToast();
+                    announceA11y('Network offline · Retrying automatically');
                 }
                 emitTelemetry('live_share_viewer_offline', { sessionId });
             });
@@ -1687,10 +1733,10 @@
                                 isStopped,
                             });
                         } else if (!isStopped && window.isFollowingRider) {
-                            // CIE-032: Throttle camera panning when rider is stationary or within GPS jitter radius (< 3m)
+                            // CIE-032 / CIE-036: Throttle camera panning when rider is stationary or within GPS jitter radius (< 3m)
                             const distMeters = window.lastRiderPos ? map.distance(window.lastRiderPos, pos) : 999;
                             if (distMeters >= 3.0) {
-                                map.panTo(pos, { animate: true });
+                                map.panTo(pos, { animate: !isReducedMotionPreferred() });
                             }
                         }
 
@@ -1915,7 +1961,7 @@
                 window.isFollowingRider = true;
                 updateFollowButtonState();
                 if (window.lastRiderPos) {
-                    map.setView(window.lastRiderPos, Math.max(map.getZoom(), 15), { animate: true });
+                    map.setView(window.lastRiderPos, Math.max(map.getZoom(), 15), { animate: !isReducedMotionPreferred() });
                 }
             });
 
@@ -1923,9 +1969,9 @@
                 window.isFollowingRider = false;
                 updateFollowButtonState();
                 if (window.lastTrailPoints && window.lastTrailPoints.length >= 2) {
-                    map.fitBounds(L.latLngBounds(window.lastTrailPoints), { padding: [70, 70], maxZoom: 16 });
+                    map.fitBounds(L.latLngBounds(window.lastTrailPoints), { padding: [70, 70], maxZoom: 16, animate: !isReducedMotionPreferred() });
                 } else if (window.lastRiderPos) {
-                    map.setView(window.lastRiderPos, 15);
+                    map.setView(window.lastRiderPos, 15, { animate: !isReducedMotionPreferred() });
                 }
             });
 
@@ -2016,5 +2062,6 @@
         }
     </script>
     <div id="webToast" class="web-toast" role="status" aria-live="polite"></div>
+    <div id="a11yLiveAnnouncer" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
 </body>
 </html>

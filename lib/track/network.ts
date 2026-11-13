@@ -541,3 +541,34 @@ export function evaluateViewportPreservation(
     };
 }
 
+/**
+ * CIE-036: Reduced Motion & Screen Reader Accessibility Evaluation.
+ */
+export function shouldAnimateViewerTransition(prefersReducedMotion: boolean): boolean {
+    return !prefersReducedMotion;
+}
+
+export type A11yViewerEvent = 'offline' | 'reconnected' | 'stale' | 'ended' | 'low_battery';
+
+export function formatA11yLiveAnnouncement(
+    event: A11yViewerEvent,
+    riderName?: string | null,
+    batteryLevel?: number | null
+): string {
+    const name = riderName?.trim() || 'Rider';
+    switch (event) {
+        case 'offline':
+            return 'Network offline · Retrying automatically';
+        case 'reconnected':
+            return 'Network reconnected · Updating location';
+        case 'stale':
+            return 'Signal paused · Waiting for rider GPS';
+        case 'ended':
+            return `${name} has ended this live trip`;
+        case 'low_battery':
+            return typeof batteryLevel === 'number' && Number.isFinite(batteryLevel)
+                ? `Rider phone battery low: ${Math.round(batteryLevel)}%`
+                : 'Rider phone battery low';
+    }
+}
+

@@ -23,6 +23,8 @@ import {
     evaluateNetworkToastState,
     evaluateNetworkTransition,
     evaluateViewportPreservation,
+    shouldAnimateViewerTransition,
+    formatA11yLiveAnnouncement,
 } from '../lib/track/network';
 
 describe('Live Viewer Network Resilience & Tile Fallback (CIE-007)', () => {
@@ -505,6 +507,23 @@ describe('Live Viewer Network Resilience & Tile Fallback (CIE-007)', () => {
             assert.equal(state.targetZoom, 12);
             assert.equal(state.shouldPanToRider, false);
             assert.equal(state.preservedUnitSystem, 'imperial');
+        });
+    });
+
+    describe('Reduced Motion & Screen Reader Accessibility (CIE-036)', () => {
+        it('suppresses animations when user prefers reduced motion', () => {
+            assert.equal(shouldAnimateViewerTransition(true), false);
+            assert.equal(shouldAnimateViewerTransition(false), true);
+        });
+
+        it('formats polite screen reader live announcements for core tracking events', () => {
+            assert.equal(formatA11yLiveAnnouncement('offline'), 'Network offline · Retrying automatically');
+            assert.equal(formatA11yLiveAnnouncement('reconnected'), 'Network reconnected · Updating location');
+            assert.equal(formatA11yLiveAnnouncement('stale'), 'Signal paused · Waiting for rider GPS');
+            assert.equal(formatA11yLiveAnnouncement('ended', 'Priya'), 'Priya has ended this live trip');
+            assert.equal(formatA11yLiveAnnouncement('ended', null), 'Rider has ended this live trip');
+            assert.equal(formatA11yLiveAnnouncement('low_battery', null, 12), 'Rider phone battery low: 12%');
+            assert.equal(formatA11yLiveAnnouncement('low_battery', null, null), 'Rider phone battery low');
         });
     });
 });
