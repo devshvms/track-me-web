@@ -18,6 +18,7 @@ import {
 export const VIEWER_VISIBLE_FIELDS = [
   'username',
   'status',
+  'startedAt',
   'stopReason',
   'endReason',
   'endedAt',
