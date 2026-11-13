@@ -1143,14 +1143,19 @@
                             marker.setPopupContent(popupContent);
                         }
 
+                        const speedVal = data.lastLocation ? data.lastLocation.speed : null;
+                        const speedKmh = typeof speedVal === 'number' && Number.isFinite(speedVal) ? Math.max(0, speedVal) : null;
+                        const isStationary = speedKmh === null || speedKmh < 3.0;
+                        const hasHeading = headingDeg !== null && !isStopped && !isStationary;
+
                         const markerEl = marker.getElement();
                         if (markerEl) {
                             const nameBadge = markerEl.querySelector('.human-marker');
                             if (nameBadge) nameBadge.textContent = username;
                             const coneWrap = markerEl.querySelector('.heading-cone-wrap');
                             if (coneWrap) {
-                                coneWrap.innerHTML = buildHeadingConeSvg(headingDeg !== null && !isStopped);
-                                if (headingDeg !== null && !isStopped) {
+                                coneWrap.innerHTML = buildHeadingConeSvg(hasHeading);
+                                if (hasHeading) {
                                     if (window.lastContinuousHeading === undefined || window.lastContinuousHeading === null) {
                                         window.lastContinuousHeading = headingDeg;
                                     } else {
@@ -1317,10 +1322,36 @@
                             }
                         }
 
-                        let speedDisplay = 'N/A';
-                        if (speed !== undefined && speed !== null) {
-                            const roundedSpeed = Math.round(speed);
-                            speedDisplay = isDelayed ? `~${roundedSpeed} km/h ⚠️ (delayed)` : `${roundedSpeed} km/h`;
+                        const useMiles = queryParams.get('units') === 'imperial' || queryParams.get('unit') === 'imperial' || queryParams.get('units') === 'mi' || queryParams.get('unit') === 'mi';
+                        const locTimeMs = (typeof timestamp === 'number' ? timestamp : new Date(timestamp).getTime());
+                        const nowMs = Date.now();
+
+                        if (speedKmh !== null && speedKmh >= 3.0) {
+                            window.lastStoppedSinceMs = null;
+                        } else {
+                            if (!window.lastStoppedSinceMs) {
+                                window.lastStoppedSinceMs = (Number.isFinite(locTimeMs) && (nowMs - locTimeMs) < 1800000) ? locTimeMs : nowMs;
+                            }
+                        }
+
+                        let speedDisplay = '0 km/h';
+                        if (speedKmh !== null && speedKmh >= 3.0) {
+                            const rawVal = useMiles ? (speedKmh * 0.621371) : speedKmh;
+                            const roundedSpeed = Math.round(rawVal);
+                            const unit = useMiles ? 'mph' : 'km/h';
+                            speedDisplay = isDelayed ? `~${roundedSpeed} ${unit} ⚠️ (delayed)` : `${roundedSpeed} ${unit}`;
+                        } else if (window.lastStoppedSinceMs) {
+                            const stoppedMinutes = Math.floor(Math.max(0, nowMs - window.lastStoppedSinceMs) / 60000);
+                            if (stoppedMinutes >= 1) {
+                                const stoppedDur = formatElapsedDuration(window.lastStoppedSinceMs, nowMs) || `${stoppedMinutes}m`;
+                                speedDisplay = `Stopped · ${stoppedDur}`;
+                            } else {
+                                const unit = useMiles ? 'mph' : 'km/h';
+                                speedDisplay = `0 ${unit}`;
+                            }
+                        } else {
+                            const unit = useMiles ? 'mph' : 'km/h';
+                            speedDisplay = `0 ${unit}`;
                         }
 
                         document.getElementById('userNameText').innerText = `${username}'s Live Location`;

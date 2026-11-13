@@ -124,3 +124,74 @@ export function evaluateDeadlineStatus(
     displayText,
   };
 }
+
+export const STATIONARY_SPEED_THRESHOLD_KMH = 3.0; // ~0.83 m/s
+
+export interface SpeedOrStoppedStatus {
+  isStationary: boolean;
+  isStoppedTimerActive: boolean;
+  stoppedDurationMinutes: number;
+  displayText: string;
+  a11yText: string;
+}
+
+/**
+ * Evaluates live rider speed vs stationary state and stopped duration (CIE-029).
+ * When speed < 3.0 km/h and stationary for >= 60 seconds, displays "Stopped · Xm"
+ * instead of a static "0 km/h" to reassure viewers that the ride is active and paused.
+ */
+export function evaluateSpeedOrStopped(
+  speedKmh?: number | null,
+  stoppedSinceMs?: number | null,
+  referenceNowMs?: number,
+  useMiles: boolean = false,
+  isDelayed: boolean = false,
+): SpeedOrStoppedStatus {
+  const isSpeedValid = typeof speedKmh === 'number' && Number.isFinite(speedKmh);
+  const effectiveSpeed = isSpeedValid ? Math.max(0, speedKmh) : null;
+  const isStationary = effectiveSpeed === null || effectiveSpeed < STATIONARY_SPEED_THRESHOLD_KMH;
+  const unit = useMiles ? 'mph' : 'km/h';
+
+  if (!isStationary) {
+    const rawVal = useMiles ? (effectiveSpeed! * 0.621371) : effectiveSpeed!;
+    const roundedSpeed = Math.round(rawVal);
+    const displayText = isDelayed ? `~${roundedSpeed} ${unit} ⚠️ (delayed)` : `${roundedSpeed} ${unit}`;
+    const a11yText = `Rider speed: ${roundedSpeed} ${unit}`;
+    return {
+      isStationary: false,
+      isStoppedTimerActive: false,
+      stoppedDurationMinutes: 0,
+      displayText,
+      a11yText,
+    };
+  }
+
+  const nowMs = typeof referenceNowMs === 'number' && Number.isFinite(referenceNowMs)
+    ? referenceNowMs
+    : Date.now();
+
+  const stoppedStartMs = parseTimestampMs(stoppedSinceMs);
+  if (stoppedStartMs && nowMs >= stoppedStartMs) {
+    const stoppedDurationMs = Math.max(0, nowMs - stoppedStartMs);
+    const stoppedMinutes = Math.floor(stoppedDurationMs / 60_000);
+
+    if (stoppedMinutes >= 1) {
+      const durationStr = formatElapsedDuration(stoppedStartMs, nowMs, nowMs) || `${stoppedMinutes}m`;
+      return {
+        isStationary: true,
+        isStoppedTimerActive: true,
+        stoppedDurationMinutes: stoppedMinutes,
+        displayText: `Stopped · ${durationStr}`,
+        a11yText: `Rider stopped for ${durationStr}`,
+      };
+    }
+  }
+
+  return {
+    isStationary: true,
+    isStoppedTimerActive: false,
+    stoppedDurationMinutes: 0,
+    displayText: `0 ${unit}`,
+    a11yText: 'Rider stationary',
+  };
+}
