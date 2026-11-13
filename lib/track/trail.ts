@@ -1,6 +1,8 @@
 export const MAX_PATH_POINTS = 300;
 export const MIN_POINT_DISTANCE_METERS = 15;
 export const STALE_VIEWER_WINDOW_MS = 40_000;
+export const MAX_PLAUSIBLE_SPEED_MPS = 250; // 250 m/s ~ 900 km/h (airline cruising speed)
+export const MAX_PLAUSIBLE_JUMP_METERS = 50_000; // 50 km single-hop clamp for ground tracking
 
 export type LatLngTuple = [number, number];
 
@@ -21,6 +23,72 @@ export function isValidLatLng(lat: unknown, lng: unknown): lat is number {
     lng >= -180 &&
     lng <= 180
   );
+}
+
+/** Parses numeric or string coordinate safely into a finite float or null. */
+export function parseCoordinate(val: unknown): number | null {
+  if (typeof val === 'number') {
+    return Number.isFinite(val) ? val : null;
+  }
+  if (typeof val === 'string') {
+    const trimmed = val.trim();
+    if (!trimmed) return null;
+    const num = Number(trimmed);
+    return Number.isFinite(num) ? num : null;
+  }
+  return null;
+}
+
+/** Checks whether a coordinate is located at or near Null Island (0, 0). */
+export function isNullIsland(lat: number, lng: number): boolean {
+  return Math.abs(lat) < 1e-4 && Math.abs(lng) < 1e-4;
+}
+
+/**
+ * Validates whether a new coordinate update is plausible relative to the last recorded point.
+ * Detects and rejects:
+ * 1. Jumps to Null Island (0, 0) when prior points were recorded elsewhere (> 50 km away).
+ * 2. Supersonic jumps (> 250 m/s or > 50 km single hop) caused by cellular tower triangulation glitches.
+ */
+export function isImplausibleJump(
+  lastPoint: LatLngTuple,
+  newPoint: LatLngTuple,
+  lastTimestamp?: unknown,
+  newTimestamp?: unknown,
+  maxSpeedMps: number = MAX_PLAUSIBLE_SPEED_MPS,
+): boolean {
+  const dist = haversineMeters(lastPoint, newPoint);
+
+  // If new point is Null Island and prior point was far away, it's an uninitialized hardware reading
+  if (isNullIsland(newPoint[0], newPoint[1]) && dist > 50_000) {
+    return true;
+  }
+
+  // Normal displacement within 100 meters is always plausible
+  if (dist < 100) {
+    return false;
+  }
+
+  // Check implied speed if timestamps are available
+  let deltaSec: number | null = null;
+  if (lastTimestamp && newTimestamp) {
+    const t1 = new Date(String(lastTimestamp)).getTime();
+    const t2 = new Date(String(newTimestamp)).getTime();
+    if (Number.isFinite(t1) && Number.isFinite(t2) && t2 >= t1) {
+      deltaSec = Math.max(1, (t2 - t1) / 1000);
+    }
+  }
+
+  if (deltaSec !== null) {
+    const impliedSpeed = dist / deltaSec;
+    if (impliedSpeed > maxSpeedMps) {
+      return true;
+    }
+  } else if (dist > MAX_PLAUSIBLE_JUMP_METERS) {
+    return true;
+  }
+
+  return false;
 }
 
 /** Haversine distance in meters between two [lat, lng] points. */
@@ -78,15 +146,17 @@ export function compactPath(
 
 /**
  * Appends `[lat, lng]` to the session's bounded breadcrumb trail if displaced >= 15 m
- * from the last stored trail point, and computes a fallback bearing when GPS heading
- * is absent/invalid during movement.
+ * from the last stored trail point, filters out implausible GPS glitch jumps,
+ * and computes a fallback bearing when GPS heading is absent/invalid during movement.
  */
 export function appendPathPoint(
   existingPath: unknown,
   lat: number,
   lng: number,
   rawHeading?: unknown,
-): { path: LatLngTuple[]; heading: number | null } {
+  lastTimestamp?: unknown,
+  newTimestamp?: unknown,
+): { path: LatLngTuple[]; heading: number | null; isJumpFiltered: boolean } {
   const sanitized: LatLngTuple[] = Array.isArray(existingPath)
     ? existingPath.filter(
         (entry): entry is LatLngTuple =>
@@ -99,11 +169,17 @@ export function appendPathPoint(
   const pt: LatLngTuple = [roundCoord(lat), roundCoord(lng)];
   const path = sanitized.slice();
 
+  let isJumpFiltered = false;
+
   if (path.length === 0) {
-    path.push(pt);
+    if (!isNullIsland(pt[0], pt[1])) {
+      path.push(pt);
+    }
   } else {
     const last = path[path.length - 1];
-    if (haversineMeters(last, pt) >= MIN_POINT_DISTANCE_METERS) {
+    if (isImplausibleJump(last, pt, lastTimestamp, newTimestamp)) {
+      isJumpFiltered = true;
+    } else if (haversineMeters(last, pt) >= MIN_POINT_DISTANCE_METERS) {
       path.push(pt);
     }
   }
@@ -126,5 +202,6 @@ export function appendPathPoint(
   return {
     path: boundedPath,
     heading: resolvedHeading,
+    isJumpFiltered,
   };
 }

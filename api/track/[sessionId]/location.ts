@@ -4,6 +4,7 @@ import { AuthError, requireUser, sendAuthError } from '../../../lib/auth';
 import {
   appendPathPoint,
   isValidLatLng,
+  parseCoordinate,
   STALE_VIEWER_WINDOW_MS,
 } from '../../../lib/track/trail';
 
@@ -120,22 +121,28 @@ export default async function handler(
 
       const { lat, lng, lon, batteryLevel, speed, heading, timestamp, powerSaveMode } = request.body || {};
       // Canonical field is `lng`; `lon` is accepted for backward compatibility with
-      // mobile clients (<= v1.5.7) that still send it. Do not drop `lon` support
-      // until both stores' installed bases have migrated.
-      const longitude = lng !== undefined ? lng : lon;
+      // mobile clients (<= v1.5.7) that still send it. Also support latitude/longitude aliases.
+      const rawLat = lat !== undefined ? lat : request.body?.latitude;
+      const rawLng = lng !== undefined ? lng : lon !== undefined ? lon : request.body?.longitude;
 
-      if (lat === undefined || longitude === undefined) {
+      if (rawLat === undefined || rawLng === undefined) {
         return response.status(400).json({ error: 'Missing lat or lng in body' });
       }
-      if (!isValidLatLng(lat, longitude)) {
+
+      const numLat = parseCoordinate(rawLat);
+      const numLng = parseCoordinate(rawLng);
+
+      if (numLat === null || numLng === null || !isValidLatLng(numLat, numLng)) {
         return response.status(400).json({ error: 'Invalid lat or lng coordinate values' });
       }
 
-      const { path, heading: resolvedHeading } = appendPathPoint(
+      const { path, heading: resolvedHeading, isJumpFiltered } = appendPathPoint(
         sessionData.path,
-        lat,
-        longitude,
+        numLat,
+        numLng,
         heading,
+        sessionData.lastLocation?.timestamp,
+        timestamp,
       );
       sessionData.path = path;
 
@@ -152,15 +159,38 @@ export default async function handler(
       const effectivePowerSave =
         (typeof powerSaveMode === 'boolean' ? powerSaveMode : false) || isLowBattery;
 
-      sessionData.lastLocation = {
-        lat,
-        lng: longitude,
-        batteryLevel,
-        speed,
-        heading: resolvedHeading !== null ? resolvedHeading : heading,
-        powerSaveMode: effectivePowerSave,
-        timestamp: timestamp || new Date().toISOString()
-      };
+      const validSpeed =
+        typeof speed === 'number' && Number.isFinite(speed) && speed >= 0
+          ? Math.round(speed * 10) / 10
+          : null;
+
+      const validHeading =
+        resolvedHeading !== null
+          ? resolvedHeading
+          : typeof heading === 'number' && Number.isFinite(heading) && heading >= 0 && heading <= 360
+          ? Math.round(heading * 10) / 10
+          : null;
+
+      if (isJumpFiltered && sessionData.lastLocation) {
+        console.warn(`[location] Implausible GPS jump filtered for session ${sessionId}: lat=${numLat}, lng=${numLng}`);
+        // Maintain last known valid coordinates on map while updating device battery & freshness
+        sessionData.lastLocation = {
+          ...sessionData.lastLocation,
+          batteryLevel: typeof batteryLevel === 'number' && Number.isFinite(batteryLevel) ? batteryLevel : sessionData.lastLocation.batteryLevel,
+          powerSaveMode: effectivePowerSave,
+          timestamp: timestamp || new Date().toISOString(),
+        };
+      } else {
+        sessionData.lastLocation = {
+          lat: numLat,
+          lng: numLng,
+          batteryLevel,
+          speed: validSpeed,
+          heading: validHeading,
+          powerSaveMode: effectivePowerSave,
+          timestamp: timestamp || new Date().toISOString(),
+        };
+      }
 
       // Calculate remaining TTL directly from sessionData.expiresAt.
       // Every session created via start.ts stores `expiresAt` as an ISO8601 string.
