@@ -14,6 +14,8 @@ import {
   appendPathPoint,
   compactPath,
   computeBearingDegrees,
+  computePathDistanceMeters,
+  formatViewerDistance,
   haversineMeters,
   isValidLatLng,
   parseCoordinate,
@@ -98,6 +100,67 @@ test('compactPath decimates above MAX_PATH_POINTS while preserving first and las
     points[points.length - 1],
     'End point must be preserved',
   );
+});
+
+test('computePathDistanceMeters handles empty, single point, invalid points, jitter, jumps, and object/array coordinates', () => {
+  // Empty or non-array inputs
+  assert.strictEqual(computePathDistanceMeters(null), 0);
+  assert.strictEqual(computePathDistanceMeters(undefined), 0);
+  assert.strictEqual(computePathDistanceMeters([]), 0);
+  assert.strictEqual(computePathDistanceMeters([[12.9716, 77.5946]]), 0);
+
+  // Normal 2 points ~111 meters apart (0.001 deg lat is ~111m)
+  const p1: [number, number] = [12.9716, 77.5946];
+  const p2: [number, number] = [12.9726, 77.5946];
+  const dist2 = computePathDistanceMeters([p1, p2]);
+  assert.ok(dist2 >= 110 && dist2 <= 112, `Expected ~111m, got ${dist2}m`);
+
+  // Discards sub-2m jitter
+  const pJitter: [number, number] = [12.97260001, 77.5946]; // < 2mm away
+  const distWithJitter = computePathDistanceMeters([p1, p2, pJitter]);
+  assert.strictEqual(distWithJitter, dist2, 'Sub-2m jitter must be discarded');
+
+  // Discards supersonic jump (> 50 km)
+  const pJump: [number, number] = [18.0, 77.5946]; // ~555 km away
+  const distWithJump = computePathDistanceMeters([p1, p2, pJump]);
+  assert.strictEqual(distWithJump, dist2, 'Jumps > 50km must be ignored');
+
+  // Handles object coordinates { lat, lng } and { latitude, longitude }
+  const objPath = [
+    { lat: 12.9716, lng: 77.5946 },
+    { latitude: 12.9726, longitude: 77.5946 },
+    { lat: 12.9736, lng: 77.5946 },
+  ];
+  const distObj = computePathDistanceMeters(objPath);
+  assert.ok(distObj >= 220 && distObj <= 224, `Expected ~222m for obj path, got ${distObj}m`);
+
+  // Skips invalid or Null Island coordinates
+  const corruptedPath = [
+    [0.0, 0.0], // Null island skipped
+    [12.9716, 77.5946],
+    ['invalid', null],
+    [12.9726, 77.5946],
+  ];
+  const distCorrupted = computePathDistanceMeters(corruptedPath);
+  assert.ok(distCorrupted >= 110 && distCorrupted <= 112, `Expected ~111m, got ${distCorrupted}m`);
+});
+
+test('formatViewerDistance formats metric and imperial distances accurately', () => {
+  // Edge cases (0, negative, NaN)
+  assert.strictEqual(formatViewerDistance(0), '0.0 km');
+  assert.strictEqual(formatViewerDistance(0, true), '0.0 mi');
+  assert.strictEqual(formatViewerDistance(-50), '0.0 km');
+  assert.strictEqual(formatViewerDistance(NaN), '0.0 km');
+
+  // Metric
+  assert.strictEqual(formatViewerDistance(900), '0.9 km');
+  assert.strictEqual(formatViewerDistance(1500), '1.5 km');
+  assert.strictEqual(formatViewerDistance(14200), '14.2 km');
+
+  // Imperial
+  assert.strictEqual(formatViewerDistance(1609.344, true), '1.0 mi');
+  assert.strictEqual(formatViewerDistance(8046.72, true), '5.0 mi');
+  assert.strictEqual(formatViewerDistance(14200, true), '8.8 mi');
 });
 
 test('normalizeWatcherUids deduplicates, rejects self and empty, and caps at MAX_AUTO_WATCHERS', () => {
