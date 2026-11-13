@@ -492,6 +492,21 @@
                 return ((toDeg(Math.atan2(y, x)) % 360) + 360) % 360;
             }
 
+            // CIE-011: Format elapsed or total trip duration
+            function formatElapsedDuration(startedAt, endedAt) {
+                if (!startedAt) return null;
+                const startMs = typeof startedAt === 'number' ? startedAt : new Date(startedAt).getTime();
+                if (!Number.isFinite(startMs) || startMs <= 0) return null;
+                const endMs = endedAt ? (typeof endedAt === 'number' ? endedAt : new Date(endedAt).getTime()) : Date.now();
+                const diffMs = Math.max(0, (Number.isFinite(endMs) ? endMs : Date.now()) - startMs);
+                const totalMinutes = Math.floor(diffMs / 60000);
+                if (totalMinutes < 1) return '< 1m';
+                const hours = Math.floor(totalMinutes / 60);
+                const minutes = totalMinutes % 60;
+                if (hours === 0) return `${minutes}m`;
+                return minutes === 0 ? `${hours}h` : `${hours}h ${minutes}m`;
+            }
+
             function buildHeadingConeSvg(hasHeading) {
                 if (!hasHeading) {
                     return `<svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true">
@@ -847,6 +862,7 @@
                         const rawTimeAgo = Math.round((new Date() - new Date(timestamp)) / 1000);
                         const timeAgo = Math.max(0, Number.isFinite(rawTimeAgo) ? rawTimeAgo : 0);
                         const timeAgoStr = timeAgo < 60 ? `${timeAgo}s ago` : `${Math.round(timeAgo/60)}m ago`;
+                        const isStale = !isStopped && (timeAgo >= 180);
                         const isDelayed = Boolean(powerSaveMode) || timeAgo >= 45;
 
                         const powerSaveContainer = document.getElementById('powerSaveContainer');
@@ -860,20 +876,27 @@
                             batteryDisplay = roundedBat <= 15 ? `🪫 ${roundedBat}% (Low)` : `🔋 ${roundedBat}%`;
                         }
 
+                        const durationStr = formatElapsedDuration(data.startedAt, data.endedAt);
+                        const durationPart = durationStr ? ` | Duration: ${durationStr}` : '';
+
                         if (isStopped) {
                             document.getElementById('statusText').innerText = 'Sharing Stopped';
                             document.getElementById('statusText').className = 'status offline';
                             document.getElementById('userNameText').innerText = `${username}'s Final Location`;
                             const stopText = data.stopReason || data.endReason || 'The rider has ended this live trip.';
                             const endedTimeStr = data.endedAt ? new Date(data.endedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : null;
+                            const durationLabel = durationStr ? ` · Duration: ${durationStr}` : '';
                             document.getElementById('detailsText').innerText =
-                                endedTimeStr ? `${stopText} at ${endedTimeStr} · Final location shown` : `${stopText} · Final location shown`;
+                                endedTimeStr ? `${stopText} at ${endedTimeStr}${durationLabel} · Final location shown` : `${stopText}${durationLabel} · Final location shown`;
                             stopPollingTimers();
                             revealGetApp(true);
                             return;
                         }
 
-                        if (isDelayed) {
+                        if (isStale) {
+                            document.getElementById('statusText').innerText = 'Signal Paused';
+                            document.getElementById('statusText').className = 'status delayed';
+                        } else if (isDelayed) {
                             document.getElementById('statusText').innerText = 'Delayed Updates';
                             document.getElementById('statusText').className = 'status delayed';
                         } else {
@@ -888,8 +911,9 @@
                         }
 
                         document.getElementById('userNameText').innerText = `${username}'s Live Location`;
+                        const staleNote = isStale ? ' ⚠️ (waiting for GPS)' : '';
                         document.getElementById('detailsText').innerText =
-                            `Updated: ${timeAgoStr} | Battery: ${batteryDisplay} | Speed: ${speedDisplay}`;
+                            `Updated: ${timeAgoStr}${staleNote} | Battery: ${batteryDisplay} | Speed: ${speedDisplay}${durationPart}`;
                     } else if (isStopped) {
                         document.getElementById('statusText').innerText = 'Sharing Stopped';
                         document.getElementById('statusText').className = 'status offline';
