@@ -17,6 +17,7 @@ import {
     shouldShowLowBatteryBanner,
     formatLowBatteryBannerText,
     shouldEmitLowBatteryTelemetry,
+    evaluateForegroundReconnection,
 } from '../lib/track/network';
 
 describe('Live Viewer Network Resilience & Tile Fallback (CIE-007)', () => {
@@ -318,6 +319,52 @@ describe('Live Viewer Network Resilience & Tile Fallback (CIE-007)', () => {
             // Invalid/null battery: suppress
             assert.equal(shouldEmitLowBatteryTelemetry(null, null), false);
             assert.equal(shouldEmitLowBatteryTelemetry(null, NaN), false);
+        });
+    });
+
+    describe('Foreground Reconnection & Immediate Polling (CIE-027)', () => {
+        it('suppresses polling when trip has already ended', () => {
+            const res = evaluateForegroundReconnection(true, true, 'Sharing Stopped');
+            assert.equal(res.shouldFetchImmediately, false);
+            assert.equal(res.resetConsecutiveErrors, false);
+            assert.equal(res.newStatusText, null);
+            assert.equal(res.newStatusClass, null);
+        });
+
+        it('triggers immediate polling and error counter reset when active and online', () => {
+            const res = evaluateForegroundReconnection(false, true, 'Live');
+            assert.equal(res.shouldFetchImmediately, true);
+            assert.equal(res.resetConsecutiveErrors, true);
+            assert.equal(res.newStatusText, null);
+            assert.equal(res.newStatusClass, null);
+        });
+
+        it('transitions status to Reconnecting... when returning online from offline or error status', () => {
+            const offlineRes = evaluateForegroundReconnection(false, true, 'Viewer Offline');
+            assert.equal(offlineRes.shouldFetchImmediately, true);
+            assert.equal(offlineRes.resetConsecutiveErrors, true);
+            assert.equal(offlineRes.newStatusText, 'Reconnecting...');
+            assert.equal(offlineRes.newStatusClass, 'status delayed');
+
+            const errorRes = evaluateForegroundReconnection(false, true, 'Connection Error');
+            assert.equal(errorRes.shouldFetchImmediately, true);
+            assert.equal(errorRes.resetConsecutiveErrors, true);
+            assert.equal(errorRes.newStatusText, 'Reconnecting...');
+            assert.equal(errorRes.newStatusClass, 'status delayed');
+
+            const connectingRes = evaluateForegroundReconnection(false, true, 'Connecting...');
+            assert.equal(connectingRes.shouldFetchImmediately, true);
+            assert.equal(connectingRes.resetConsecutiveErrors, true);
+            assert.equal(connectingRes.newStatusText, 'Reconnecting...');
+            assert.equal(connectingRes.newStatusClass, 'status delayed');
+        });
+
+        it('does not trigger immediate polling if device is still offline upon foregrounding', () => {
+            const res = evaluateForegroundReconnection(false, false, 'Viewer Offline');
+            assert.equal(res.shouldFetchImmediately, false);
+            assert.equal(res.resetConsecutiveErrors, true);
+            assert.equal(res.newStatusText, null);
+            assert.equal(res.newStatusClass, null);
         });
     });
 });
