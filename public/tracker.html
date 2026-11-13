@@ -325,9 +325,91 @@
             transform: translateX(-50%) translateY(0);
             opacity: 1;
         }
+        /* CIE-033: Mobile Smart App Banner */
+        #smartBanner {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 56px;
+            background: #0f172a;
+            color: #f8fafc;
+            display: flex;
+            align-items: center;
+            padding: 0 12px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+            z-index: 2000;
+            font-size: 13px;
+        }
+        #smartBanner .smart-banner-close {
+            background: none;
+            border: none;
+            color: #94a3b8;
+            font-size: 22px;
+            line-height: 1;
+            padding: 4px 8px;
+            cursor: pointer;
+            margin-right: 2px;
+        }
+        #smartBanner .smart-banner-icon {
+            width: 38px;
+            height: 38px;
+            border-radius: 9px;
+            margin-right: 10px;
+            flex-shrink: 0;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+        }
+        #smartBanner .smart-banner-info {
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+        #smartBanner .smart-banner-title {
+            font-weight: 700;
+            font-size: 13px;
+            color: #ffffff;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        #smartBanner .smart-banner-sub {
+            font-size: 11px;
+            color: #94a3b8;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        #smartBanner .smart-banner-cta {
+            background: #00e5ff;
+            color: #0b1320;
+            font-weight: 700;
+            font-size: 12px;
+            text-decoration: none;
+            padding: 6px 14px;
+            border-radius: 20px;
+            letter-spacing: 0.5px;
+            margin-left: 8px;
+            flex-shrink: 0;
+            box-shadow: 0 0 8px rgba(0, 229, 255, 0.35);
+        }
+        body.has-smart-banner #overlay {
+            top: 68px;
+        }
     </style>
 </head>
 <body>
+    <!-- CIE-033: Smart App Banner for mobile browsers with direct deep link handoff -->
+    <div id="smartBanner" style="display: none;">
+        <button type="button" class="smart-banner-close" id="smartBannerClose" aria-label="Dismiss smart banner">&times;</button>
+        <img src="/assets/apple-touch-icon.png" class="smart-banner-icon" alt="TrackMe App icon" />
+        <div class="smart-banner-info">
+            <div class="smart-banner-title" id="smartBannerTitle">TrackMe: Live GPS Rides</div>
+            <div class="smart-banner-sub" id="smartBannerSub">Open in TrackMe app for live arrival alerts</div>
+        </div>
+        <a href="#" class="smart-banner-cta" id="smartBannerCta">OPEN</a>
+    </div>
     <div id="overlay">
         <div class="status-row">
             <span class="status" id="statusText">Connecting...</span>
@@ -506,6 +588,10 @@
                 : `${window.location.origin}/live`;
             const ogUrl = document.getElementById('ogUrl');
             if (ogUrl) ogUrl.setAttribute('content', canonicalUrl);
+
+            if (typeof configureSmartAppBanner === 'function') {
+                configureSmartAppBanner(cleanName);
+            }
         }
 
         // Initialize social metadata from query parameters immediately
@@ -597,7 +683,9 @@
                     const inviterName = queryParams.get('inviterName') || '';
                     btn.href = `trackme://live/watcher?inviterUid=${encodeURIComponent(inviterUid)}&inviterName=${encodeURIComponent(inviterName)}`;
                 } else {
-                    btn.href = `trackme://live?sessionId=${encodeURIComponent(sessionId)}`;
+                    const cleanName = sanitizeRiderNameClient(queryParams.get('name'));
+                    const nameParam = cleanName ? `?name=${encodeURIComponent(cleanName)}` : '';
+                    btn.href = `trackme://live/${encodeURIComponent(sessionId)}${nameParam}`;
                 }
             } else {
                 btn.href = '#getApp';
@@ -624,6 +712,84 @@
             });
         }
         configureOpenInAppButton();
+
+        // CIE-033: Smart App Banner with deep link handoff and dismissal persistence
+        const SMART_BANNER_DISMISS_KEY = 'trackme_smart_banner_dismissed_at';
+        const SMART_BANNER_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+        function configureSmartAppBanner(riderName) {
+            if (!isIOS && !isAndroid) return;
+            if (!sessionId || !isValidSession) return;
+
+            try {
+                const dismissedAt = localStorage.getItem(SMART_BANNER_DISMISS_KEY);
+                if (dismissedAt) {
+                    const elapsed = Date.now() - parseInt(dismissedAt, 10);
+                    if (elapsed >= 0 && elapsed < SMART_BANNER_TTL_MS) {
+                        return; // User dismissed within last 7 days
+                    }
+                }
+            } catch (_) {}
+
+            const bannerEl = document.getElementById('smartBanner');
+            const closeBtn = document.getElementById('smartBannerClose');
+            const titleEl = document.getElementById('smartBannerTitle');
+            const ctaBtn = document.getElementById('smartBannerCta');
+            if (!bannerEl || !closeBtn || !ctaBtn) return;
+
+            const cleanName = sanitizeRiderNameClient(riderName) || sanitizeRiderNameClient(queryParams.get('name'));
+            if (cleanName && titleEl) {
+                titleEl.textContent = `Track ${cleanName}'s Live Ride`;
+            }
+
+            const playFallback = 'https://play.google.com/store/apps/details?id=in.shvms.trackme&referrer=utm_source%3Dlive_share_smart_banner%26utm_medium%3Dweb%26utm_campaign%3Dlive_tracker';
+            const appStoreUrl = 'https://apps.apple.com/app/id6800161248?pt=128001612&ct=live_share_smart_banner&mt=8';
+
+            let deepLink = '';
+            if (isAndroid) {
+                const pathWithQuery = `${window.location.pathname}${window.location.search}`;
+                deepLink = `intent://trackme.shvms.in${pathWithQuery}#Intent;scheme=https;package=in.shvms.trackme;S.browser_fallback_url=${encodeURIComponent(playFallback)};end`;
+            } else if (isIOS) {
+                if (isWatcherInvite) {
+                    const inviterUid = queryParams.get('inviterUid') || '';
+                    const inviterName = queryParams.get('inviterName') || '';
+                    deepLink = `trackme://live/watcher?inviterUid=${encodeURIComponent(inviterUid)}&inviterName=${encodeURIComponent(inviterName)}`;
+                } else {
+                    const nameParam = cleanName ? `?name=${encodeURIComponent(cleanName)}` : '';
+                    deepLink = `trackme://live/${encodeURIComponent(sessionId)}${nameParam}`;
+                }
+            }
+
+            ctaBtn.href = deepLink;
+            ctaBtn.onclick = () => {
+                emitTelemetry('smart_banner_cta_tapped', { platform: isIOS ? 'ios' : 'android', isWatcherInvite });
+                if (isIOS) {
+                    const timer = setTimeout(() => {
+                        if (document.visibilityState === 'visible') {
+                            window.location.href = appStoreUrl;
+                        }
+                    }, 1200);
+                    const cancelFallback = () => clearTimeout(timer);
+                    window.addEventListener('pagehide', cancelFallback, { once: true });
+                    document.addEventListener('visibilitychange', () => {
+                        if (document.hidden) cancelFallback();
+                    }, { once: true });
+                }
+            };
+
+            closeBtn.onclick = () => {
+                bannerEl.style.display = 'none';
+                document.body.classList.remove('has-smart-banner');
+                try {
+                    localStorage.setItem(SMART_BANNER_DISMISS_KEY, Date.now().toString());
+                } catch (_) {}
+                emitTelemetry('smart_banner_dismissed', { platform: isIOS ? 'ios' : 'android' });
+            };
+
+            bannerEl.style.display = 'flex';
+            document.body.classList.add('has-smart-banner');
+        }
+        configureSmartAppBanner();
 
         // CIE-007: Resilient Leaflet Tile Layer with automatic mirror fallback
         const TILE_PROVIDERS = [
