@@ -25,6 +25,10 @@ import {
     evaluateViewportPreservation,
     shouldAnimateViewerTransition,
     formatA11yLiveAnnouncement,
+    clampBatteryLevel,
+    shouldAnnounceLowBattery,
+    computeViewerAdaptivePollMs,
+    formatPowerSaveCadenceNotice,
 } from '../lib/track/network';
 
 describe('Live Viewer Network Resilience & Tile Fallback (CIE-007)', () => {
@@ -524,6 +528,119 @@ describe('Live Viewer Network Resilience & Tile Fallback (CIE-007)', () => {
             assert.equal(formatA11yLiveAnnouncement('ended', null), 'Rider has ended this live trip');
             assert.equal(formatA11yLiveAnnouncement('low_battery', null, 12), 'Rider phone battery low: 12%');
             assert.equal(formatA11yLiveAnnouncement('low_battery', null, null), 'Rider phone battery low');
+        });
+    });
+
+    describe('Live Share Viewer Low Battery Throttle & Power-Save Mode Parity (CIE-037)', () => {
+        describe('clampBatteryLevel', () => {
+            it('preserves valid percentage values', () => {
+                assert.equal(clampBatteryLevel(0), 0);
+                assert.equal(clampBatteryLevel(15), 15);
+                assert.equal(clampBatteryLevel(50), 50);
+                assert.equal(clampBatteryLevel(100), 100);
+            });
+
+            it('rounds fractional battery percentages', () => {
+                assert.equal(clampBatteryLevel(14.8), 15);
+                assert.equal(clampBatteryLevel(4.2), 4);
+                assert.equal(clampBatteryLevel(0.4), 0);
+            });
+
+            it('rejects simulator fallbacks (-1) and out-of-range values', () => {
+                assert.equal(clampBatteryLevel(-1), null);
+                assert.equal(clampBatteryLevel(-50), null);
+                assert.equal(clampBatteryLevel(101), null);
+                assert.equal(clampBatteryLevel(200), null);
+            });
+
+            it('rejects non-numeric and non-finite values', () => {
+                assert.equal(clampBatteryLevel(NaN), null);
+                assert.equal(clampBatteryLevel(Infinity), null);
+                assert.equal(clampBatteryLevel(null), null);
+                assert.equal(clampBatteryLevel(undefined), null);
+                assert.equal(clampBatteryLevel('50'), null);
+            });
+        });
+
+        describe('shouldAnnounceLowBattery', () => {
+            it('triggers initial announcement when transitioning into <= 15%', () => {
+                assert.equal(shouldAnnounceLowBattery(null, 15), true);
+                assert.equal(shouldAnnounceLowBattery(80, 15), true);
+                assert.equal(shouldAnnounceLowBattery(16, 14), true);
+            });
+
+            it('suppresses redundant intermediate announcements on 1% battery drops', () => {
+                assert.equal(shouldAnnounceLowBattery(15, 14), false);
+                assert.equal(shouldAnnounceLowBattery(14, 13), false);
+                assert.equal(shouldAnnounceLowBattery(13, 10), false);
+                assert.equal(shouldAnnounceLowBattery(10, 8), false);
+                assert.equal(shouldAnnounceLowBattery(8, 6), false);
+            });
+
+            it('triggers critical announcement when transitioning into <= 5%', () => {
+                assert.equal(shouldAnnounceLowBattery(12, 5), true);
+                assert.equal(shouldAnnounceLowBattery(6, 4), true);
+                assert.equal(shouldAnnounceLowBattery(15, 3), true);
+            });
+
+            it('suppresses intermediate announcements once in critical <= 5%', () => {
+                assert.equal(shouldAnnounceLowBattery(5, 4), false);
+                assert.equal(shouldAnnounceLowBattery(4, 3), false);
+                assert.equal(shouldAnnounceLowBattery(3, 1), false);
+            });
+
+            it('does not trigger when battery is above 15% or charging', () => {
+                assert.equal(shouldAnnounceLowBattery(null, 80), false);
+                assert.equal(shouldAnnounceLowBattery(15, 20), false);
+                assert.equal(shouldAnnounceLowBattery(5, 5), false);
+            });
+
+            it('handles simulator fallback and invalid inputs safely', () => {
+                assert.equal(shouldAnnounceLowBattery(null, -1), false);
+                assert.equal(shouldAnnounceLowBattery(-1, -1), false);
+                assert.equal(shouldAnnounceLowBattery(80, null), false);
+            });
+        });
+
+        describe('computeViewerAdaptivePollMs', () => {
+            it('relaxes polling to 12s when rider device is in power-save mode', () => {
+                assert.equal(computeViewerAdaptivePollMs(true, 80), 12000);
+                assert.equal(computeViewerAdaptivePollMs(true, null), 12000);
+            });
+
+            it('relaxes polling to 12s when battery is <= 15%', () => {
+                assert.equal(computeViewerAdaptivePollMs(false, 15), 12000);
+                assert.equal(computeViewerAdaptivePollMs(false, 5), 12000);
+                assert.equal(computeViewerAdaptivePollMs(false, 0), 12000);
+            });
+
+            it('maintains 5s default polling under normal battery and power state', () => {
+                assert.equal(computeViewerAdaptivePollMs(false, 80), 5000);
+                assert.equal(computeViewerAdaptivePollMs(false, 16), 5000);
+                assert.equal(computeViewerAdaptivePollMs(false, null), 5000);
+                assert.equal(computeViewerAdaptivePollMs(false, -1), 5000);
+            });
+
+            it('respects custom base polling intervals when not in power save', () => {
+                assert.equal(computeViewerAdaptivePollMs(false, 80, 7000), 7000);
+                assert.equal(computeViewerAdaptivePollMs(true, 80, 7000), 12000);
+            });
+        });
+
+        describe('formatPowerSaveCadenceNotice', () => {
+            it('returns disclosure string when power-save mode is active', () => {
+                assert.equal(formatPowerSaveCadenceNotice(true, 80), 'Power save active · Location updates every ~15s');
+            });
+
+            it('returns disclosure string when battery is <= 15%', () => {
+                assert.equal(formatPowerSaveCadenceNotice(false, 14), 'Power save active · Location updates every ~15s');
+            });
+
+            it('returns null under standard conditions', () => {
+                assert.equal(formatPowerSaveCadenceNotice(false, 50), null);
+                assert.equal(formatPowerSaveCadenceNotice(false, null), null);
+                assert.equal(formatPowerSaveCadenceNotice(false, -1), null);
+            });
         });
     });
 });

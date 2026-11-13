@@ -1281,6 +1281,35 @@
                 }
             }
 
+            // CIE-037: Low Battery Throttle & Power-Save Mode Parity
+            function clampBatteryLevel(batteryLevel) {
+                if (typeof batteryLevel !== 'number' || !Number.isFinite(batteryLevel)) return null;
+                if (batteryLevel < 0 || batteryLevel > 100) return null;
+                return Math.min(100, Math.max(0, Math.round(batteryLevel)));
+            }
+
+            function shouldAnnounceLowBattery(previousBattery, newBattery) {
+                const prev = clampBatteryLevel(previousBattery);
+                const curr = clampBatteryLevel(newBattery);
+                if (curr === null) return false;
+                if (curr <= 15 && (prev === null || prev > 15)) return true;
+                if (curr <= 5 && prev !== null && prev > 5) return true;
+                return false;
+            }
+
+            function computeViewerAdaptivePollMs(isPowerSaveMode, batteryLevel, basePollMs = 5000) {
+                const clampedBat = clampBatteryLevel(batteryLevel);
+                const isEffectivePowerSave = Boolean(isPowerSaveMode) || (clampedBat !== null && clampedBat <= 15);
+                return isEffectivePowerSave ? 12000 : basePollMs;
+            }
+
+            function formatPowerSaveCadenceNotice(isPowerSaveMode, batteryLevel) {
+                const clampedBat = clampBatteryLevel(batteryLevel);
+                const isEffectivePowerSave = Boolean(isPowerSaveMode) || (clampedBat !== null && clampedBat <= 15);
+                if (!isEffectivePowerSave) return null;
+                return 'Power save active · Location updates every ~15s';
+            }
+
             function copyTextWithFallback(text, successMessage) {
                 const feedback = successMessage || 'Link copied to clipboard!';
                 if (navigator.clipboard && window.isSecureContext) {
@@ -1342,8 +1371,9 @@
             // CIE-007: Online / Offline Viewer State Management
             let isViewerOnline = typeof navigator !== 'undefined' && 'onLine' in navigator ? navigator.onLine : true;
 
-            // CIE-022: Deduplicated Low Battery Telemetry
+            // CIE-022: Deduplicated Low Battery Telemetry & CIE-037 Announcement Throttle
             let lastEmittedLowBattery = null;
+            let lastAnnouncedLowBattery = null;
 
             // CIE-019: Manual Refresh & Connection Retry Trigger
             function manualRefresh(triggerSource) {
@@ -1759,27 +1789,32 @@
                         if (powerSaveContainer) {
                             powerSaveContainer.style.display = !isStopped && powerSaveMode ? 'block' : 'none';
                         }
-                        // CIE-007: Battery display with low battery alert (<15%)
+                        // CIE-007 / CIE-037: Battery display with low battery alert (<15%) & throttled voice announcement
                         let batteryDisplay = 'N/A';
-                        const isLowBattery = !isStopped && typeof batteryLevel === 'number' && Number.isFinite(batteryLevel) && batteryLevel >= 0 && Math.round(batteryLevel) <= 15;
+                        const clampedBat = clampBatteryLevel(batteryLevel);
+                        const isLowBattery = !isStopped && clampedBat !== null && clampedBat <= 15;
                         const lowBatteryContainer = document.getElementById('lowBatteryContainer');
                         const lowBatteryTextEl = document.getElementById('lowBatteryText');
-                        if (typeof batteryLevel === 'number' && Number.isFinite(batteryLevel) && batteryLevel >= 0 && batteryLevel <= 100) {
-                            const roundedBat = Math.round(batteryLevel);
-                            batteryDisplay = roundedBat <= 15 ? `🪫 ${roundedBat}% (Low)` : `🔋 ${roundedBat}%`;
+                        if (clampedBat !== null) {
+                            batteryDisplay = clampedBat <= 15 ? `🪫 ${clampedBat}% (Low)` : `🔋 ${clampedBat}%`;
                         }
                         if (lowBatteryContainer && lowBatteryTextEl) {
                             if (isLowBattery) {
-                                const roundedBat = Math.round(batteryLevel);
-                                lowBatteryTextEl.innerText = `🪫 Rider battery low (${roundedBat}%) · Signal may pause if phone powers off`;
+                                lowBatteryTextEl.innerText = `🪫 Rider battery low (${clampedBat}%) · Location updates every ~15s · Signal may pause if phone powers off`;
                                 lowBatteryContainer.style.display = 'block';
 
+                                // Deduplicated screen reader announcement (CIE-037)
+                                if (shouldAnnounceLowBattery(lastAnnouncedLowBattery, clampedBat)) {
+                                    lastAnnouncedLowBattery = clampedBat;
+                                    announceA11y(`Rider phone battery low: ${clampedBat}% · Location updates every 15 seconds`);
+                                }
+
                                 // Deduplicated telemetry emission (CIE-022)
-                                if (lastEmittedLowBattery !== roundedBat) {
-                                    lastEmittedLowBattery = roundedBat;
+                                if (lastEmittedLowBattery !== clampedBat) {
+                                    lastEmittedLowBattery = clampedBat;
                                     emitTelemetry('live_share_viewer_low_battery_shown', {
-                                        batteryLevel: roundedBat,
-                                        battery_level: roundedBat,
+                                        batteryLevel: clampedBat,
+                                        battery_level: clampedBat,
                                     });
                                 }
                             } else {
@@ -1911,7 +1946,10 @@
                         document.getElementById('detailsText').innerText = 'Session active, waiting for first location ping from rider.';
                     }
                     if (!isStopped) {
-                        scheduleNextFetch(5000);
+                        const psMode = Boolean(data && data.lastLocation && data.lastLocation.powerSaveMode);
+                        const batLevel = data && data.lastLocation ? data.lastLocation.batteryLevel : null;
+                        const nextPollDelay = computeViewerAdaptivePollMs(psMode, batLevel, 5000);
+                        scheduleNextFetch(nextPollDelay);
                     }
                 } catch (err) {
                     console.error('Location fetch error:', err);
