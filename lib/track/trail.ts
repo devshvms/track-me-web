@@ -205,3 +205,62 @@ export function appendPathPoint(
     isJumpFiltered,
   };
 }
+
+/**
+ * Computes accumulated geodesic distance in meters across an array of breadcrumb coordinates.
+ * Handles both [lat, lng] tuples and { lat, lng } objects.
+ * Filters out sub-meter jitter (< 2 m) and supersonic single-hop glitches (> 50 km).
+ */
+export function computePathDistanceMeters(rawPath: unknown): number {
+  if (!Array.isArray(rawPath) || rawPath.length < 2) {
+    return 0;
+  }
+
+  let totalMeters = 0;
+  let prevPt: LatLngTuple | null = null;
+
+  for (const entry of rawPath) {
+    let lat: number | null = null;
+    let lng: number | null = null;
+
+    if (Array.isArray(entry) && entry.length >= 2) {
+      lat = parseCoordinate(entry[0]);
+      lng = parseCoordinate(entry[1]);
+    } else if (entry && typeof entry === 'object') {
+      lat = parseCoordinate((entry as any).lat ?? (entry as any).latitude);
+      lng = parseCoordinate((entry as any).lng ?? (entry as any).longitude);
+    }
+
+    if (lat === null || lng === null || !isValidLatLng(lat, lng) || isNullIsland(lat, lng)) {
+      continue;
+    }
+
+    const currentPt: LatLngTuple = [lat, lng];
+    if (prevPt !== null) {
+      const dist = haversineMeters(prevPt, currentPt);
+      // Discard small jitter (< 2 m) and implausible supersonic jumps (> 50 km)
+      if (dist >= 2 && dist <= MAX_PLAUSIBLE_JUMP_METERS) {
+        totalMeters += dist;
+        prevPt = currentPt;
+      }
+    } else {
+      prevPt = currentPt;
+    }
+  }
+
+  return Math.round(totalMeters);
+}
+
+/** Formats meters into human-readable distance ("14.2 km" or "8.8 mi"). */
+export function formatViewerDistance(meters: number, useMiles = false): string {
+  if (!Number.isFinite(meters) || meters <= 0) {
+    return useMiles ? '0.0 mi' : '0.0 km';
+  }
+  if (useMiles) {
+    const miles = meters / 1609.344;
+    return `${miles.toFixed(1)} mi`;
+  }
+  const km = meters / 1000;
+  return `${km.toFixed(1)} km`;
+}
+
