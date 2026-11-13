@@ -572,3 +572,72 @@ export function formatA11yLiveAnnouncement(
     }
 }
 
+/**
+ * CIE-037: Sanitize and clamp battery level to 0-100%, rejecting negative simulator fallbacks (-1) and non-finite values.
+ */
+export function clampBatteryLevel(batteryLevel: unknown): number | null {
+    if (typeof batteryLevel !== 'number' || !Number.isFinite(batteryLevel)) {
+        return null;
+    }
+    if (batteryLevel < 0 || batteryLevel > 100) {
+        return null;
+    }
+    return Math.min(100, Math.max(0, Math.round(batteryLevel)));
+}
+
+/**
+ * CIE-037: Evaluates whether an auditory/VoiceOver announcement should be made for low battery.
+ * Throttles announcements to prevent auditory spam:
+ * - Fires when first transitioning into low battery (<= 15%).
+ * - Fires when battery drops to critical level (<= 5%) from a higher level.
+ * - Suppresses redundant announcements on intermediate 1% drops (e.g. 14%, 13%, 12%).
+ */
+export function shouldAnnounceLowBattery(
+    previousBattery: number | null,
+    newBattery: number | null
+): boolean {
+    const prev = clampBatteryLevel(previousBattery);
+    const curr = clampBatteryLevel(newBattery);
+    if (curr === null) return false;
+
+    // 1. Initial warning when dipping into low battery (<= 15%)
+    if (curr <= 15 && (prev === null || prev > 15)) {
+        return true;
+    }
+
+    // 2. Critical warning when dipping into <= 5%
+    if (curr <= 5 && prev !== null && prev > 5) {
+        return true;
+    }
+
+    return false;
+}
+
+/**
+ * CIE-037: Computes adaptive polling interval for the live viewer.
+ * When the rider is in power-save mode (or battery <= 15%), broadcaster pushes occur at ~15s cadence.
+ * Adapting the viewer polling interval to 12s avoids burning ~66% unnecessary Redis queries on the $0/mo free tier.
+ */
+export function computeViewerAdaptivePollMs(
+    isPowerSaveMode: boolean,
+    batteryLevel: number | null,
+    basePollMs: number = 5000
+): number {
+    const clampedBat = clampBatteryLevel(batteryLevel);
+    const isEffectivePowerSave = isPowerSaveMode || (clampedBat !== null && clampedBat <= 15);
+    return isEffectivePowerSave ? 12000 : basePollMs;
+}
+
+/**
+ * CIE-037: Formats user-facing disclosure when updates arrive at relaxed interval due to power saving.
+ */
+export function formatPowerSaveCadenceNotice(
+    isPowerSaveMode: boolean,
+    batteryLevel: number | null
+): string | null {
+    const clampedBat = clampBatteryLevel(batteryLevel);
+    const isEffectivePowerSave = isPowerSaveMode || (clampedBat !== null && clampedBat <= 15);
+    if (!isEffectivePowerSave) return null;
+    return 'Power save active · Location updates every ~15s';
+}
+
