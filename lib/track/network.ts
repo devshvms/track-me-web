@@ -496,3 +496,48 @@ export function evaluateNetworkTransition(
     };
 }
 
+/**
+ * CIE-035: Live Share Viewer State Preservation across Device Orientation & Theme Changes.
+ */
+export interface ViewportPreservationState {
+    readonly isFollowingRider: boolean;
+    readonly targetCenter: [number, number];
+    readonly targetZoom: number;
+    readonly shouldPanToRider: boolean;
+    readonly preservedUnitSystem: 'metric' | 'imperial';
+}
+
+/**
+ * Evaluates map viewport preservation across orientation changes or window resizes.
+ *
+ * Rules:
+ * 1. If following rider and rider location is known, maintain rider centered.
+ * 2. If user panned/zoomed away (isFollowingRider = false), preserve custom center and zoom.
+ * 3. Never reset zoom or pan unexpectedly on orientation change.
+ */
+export function evaluateViewportPreservation(
+    isFollowingRider: boolean,
+    lastRiderPos: [number, number] | null,
+    currentCenter: [number, number],
+    currentZoom: number,
+    preferredUnits: 'metric' | 'imperial' = 'metric'
+): ViewportPreservationState {
+    if (isFollowingRider && lastRiderPos) {
+        return {
+            isFollowingRider: true,
+            targetCenter: lastRiderPos,
+            targetZoom: Math.max(currentZoom, 15),
+            shouldPanToRider: true,
+            preservedUnitSystem: preferredUnits,
+        };
+    }
+
+    return {
+        isFollowingRider: false,
+        targetCenter: currentCenter,
+        targetZoom: currentZoom,
+        shouldPanToRider: false,
+        preservedUnitSystem: preferredUnits,
+    };
+}
+
