@@ -111,7 +111,7 @@ export function appendPathPoint(
   const boundedPath = compactPath(path);
 
   let resolvedHeading: number | null = null;
-  if (typeof rawHeading === 'number' && Number.isFinite(rawHeading) && rawHeading > 0 && rawHeading <= 360) {
+  if (typeof rawHeading === 'number' && Number.isFinite(rawHeading) && rawHeading >= 0 && rawHeading <= 360) {
     resolvedHeading = Math.round(rawHeading * 10) / 10;
   } else if (boundedPath.length >= 2) {
     // Find nearest prior point at least 3 m away for an accurate fallback bearing.
@@ -121,10 +121,6 @@ export function appendPathPoint(
         break;
       }
     }
-  }
-
-  if (resolvedHeading === null && rawHeading === 0) {
-    resolvedHeading = 0;
   }
 
   return {

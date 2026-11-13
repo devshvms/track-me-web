@@ -66,6 +66,7 @@ export default async function handler(
 
     await captureTelemetryEvent(sessionId, 'web_live_share_session_stopped', {
       sessionId,
+      session_id: sessionId,
       username: sessionData.username,
       stopReason: stopReason || 'manual_stop',
       initialDurationMinutes: sessionData.initialDuration,

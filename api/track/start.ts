@@ -154,9 +154,11 @@ export default async function handler(
     const country = (request.headers['x-vercel-ip-country'] as string) || 'unknown';
     await captureTelemetryEvent(sessionId, 'web_live_share_session_started', {
       sessionId,
+      session_id: sessionId,
       username: sessionData.username,
       durationMinutes: duration,
       notifiedWatchersCount,
+      recipient_count: notifiedWatchersCount,
       country,
     });
 

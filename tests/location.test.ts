@@ -60,6 +60,20 @@ test('appendPathPoint deduplicates jitter < 15m and appends >= 15m rounded to 5 
   assert.ok(eastBearing > 85 && eastBearing < 95, `Expected ~90 deg east bearing, got ${eastBearing}`);
 });
 
+test('appendPathPoint preserves explicit 0 deg North heading and null stationary heading', () => {
+  // Explicit 0 degrees True North heading must be preserved as 0, not converted to null or overridden
+  const northHeading = appendPathPoint([], 12.9716, 77.59456, 0);
+  assert.strictEqual(northHeading.heading, 0, '0 deg North heading must be preserved');
+
+  // Stationary point without prior track points and without heading must return null heading
+  const stationary = appendPathPoint([], 12.9716, 77.59456, null);
+  assert.strictEqual(stationary.heading, null, 'Stationary point with null heading must return null');
+
+  // Sub-15m GPS jitter with null heading must also return null
+  const jitterStationary = appendPathPoint(stationary.path, 12.97162, 77.59456, null);
+  assert.strictEqual(jitterStationary.heading, null, 'Jitter without motion or heading must return null');
+});
+
 test('compactPath decimates above MAX_PATH_POINTS while preserving first and last point', () => {
   const points: [number, number][] = [];
   for (let i = 0; i < MAX_PATH_POINTS + 12; i++) {

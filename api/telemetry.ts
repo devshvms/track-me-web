@@ -156,7 +156,13 @@ async function handleEvent(request: VercelRequest, response: VercelResponse) {
       $ip: request.headers['x-forwarded-for'] || request.socket.remoteAddress,
     };
 
-    const id = distinctId || properties.viewerId || properties.sessionId || 'anonymous_visitor';
+    const id =
+      distinctId ||
+      properties.viewerId ||
+      properties.viewer_id ||
+      properties.sessionId ||
+      properties.session_id ||
+      'anonymous_visitor';
 
     await captureTelemetryEvent(id, event, enrichedProperties);
 
