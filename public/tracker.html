@@ -71,6 +71,24 @@
         .offline { color: red; }
         .status.delayed { color: #d97706; }
         .user-name { font-size: 1.05em; font-weight: bold; margin-top: 4px; color: #111827; }
+        .destination-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 5px;
+            background: #e0f2fe;
+            color: #0369a1;
+            border: 1px solid #7dd3fc;
+            border-radius: 999px;
+            padding: 3px 10px;
+            font-size: 0.82em;
+            font-weight: 600;
+            margin-top: 5px;
+            max-width: 90%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
         .details { font-size: 0.88em; color: #4b5563; margin-top: 4px; }
         .power-save-badge { display: inline-flex; align-items: center; justify-content: center; gap: 4px; background: #fef3c7; color: #92400e; border: 1px solid #f59e0b; padding: 4px 10px; border-radius: 6px; font-size: 0.82em; font-weight: bold; margin-top: 8px; }
         .power-save-banner { margin-top: 6px; padding: 6px 10px; background: #fffbeb; border: 1px solid #fde68a; border-radius: 6px; color: #78350f; font-size: 0.8em; line-height: 1.35; max-width: 320px; text-align: left; }
@@ -142,6 +160,19 @@
             border: 3px solid #0a2540;
             box-shadow: 0 2px 6px rgba(0,0,0,0.4);
         }
+        .finish-pin {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #ff1744;
+            border: 3px solid #0a2540;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 9px;
+            line-height: 1;
+        }
         .map-controls {
             position: fixed;
             right: 14px;
@@ -178,6 +209,9 @@
     <div id="overlay">
         <div class="status" id="statusText">Connecting...</div>
         <div class="user-name" id="userNameText"></div>
+        <div class="destination-badge" id="destinationBadge" style="display: none;">
+            <span>🏁</span> <span id="destinationText"></span>
+        </div>
         <div class="details" id="detailsText">Waiting for location data</div>
         <div class="open-app-row" id="openAppRow">
             <a href="#getApp" id="openAppBtn" class="open-app-btn">Open in TrackMe App</a>
@@ -424,6 +458,7 @@
 
         let marker = null;
         let startMarker = null;
+        let finishMarker = null;
         let trailCasing = null;
         let trailLine = null;
         let isFirstLoad = true;
@@ -879,7 +914,35 @@
                         const durationStr = formatElapsedDuration(data.startedAt, data.endedAt);
                         const durationPart = durationStr ? ` | Duration: ${durationStr}` : '';
 
+                        const dest = typeof data.destination === 'string' ? data.destination.trim() : '';
+                        const destinationBadge = document.getElementById('destinationBadge');
+                        const destinationTextEl = document.getElementById('destinationText');
+                        if (destinationBadge && destinationTextEl) {
+                            if (dest) {
+                                destinationTextEl.textContent = isStopped ? `Destination: ${dest}` : `Heading to: ${dest}`;
+                                destinationBadge.style.display = 'inline-flex';
+                            } else {
+                                destinationBadge.style.display = 'none';
+                            }
+                        }
+
                         if (isStopped) {
+                            // Render finish arrival marker on map at the last coordinate of the route
+                            if (trailPoints.length >= 1) {
+                                const finishPos = trailPoints[trailPoints.length - 1] || pos;
+                                if (!finishMarker) {
+                                    const finishIcon = L.divIcon({
+                                        className: 'finish-pin-icon',
+                                        html: '<div class="finish-pin" title="Trip arrival point">🏁</div>',
+                                        iconSize: [22, 22],
+                                        iconAnchor: [11, 11],
+                                    });
+                                    finishMarker = L.marker(finishPos, { icon: finishIcon, interactive: false }).addTo(map);
+                                } else {
+                                    finishMarker.setLatLng(finishPos);
+                                }
+                            }
+
                             document.getElementById('statusText').innerText = 'Sharing Stopped';
                             document.getElementById('statusText').className = 'status offline';
                             document.getElementById('userNameText').innerText = `${username}'s Final Location`;
@@ -915,6 +978,17 @@
                         document.getElementById('detailsText').innerText =
                             `Updated: ${timeAgoStr}${staleNote} | Battery: ${batteryDisplay} | Speed: ${speedDisplay}${durationPart}`;
                     } else if (isStopped) {
+                        const dest = typeof data.destination === 'string' ? data.destination.trim() : '';
+                        const destinationBadge = document.getElementById('destinationBadge');
+                        const destinationTextEl = document.getElementById('destinationText');
+                        if (destinationBadge && destinationTextEl) {
+                            if (dest) {
+                                destinationTextEl.textContent = `Destination: ${dest}`;
+                                destinationBadge.style.display = 'inline-flex';
+                            } else {
+                                destinationBadge.style.display = 'none';
+                            }
+                        }
                         document.getElementById('statusText').innerText = 'Sharing Stopped';
                         document.getElementById('statusText').className = 'status offline';
                         document.getElementById('detailsText').innerText = data.stopReason || data.endReason || 'The rider has ended this live trip.';
@@ -922,6 +996,17 @@
                         revealGetApp(true);
                         return;
                     } else {
+                        const dest = typeof data.destination === 'string' ? data.destination.trim() : '';
+                        const destinationBadge = document.getElementById('destinationBadge');
+                        const destinationTextEl = document.getElementById('destinationText');
+                        if (destinationBadge && destinationTextEl) {
+                            if (dest) {
+                                destinationTextEl.textContent = `Heading to: ${dest}`;
+                                destinationBadge.style.display = 'inline-flex';
+                            } else {
+                                destinationBadge.style.display = 'none';
+                            }
+                        }
                         document.getElementById('statusText').innerText = 'Waiting...';
                         document.getElementById('statusText').className = 'status delayed';
                         document.getElementById('userNameText').innerText = `${data.username || 'Anonymous'}'s Live Location`;
