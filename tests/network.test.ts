@@ -14,6 +14,9 @@ import {
     buildMapsUrls,
     formatLiveShareText,
     formatLocationShareText,
+    shouldShowLowBatteryBanner,
+    formatLowBatteryBannerText,
+    shouldEmitLowBatteryTelemetry,
 } from '../lib/track/network';
 
 describe('Live Viewer Network Resilience & Tile Fallback (CIE-007)', () => {
@@ -248,6 +251,73 @@ describe('Live Viewer Network Resilience & Tile Fallback (CIE-007)', () => {
             assert.ok(formatted.includes('Google Maps: https://maps.google.com/?q=37.7749,-122.4194'));
             assert.ok(formatted.includes('Apple Maps: https://maps.apple.com/?q=37.7749,-122.4194'));
             assert.ok(formatted.includes('Last seen at'));
+        });
+    });
+
+    describe('Low-Battery Warning Banner & Telemetry Deduplication (CIE-022)', () => {
+        it('evaluates low battery banner visibility rules correctly', () => {
+            // Low battery levels (<= 15) when active
+            assert.equal(shouldShowLowBatteryBanner(15, false), true);
+            assert.equal(shouldShowLowBatteryBanner(12, false), true);
+            assert.equal(shouldShowLowBatteryBanner(15.4, false), true);
+            assert.equal(shouldShowLowBatteryBanner(0, false), true);
+
+            // Normal battery levels (> 15)
+            assert.equal(shouldShowLowBatteryBanner(16, false), false);
+            assert.equal(shouldShowLowBatteryBanner(15.5, false), false); // rounds to 16
+            assert.equal(shouldShowLowBatteryBanner(85, false), false);
+
+            // Stopped sessions should NEVER show low battery warning
+            assert.equal(shouldShowLowBatteryBanner(10, true), false);
+            assert.equal(shouldShowLowBatteryBanner(5, true), false);
+
+            // Invalid/null/undefined battery values
+            assert.equal(shouldShowLowBatteryBanner(null, false), false);
+            assert.equal(shouldShowLowBatteryBanner(undefined, false), false);
+            assert.equal(shouldShowLowBatteryBanner(NaN, false), false);
+            assert.equal(shouldShowLowBatteryBanner(-5, false), false);
+            assert.equal(shouldShowLowBatteryBanner(105, false), false);
+        });
+
+        it('formats low battery banner text with rounded percentage and warning', () => {
+            assert.equal(
+                formatLowBatteryBannerText(12),
+                '🪫 Rider battery low (12%) · Signal may pause if phone powers off'
+            );
+            assert.equal(
+                formatLowBatteryBannerText(15.2),
+                '🪫 Rider battery low (15%) · Signal may pause if phone powers off'
+            );
+            assert.equal(
+                formatLowBatteryBannerText(0),
+                '🪫 Rider battery low (0%) · Signal may pause if phone powers off'
+            );
+
+            // Null when battery > 15 or invalid
+            assert.equal(formatLowBatteryBannerText(16), null);
+            assert.equal(formatLowBatteryBannerText(50), null);
+            assert.equal(formatLowBatteryBannerText(null), null);
+            assert.equal(formatLowBatteryBannerText(undefined), null);
+        });
+
+        it('deduplicates telemetry events on identical battery levels', () => {
+            // First time seeing low battery 14%: emit
+            assert.equal(shouldEmitLowBatteryTelemetry(null, 14), true);
+
+            // Subsequent polls at 14%: suppress (zero spam)
+            assert.equal(shouldEmitLowBatteryTelemetry(14, 14), false);
+            assert.equal(shouldEmitLowBatteryTelemetry(14, 13.9), false); // rounds to 14
+
+            // Dropped to 13%: emit
+            assert.equal(shouldEmitLowBatteryTelemetry(14, 13), true);
+
+            // Normal battery (> 15%): suppress
+            assert.equal(shouldEmitLowBatteryTelemetry(null, 50), false);
+            assert.equal(shouldEmitLowBatteryTelemetry(12, 80), false);
+
+            // Invalid/null battery: suppress
+            assert.equal(shouldEmitLowBatteryTelemetry(null, null), false);
+            assert.equal(shouldEmitLowBatteryTelemetry(null, NaN), false);
         });
     });
 });

@@ -113,6 +113,21 @@
             gap: 10px;
             max-width: 340px;
         }
+        .low-battery-banner {
+            margin-top: 8px;
+            padding: 6px 12px;
+            background: #fff1f2;
+            border: 1px solid #fecdd3;
+            border-radius: 8px;
+            color: #9f1239;
+            font-size: 0.82em;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            max-width: 340px;
+            font-weight: 500;
+        }
         .stale-refresh-btn, .retry-btn {
             background: #ffffff;
             color: #991b1b;
@@ -301,6 +316,11 @@
             <div class="stale-signal-banner">
                 <span id="staleSignalText">⚠️ Signal paused · Waiting for rider GPS</span>
                 <button type="button" id="staleRefreshBtn" class="stale-refresh-btn" title="Refresh live location">🔄 Refresh</button>
+            </div>
+        </div>
+        <div id="lowBatteryContainer" style="display: none;">
+            <div class="low-battery-banner">
+                <span id="lowBatteryText">🪫 Rider battery low (<15%) · Signal may pause if phone powers off</span>
             </div>
         </div>
     </div>
@@ -763,6 +783,9 @@
             // CIE-007: Online / Offline Viewer State Management
             let isViewerOnline = typeof navigator !== 'undefined' && 'onLine' in navigator ? navigator.onLine : true;
 
+            // CIE-022: Deduplicated Low Battery Telemetry
+            let lastEmittedLowBattery = null;
+
             // CIE-019: Manual Refresh & Connection Retry Trigger
             function manualRefresh(triggerSource) {
                 if (isTripEnded) return;
@@ -1066,9 +1089,30 @@
                         }
                         // CIE-007: Battery display with low battery alert (<15%)
                         let batteryDisplay = 'N/A';
+                        const isLowBattery = !isStopped && typeof batteryLevel === 'number' && Number.isFinite(batteryLevel) && batteryLevel >= 0 && Math.round(batteryLevel) <= 15;
+                        const lowBatteryContainer = document.getElementById('lowBatteryContainer');
+                        const lowBatteryTextEl = document.getElementById('lowBatteryText');
                         if (typeof batteryLevel === 'number' && Number.isFinite(batteryLevel) && batteryLevel >= 0 && batteryLevel <= 100) {
                             const roundedBat = Math.round(batteryLevel);
                             batteryDisplay = roundedBat <= 15 ? `🪫 ${roundedBat}% (Low)` : `🔋 ${roundedBat}%`;
+                        }
+                        if (lowBatteryContainer && lowBatteryTextEl) {
+                            if (isLowBattery) {
+                                const roundedBat = Math.round(batteryLevel);
+                                lowBatteryTextEl.innerText = `🪫 Rider battery low (${roundedBat}%) · Signal may pause if phone powers off`;
+                                lowBatteryContainer.style.display = 'block';
+
+                                // Deduplicated telemetry emission (CIE-022)
+                                if (lastEmittedLowBattery !== roundedBat) {
+                                    lastEmittedLowBattery = roundedBat;
+                                    emitTelemetry('live_share_viewer_low_battery_shown', {
+                                        batteryLevel: roundedBat,
+                                        battery_level: roundedBat,
+                                    });
+                                }
+                            } else {
+                                lowBatteryContainer.style.display = 'none';
+                            }
                         }
 
                         const durationStr = formatElapsedDuration(data.startedAt, data.endedAt);
@@ -1113,6 +1157,7 @@
                                 endedTimeStr ? `${stopText} at ${endedTimeStr}${durationLabel} · Final location shown` : `${stopText}${durationLabel} · Final location shown`;
                             const staleContainer = document.getElementById('staleSignalContainer');
                             if (staleContainer) staleContainer.style.display = 'none';
+                            if (lowBatteryContainer) lowBatteryContainer.style.display = 'none';
                             const retryBtn = document.getElementById('connectionRetryBtn');
                             if (retryBtn) retryBtn.style.display = 'none';
                             stopPollingTimers();

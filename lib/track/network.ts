@@ -111,6 +111,67 @@ export function getBatteryDisplay(batteryLevel: number | null | undefined): Batt
 }
 
 /**
+ * Evaluates whether the low-battery warning banner should be displayed to live viewers.
+ *
+ * Rules:
+ * 1. Session must NOT be stopped (active live tracking).
+ * 2. Battery level must be a valid, finite number between 0 and 100.
+ * 3. Rounded battery level must be <= LOW_BATTERY_THRESHOLD (15%).
+ *
+ * @param batteryLevel Raw battery level (0-100) or null/undefined
+ * @param isStopped Whether the live sharing session has ended
+ */
+export function shouldShowLowBatteryBanner(batteryLevel: number | null | undefined, isStopped: boolean): boolean {
+    if (isStopped) return false;
+    if (typeof batteryLevel !== 'number' || !Number.isFinite(batteryLevel) || batteryLevel < 0 || batteryLevel > 100) {
+        return false;
+    }
+    return Math.round(batteryLevel) <= LOW_BATTERY_THRESHOLD;
+}
+
+/**
+ * Formats user-facing text for the prominent low-battery warning banner.
+ *
+ * Returns null if battery is not in low state.
+ *
+ * @param batteryLevel Raw battery level (0-100) or null/undefined
+ */
+export function formatLowBatteryBannerText(batteryLevel: number | null | undefined): string | null {
+    if (typeof batteryLevel !== 'number' || !Number.isFinite(batteryLevel) || batteryLevel < 0 || batteryLevel > 100) {
+        return null;
+    }
+    const rounded = Math.round(batteryLevel);
+    if (rounded > LOW_BATTERY_THRESHOLD) {
+        return null;
+    }
+    return `🪫 Rider battery low (${rounded}%) · Signal may pause if phone powers off`;
+}
+
+/**
+ * Determines whether low battery telemetry should be emitted, deduplicating identical levels.
+ *
+ * Emits when:
+ * 1. Current level is valid, <= LOW_BATTERY_THRESHOLD (15%).
+ * 2. Current rounded level is different from the last emitted level.
+ *
+ * @param lastEmittedLevel Previously emitted low battery level (or null if none emitted yet)
+ * @param currentLevel Current battery level from telemetry
+ */
+export function shouldEmitLowBatteryTelemetry(
+    lastEmittedLevel: number | null,
+    currentLevel: number | null | undefined
+): boolean {
+    if (typeof currentLevel !== 'number' || !Number.isFinite(currentLevel) || currentLevel < 0 || currentLevel > 100) {
+        return false;
+    }
+    const rounded = Math.round(currentLevel);
+    if (rounded > LOW_BATTERY_THRESHOLD) {
+        return false;
+    }
+    return lastEmittedLevel !== rounded;
+}
+
+/**
  * Evaluates whether tile errors have crossed the tolerance threshold to trigger a mirror switch.
  *
  * @param consecutiveTileErrors Count of failed tile fetches
