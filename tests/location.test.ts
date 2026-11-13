@@ -21,6 +21,8 @@ import {
   parseCoordinate,
   isNullIsland,
   isImplausibleJump,
+  computeShortestArcDelta,
+  computeContinuousAngle,
 } from '../lib/track/trail';
 import {
   MAX_AUTO_WATCHERS,
@@ -798,6 +800,34 @@ test('locationHandler filters implausible GPS jumps from path and anchors lastLo
 
   await redis.del(`session:${sessionId}`);
 });
+
+test('computeShortestArcDelta and computeContinuousAngle handle north boundary crossing smoothly (CIE-028)', () => {
+  // Clockwise across North boundary (355 -> 5): delta should be +10, not -350
+  const delta1 = computeShortestArcDelta(355, 5);
+  assert.strictEqual(delta1, 10);
+  assert.strictEqual(computeContinuousAngle(355, 5), 365);
+
+  // Counter-clockwise across North boundary (5 -> 355): delta should be -10, not +350
+  const delta2 = computeShortestArcDelta(5, 355);
+  assert.strictEqual(delta2, -10);
+  assert.strictEqual(computeContinuousAngle(5, 355), -5);
+
+  // Standard turns within quadrant
+  assert.strictEqual(computeShortestArcDelta(90, 120), 30);
+  assert.strictEqual(computeContinuousAngle(90, 120), 120);
+
+  assert.strictEqual(computeShortestArcDelta(120, 90), -30);
+  assert.strictEqual(computeContinuousAngle(120, 90), 90);
+
+  // Identical angles
+  assert.strictEqual(computeShortestArcDelta(45, 45), 0);
+  assert.strictEqual(computeContinuousAngle(45, 45), 45);
+
+  // Multi-rotation continuous angle preservation
+  assert.strictEqual(computeContinuousAngle(725, 10), 730);
+  assert.strictEqual(computeContinuousAngle(-15, 350), -10);
+});
+
 
 async function main() {
   let passed = 0;
