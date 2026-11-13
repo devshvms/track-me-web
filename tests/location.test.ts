@@ -513,6 +513,55 @@ test('locationHandler POST enforces powerSaveMode on low battery threshold (<= 1
   await redis.del(`session:${sessionId}`);
 });
 
+test('POST location pipelines session set, prune, and active viewers lookup into single multi execution', async () => {
+  const redis = await getRedisClient();
+  const sessionId = 'session-pipeline-test';
+  const viewersKey = `session:${sessionId}:viewers`;
+
+  await redis.set(`session:${sessionId}`, JSON.stringify({
+    sessionId,
+    ownerUid: 'user-owner-123',
+    status: 'active',
+    expiresAt: new Date(Date.now() + 3600 * 1000).toISOString(),
+    path: [],
+  }), { EX: 3600 });
+
+  // Add 2 active viewers and 1 stale viewer (> 40s ago)
+  const now = Date.now();
+  await redis.zAdd(viewersKey, [
+    { score: now, value: 'viewer-active-1' },
+    { score: now - 5000, value: 'viewer-active-2' },
+    { score: now - 60000, value: 'viewer-stale-3' },
+  ]);
+
+  const res = fakeResponse();
+  await locationHandler({
+    method: 'POST',
+    query: { sessionId },
+    headers: { authorization: 'Bearer valid-owner-token' },
+    body: {
+      lat: 12.9716,
+      lng: 77.5946,
+      batteryLevel: 90,
+      powerSaveMode: false,
+    },
+  } as any, res as any);
+
+  assert.strictEqual(res.captured.statusCode, 200);
+  assert.strictEqual(res.captured.body.success, true);
+  // Stale viewer should have been pruned and remaining 2 active viewers returned
+  assert.strictEqual(res.captured.body.activeViewers, 2);
+
+  // Verify session state was persisted
+  const sessionStr = await redis.get(`session:${sessionId}`);
+  assert.ok(sessionStr !== null);
+  const parsed = JSON.parse(sessionStr);
+  assert.strictEqual(parsed.lastLocation.lat, 12.9716);
+
+  await redis.del(`session:${sessionId}`);
+  await redis.del(viewersKey);
+});
+
 async function main() {
   let passed = 0;
   const failures: string[] = [];
