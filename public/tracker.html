@@ -498,8 +498,7 @@
                             document.getElementById('statusText').className = 'status offline';
                             const timeStr = window.lastKnownDuration ? `Location was shared for ${window.lastKnownDuration} minutes and time elapsed.` : 'Location sharing time elapsed or session ended.';
                             document.getElementById('detailsText').innerText = timeStr;
-                            if (pollingInterval) clearInterval(pollingInterval);
-                            if (pingInterval) clearInterval(pingInterval);
+                            stopPollingTimers();
                             revealGetApp(true);
                             return;
                         }
@@ -507,8 +506,7 @@
                             document.getElementById('statusText').innerText = 'Session Full';
                             document.getElementById('statusText').className = 'status offline';
                             document.getElementById('detailsText').innerText = 'Maximum number of viewers reached. Try again later.';
-                            if (pollingInterval) clearInterval(pollingInterval);
-                            if (pingInterval) clearInterval(pingInterval);
+                            stopPollingTimers();
                             revealGetApp(true);
                             return;
                         }
@@ -527,8 +525,7 @@
                             document.getElementById('statusText').className = 'status offline';
                             const timeStr = window.lastKnownDuration ? `Location was shared for ${window.lastKnownDuration} minutes and time elapsed.` : 'Location sharing time elapsed or session ended.';
                             document.getElementById('detailsText').innerText = timeStr;
-                            if (pollingInterval) clearInterval(pollingInterval);
-                            if (pingInterval) clearInterval(pingInterval);
+                            stopPollingTimers();
                             revealGetApp(true);
                             return;
                         }
@@ -536,8 +533,7 @@
                             document.getElementById('statusText').innerText = 'Session Full';
                             document.getElementById('statusText').className = 'status offline';
                             document.getElementById('detailsText').innerText = 'Maximum number of viewers reached. Try again later.';
-                            if (pollingInterval) clearInterval(pollingInterval);
-                            if (pingInterval) clearInterval(pingInterval);
+                            stopPollingTimers();
                             revealGetApp(true);
                             return;
                         }
@@ -700,8 +696,7 @@
                             document.getElementById('userNameText').innerText = `${username}'s Final Location`;
                             document.getElementById('detailsText').innerText =
                                 `${data.stopReason || 'The rider has ended this trip.'} · Updated ${timeAgoStr}`;
-                            if (pollingInterval) clearInterval(pollingInterval);
-                            if (pingInterval) clearInterval(pingInterval);
+                            stopPollingTimers();
                             revealGetApp(true);
                             return;
                         }
@@ -727,8 +722,7 @@
                         document.getElementById('statusText').innerText = 'Sharing Stopped';
                         document.getElementById('statusText').className = 'status offline';
                         document.getElementById('detailsText').innerText = data.stopReason || 'The rider has ended this trip.';
-                        if (pollingInterval) clearInterval(pollingInterval);
-                        if (pingInterval) clearInterval(pingInterval);
+                        stopPollingTimers();
                         revealGetApp(true);
                         return;
                     } else {
@@ -738,9 +732,19 @@
                         document.getElementById('detailsText').innerText = 'Session active, waiting for first location ping from rider.';
                     }
                 } catch (err) {
-                    console.error(err);
-                    document.getElementById('statusText').innerText = 'Connection Error';
-                    document.getElementById('statusText').className = 'status offline';
+                    console.error('Location fetch error:', err);
+                    // Defensive UX: Do not destroy the existing rider marker or map context on transient cellular glitches.
+                    // If we have previously rendered the rider, show a non-blocking "Connecting..." indicator.
+                    if (window.lastRiderPos && !isTripEnded) {
+                        const statusEl = document.getElementById('statusText');
+                        if (statusEl) {
+                            statusEl.innerText = 'Connecting...';
+                            statusEl.className = 'status delayed';
+                        }
+                    } else if (!isTripEnded) {
+                        document.getElementById('statusText').innerText = 'Connection Error';
+                        document.getElementById('statusText').className = 'status offline';
+                    }
                 }
             }
 

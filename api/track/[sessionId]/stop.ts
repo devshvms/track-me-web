@@ -2,6 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { getRedisClient } from '../../../lib/redis';
 import { captureTelemetryEvent } from '../../../lib/posthog';
 import { AuthError, requireUser, sendAuthError } from '../../../lib/auth';
+import { deriveSessionTtlSeconds } from './location';
 
 export default async function handler(
   request: VercelRequest,
@@ -47,12 +48,21 @@ export default async function handler(
       console.error('Error incrementing total_hours on stop:', e);
     }
 
-    const ttl = await redis.ttl(`session:${sessionId}`);
-    if (ttl > 0) {
-      await redis.set(`session:${sessionId}`, JSON.stringify(sessionData), {
-        EX: ttl
-      });
+    // POST-RIDE VIEWING BUFFER:
+    // When a trip completes or is stopped by the rider, viewers frequently inspect the share link
+    // shortly after arrival. Retain the stopped session for at least 1 hour (3600s) or until the
+    // original scheduled expiration (whichever is greater, capped at 24 hours), avoiding premature
+    // session expiration if the rider stopped sharing near the end of their duration.
+    let remainingTtl = deriveSessionTtlSeconds(sessionData);
+    if (remainingTtl <= 0) {
+      const queriedTtl = await redis.ttl(`session:${sessionId}`);
+      if (queriedTtl > 0) remainingTtl = queriedTtl;
     }
+    const finalTtl = Math.min(86400, Math.max(remainingTtl, 3600));
+
+    await redis.set(`session:${sessionId}`, JSON.stringify(sessionData), {
+      EX: finalTtl,
+    });
 
     await captureTelemetryEvent(sessionId, 'web_live_share_session_stopped', {
       sessionId,
