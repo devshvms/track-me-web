@@ -45,6 +45,39 @@ export function deriveSessionTtlSeconds(sessionData: any, nowMs: number = Date.n
   return Math.max(0, Math.floor((expiresAtMs - nowMs) / 1000));
 }
 
+/**
+ * Determines the optimal Cache-Control header for a live session GET request.
+ *
+ * 1. Stopped / Ended Sessions:
+ *    When a session has ended (status === 'stopped' | 'ended' or endedAt is set), the route path,
+ *    arrival coordinates, and metrics are frozen and will never change.
+ *    Setting `s-maxage=300, max-age=60, stale-while-revalidate` allows Vercel Edge CDN to serve
+ *    historical route snapshots directly for 5 minutes without incurring Redis commands or
+ *    serverless invocation time.
+ *
+ * 2. Active Sessions:
+ *    When the ride is in progress, updates arrive every 5-15s. Setting `s-maxage=2, stale-while-revalidate`
+ *    absorbs burst traffic across multiple concurrent viewers while keeping latency low.
+ *
+ * 3. 404 / Missing Sessions:
+ *    When a session is expired or does not exist, setting `s-maxage=60, max-age=10` prevents
+ *    crawler bots and broken client polling loops from hammering the serverless backend.
+ */
+export function getSessionCacheControl(sessionData: any): string {
+  if (!sessionData) {
+    return 's-maxage=60, max-age=10';
+  }
+  const isEnded =
+    sessionData.status === 'stopped' ||
+    sessionData.status === 'ended' ||
+    Boolean(sessionData.endedAt);
+
+  if (isEnded) {
+    return 's-maxage=300, max-age=60, stale-while-revalidate';
+  }
+  return 's-maxage=2, stale-while-revalidate';
+}
+
 export default async function handler(
   request: VercelRequest,
   response: VercelResponse,
@@ -60,15 +93,16 @@ export default async function handler(
     
     const sessionDataStr = await redis.get(`session:${sessionId}`);
     if (!sessionDataStr) {
+      if (request.method === 'GET') {
+        response.setHeader('Cache-Control', getSessionCacheControl(null));
+      }
       return response.status(404).json({ error: 'Session not found or expired' });
     }
 
     const sessionData = JSON.parse(sessionDataStr);
 
     if (request.method === 'GET') {
-      // Allow Vercel Edge to cache this response across all viewers for 2 seconds.
-      // If 10k users poll every 5s, the edge cache absorbs 99.9% of the traffic.
-      response.setHeader('Cache-Control', 's-maxage=2, stale-while-revalidate');
+      response.setHeader('Cache-Control', getSessionCacheControl(sessionData));
 
       const viewerPayload: Record<string, unknown> = {};
       for (const field of VIEWER_VISIBLE_FIELDS) {

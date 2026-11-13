@@ -28,6 +28,24 @@ if (!globalAny._mockRedis) {
       if (isExpired(key)) return null;
       return store.get(key) || null;
     },
+    async exists(...keys: string[]): Promise<number> {
+      if (!keys || keys.length === 0) return 0;
+      let count = 0;
+      for (const key of keys) {
+        if (!key) continue;
+        if (isExpired(key)) {
+          store.delete(key);
+          zsets.delete(key);
+          hashes.delete(key);
+          expiries.delete(key);
+          continue;
+        }
+        if (store.has(key) || zsets.has(key) || hashes.has(key)) {
+          count++;
+        }
+      }
+      return count;
+    },
     async set(key: string, value: string, options?: any) {
       store.set(key, value);
       if (options?.EX && typeof options.EX === 'number' && options.EX > 0) {
