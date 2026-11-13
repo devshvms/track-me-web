@@ -30,16 +30,6 @@ export default async function handler(
   try {
     const redis = await getRedisClient();
     
-    // PAYLOAD & EGRESS OPTIMIZATION:
-    // This endpoint is public and only verifies session existence.
-    // Using redis.exists rather than redis.get avoids downloading the full session
-    // JSON (which often contains 50-200 KB of coordinate breadcrumbs), cutting Redis egress
-    // and network latency by >99% per presence ping on active rides.
-    const sessionExists = await redis.exists(`session:${cleanSessionId}`);
-    if (!sessionExists) {
-      return response.status(404).json({ error: 'Session not found or expired' });
-    }
-
     const viewersKey = `session:${cleanSessionId}:viewers`;
     const now = Date.now();
     const cutoff = now - STALE_VIEWER_WINDOW_MS;
@@ -47,20 +37,31 @@ export default async function handler(
     let isExistingViewer: number | null = null;
     let currentViewerCount = 0;
 
-    // PIPELINED VIEWER CAPACITY CHECK ($0/mo Free-Tier Command Budget):
-    // Prune stale viewers, check membership, and count active viewers in a single roundtrip via multi().
+    // PIPELINED SESSION EXISTENCE & VIEWER CAPACITY CHECK ($0/mo Free-Tier Command Budget):
+    // Check session existence, prune stale viewers, check membership, and count active viewers
+    // in a single atomic roundtrip via multi() when supported (CIE-017).
     if (typeof redis.multi === 'function') {
       const multi = redis.multi();
+      multi.exists(`session:${cleanSessionId}`);
       multi.zRemRangeByScore(viewersKey, 0, cutoff);
       multi.zScore(viewersKey, cleanViewerId);
       multi.zCard(viewersKey);
       const results = await multi.exec();
-      // results[0] = removed count
-      // results[1] = zScore result (number or null)
-      // results[2] = zCard count (number)
-      isExistingViewer = results?.[1] !== undefined ? results[1] : null;
-      currentViewerCount = typeof results?.[2] === 'number' ? results[2] : 0;
+      // results[0] = exists count (1 if active/exists, 0 if missing/expired)
+      // results[1] = removed count
+      // results[2] = zScore result (number or null)
+      // results[3] = zCard count (number)
+      const sessionExists = Boolean(results?.[0]);
+      if (!sessionExists) {
+        return response.status(404).json({ error: 'Session not found or expired' });
+      }
+      isExistingViewer = results?.[2] !== undefined ? results[2] : null;
+      currentViewerCount = typeof results?.[3] === 'number' ? results[3] : 0;
     } else {
+      const sessionExists = await redis.exists(`session:${cleanSessionId}`);
+      if (!sessionExists) {
+        return response.status(404).json({ error: 'Session not found or expired' });
+      }
       await redis.zRemRangeByScore(viewersKey, 0, cutoff);
       isExistingViewer = await redis.zScore(viewersKey, cleanViewerId);
       currentViewerCount = await redis.zCard(viewersKey);
@@ -70,21 +71,29 @@ export default async function handler(
       return response.status(429).json({ error: 'Maximum concurrent viewers reached for this session.' });
     }
 
-    // Add or update the viewer's last ping timestamp
-    await redis.zAdd(viewersKey, { score: now, value: cleanViewerId });
-    
     // COST & LATENCY OPTIMIZATION (Upstash Free-Tier Command Budget):
-    // Only refresh the viewers set TTL when a new viewer joins (isExistingViewer === null).
-    // For existing viewers pinging every 15s, the TTL is already established on the set,
-    // avoiding redundant redis.ttl + redis.expire network roundtrips.
+    // When a new viewer joins (isExistingViewer === null), query session TTL and pipeline
+    // zAdd + expire in a single roundtrip.
+    // For existing viewers (99% of requests), only zAdd is called, and TTL is preserved.
     if (isExistingViewer === null) {
       try {
         const ttl = await redis.ttl(`session:${cleanSessionId}`);
         const finalSetTtl = ttl > 0 ? ttl : 86400;
-        await redis.expire(viewersKey, finalSetTtl);
+        if (typeof redis.multi === 'function') {
+          const multi = redis.multi();
+          multi.zAdd(viewersKey, { score: now, value: cleanViewerId });
+          multi.expire(viewersKey, finalSetTtl);
+          await multi.exec();
+        } else {
+          await redis.zAdd(viewersKey, { score: now, value: cleanViewerId });
+          await redis.expire(viewersKey, finalSetTtl);
+        }
       } catch (ttlErr) {
         console.warn('Failed to set viewersKey expiration safely:', ttlErr);
+        await redis.zAdd(viewersKey, { score: now, value: cleanViewerId });
       }
+    } else {
+      await redis.zAdd(viewersKey, { score: now, value: cleanViewerId });
     }
 
     const activeCount = isExistingViewer === null ? currentViewerCount + 1 : currentViewerCount;

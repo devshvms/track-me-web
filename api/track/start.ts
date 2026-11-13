@@ -146,24 +146,35 @@ export default async function handler(
       path: [] as [number, number][]
     };
 
-    await redis.set(`session:${sessionId}`, JSON.stringify(sessionData), {
-      EX: duration * 60
-    });
-
+    // CIE-017: Pipeline initial session persistence and 24h stats tracking
+    // in a single atomic roundtrip via multi() when supported.
     try {
       if (typeof redis.multi === 'function') {
         const multi = redis.multi();
+        multi.set(`session:${sessionId}`, JSON.stringify(sessionData), {
+          EX: duration * 60,
+        });
         multi.incr('stats:total_shares');
         multi.zAdd('stats:shares_24h', { score: now, value: sessionId });
         multi.zRemRangeByScore('stats:shares_24h', 0, now - 24 * 60 * 60 * 1000);
         await multi.exec();
       } else {
+        await redis.set(`session:${sessionId}`, JSON.stringify(sessionData), {
+          EX: duration * 60,
+        });
         await redis.incr('stats:total_shares');
         await redis.zAdd('stats:shares_24h', { score: now, value: sessionId });
         await redis.zRemRangeByScore('stats:shares_24h', 0, now - 24 * 60 * 60 * 1000);
       }
     } catch (e) {
-      console.error('Stats update error:', e);
+      console.error('Session write / stats update error:', e);
+      try {
+        await redis.set(`session:${sessionId}`, JSON.stringify(sessionData), {
+          EX: duration * 60,
+        });
+      } catch (fallbackErr) {
+        console.error('Fallback session write error:', fallbackErr);
+      }
     }
 
     const shareLink = absoluteUrl(request, `/live/${sessionId}`);
