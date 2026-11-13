@@ -8,6 +8,7 @@ import locationHandler, {
 } from '../api/track/[sessionId]/location';
 import pingHandler from '../api/track/[sessionId]/ping';
 import { getRedisClient } from '../lib/redis';
+import { auth } from '../lib/firebase';
 import {
   MAX_PATH_POINTS,
   appendPathPoint,
@@ -427,6 +428,89 @@ test('ping endpoint uses redis.exists to verify session presence without downloa
   // Clean up
   await redis.del(`session:${sessionId}`);
   await redis.del(`session:${sessionId}:viewers`);
+});
+
+if (auth) {
+  (auth as any).verifyIdToken = async (token: string) => {
+    if (token === 'valid-owner-token') {
+      return {
+        uid: 'user-owner-123',
+        email: 'rider@trackme.shvms.in',
+        name: 'Authorized Rider',
+      };
+    }
+    throw new Error('Invalid token');
+  };
+}
+
+test('locationHandler POST enforces powerSaveMode on low battery threshold (<= 15%)', async () => {
+  const redis = await getRedisClient();
+  const sessionId = 'battery-defense-test-cie015';
+
+  await redis.set(`session:${sessionId}`, JSON.stringify({
+    ownerUid: 'user-owner-123',
+    status: 'active',
+    expiresAt: new Date(Date.now() + 60000).toISOString(),
+    path: [],
+  }));
+
+  // 1. Post with batteryLevel: 12 and powerSaveMode: false -> powerSaveMode must resolve to true
+  const res1 = fakeResponse();
+  await locationHandler({
+    method: 'POST',
+    query: { sessionId },
+    headers: { authorization: 'Bearer valid-owner-token' },
+    body: {
+      lat: 12.9716,
+      lng: 77.5946,
+      batteryLevel: 12,
+      powerSaveMode: false,
+    },
+  } as any, res1 as any);
+
+  assert.strictEqual(res1.captured.statusCode, 200);
+  const updated1 = JSON.parse(await redis.get(`session:${sessionId}`) as string);
+  assert.strictEqual(updated1.lastLocation.powerSaveMode, true, 'Low battery (12%) must enforce powerSaveMode = true');
+  assert.strictEqual(updated1.lastLocation.batteryLevel, 12);
+
+  // 2. Post with batteryLevel: 80 and powerSaveMode: false -> powerSaveMode must be false
+  const res2 = fakeResponse();
+  await locationHandler({
+    method: 'POST',
+    query: { sessionId },
+    headers: { authorization: 'Bearer valid-owner-token' },
+    body: {
+      lat: 12.9720,
+      lng: 77.5950,
+      batteryLevel: 80,
+      powerSaveMode: false,
+    },
+  } as any, res2 as any);
+
+  assert.strictEqual(res2.captured.statusCode, 200);
+  const updated2 = JSON.parse(await redis.get(`session:${sessionId}`) as string);
+  assert.strictEqual(updated2.lastLocation.powerSaveMode, false, 'Normal battery with powerSaveMode: false must remain false');
+
+  // 3. Post with batteryLevel: 80 and powerSaveMode: true -> powerSaveMode must be true
+  const res3 = fakeResponse();
+  await locationHandler({
+    method: 'POST',
+    query: { sessionId },
+    headers: { authorization: 'Bearer valid-owner-token' },
+    body: {
+      lat: 12.9725,
+      lng: 77.5955,
+      batteryLevel: 80,
+      powerSaveMode: true,
+    },
+  } as any, res3 as any);
+
+  assert.strictEqual(res3.captured.statusCode, 200);
+  const updated3 = JSON.parse(await redis.get(`session:${sessionId}`) as string);
+  assert.strictEqual(updated3.lastLocation.powerSaveMode, true, 'Explicit powerSaveMode: true must be respected');
+
+  // Clean up
+  await redis.del(`session:${sessionId}`);
 });
 
 async function main() {

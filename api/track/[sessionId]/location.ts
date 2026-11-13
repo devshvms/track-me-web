@@ -139,13 +139,26 @@ export default async function handler(
       );
       sessionData.path = path;
 
+      // CIE-015: Low battery threshold defense (<= 15%)
+      // If powerSaveMode is explicitly provided, respect it.
+      // Additionally, if batteryLevel is <= 15%, automatically enforce powerSaveMode = true
+      // to guarantee viewers (Web tracker.html, Android, iOS) display power saving and delayed update alerts
+      // even if older mobile clients omitted the flag.
+      const isLowBattery =
+        typeof batteryLevel === 'number' &&
+        Number.isFinite(batteryLevel) &&
+        batteryLevel >= 0 &&
+        batteryLevel <= 15;
+      const effectivePowerSave =
+        (typeof powerSaveMode === 'boolean' ? powerSaveMode : false) || isLowBattery;
+
       sessionData.lastLocation = {
         lat,
         lng: longitude,
         batteryLevel,
         speed,
         heading: resolvedHeading !== null ? resolvedHeading : heading,
-        powerSaveMode: typeof powerSaveMode === 'boolean' ? powerSaveMode : false,
+        powerSaveMode: effectivePowerSave,
         timestamp: timestamp || new Date().toISOString()
       };
 
