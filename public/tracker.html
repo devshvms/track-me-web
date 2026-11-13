@@ -332,7 +332,7 @@
         <div class="details" id="detailsText">Waiting for location data</div>
         <div class="open-app-row" id="openAppRow">
             <a href="#getApp" id="openAppBtn" class="open-app-btn">Open in TrackMe App</a>
-            <button type="button" id="shareLiveSessionBtn" class="open-app-btn" style="background: rgba(0, 229, 255, 0.15); border: 1px solid rgba(0, 229, 255, 0.35); color: #00e5ff; margin-left: 6px; cursor: pointer;">🔗 Share Ride</button>
+            <button type="button" id="shareLiveSessionBtn" class="open-app-btn" style="background: rgba(0, 229, 255, 0.15); border: 1px solid rgba(0, 229, 255, 0.35); color: #00e5ff; margin-left: 6px; cursor: pointer;" aria-label="Share live ride tracking link" title="Share live ride tracking link">🔗 Share Ride</button>
         </div>
         <div id="powerSaveContainer" style="display: none;">
             <div class="power-save-badge">⚠️ Device in Power Saving Mode</div>
@@ -1430,7 +1430,7 @@
             document.getElementById('shareLiveSessionBtn')?.addEventListener('click', () => {
                 const liveUrl = window.location.href;
                 const user = window.lastKnownUserName;
-                const shareText = user ? `Track ${user}'s live ride on TrackMe: ${liveUrl}` : `Track my live ride on TrackMe: ${liveUrl}`;
+                const shareText = user ? `Track ${user}'s live ride on TrackMe: ${liveUrl}` : `Track this live ride on TrackMe: ${liveUrl}`;
                 emitTelemetry('live_share_viewer_share_clicked', { sessionId });
                 if (navigator.share) {
                     navigator.share({ title: 'TrackMe Live Ride', text: shareText, url: liveUrl }).catch(() => {
