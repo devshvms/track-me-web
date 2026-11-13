@@ -5,6 +5,7 @@ import { auth } from '../lib/firebase';
 import {
   MAX_AUTO_WATCHERS,
   normalizeWatcherUids,
+  dispatchTrustedWatcherNotifications,
 } from '../lib/track/watchers';
 
 type TestCase = { name: string; fn: () => void | Promise<void> };
@@ -239,6 +240,158 @@ test('startHandler POST initializes session with pipelined stats and trimmed bou
 
   // Clean up
   await redis.del(`session:${sessionId}`);
+});
+
+test('dispatchTrustedWatcherNotifications executes concurrently via Promise.all and handles tokens & errors', async () => {
+  const redis = await getRedisClient();
+  const ownerUid = 'owner-456';
+  let activeConcurrentReads = 0;
+  let maxConcurrentReads = 0;
+
+  // Mock Firestore DB with delayed get() to prove concurrency
+  const mockDb = {
+    collection(colName: string) {
+      if (colName === 'users') {
+        return {
+          doc(docUid: string) {
+            return {
+              collection(subColName: string) {
+                if (subColName === 'trusted_watchers') {
+                  return {
+                    doc(wUid: string) {
+                      return {
+                        async get() {
+                          activeConcurrentReads++;
+                          if (activeConcurrentReads > maxConcurrentReads) {
+                            maxConcurrentReads = activeConcurrentReads;
+                          }
+                          await new Promise((r) => setTimeout(r, 10));
+                          activeConcurrentReads--;
+
+                          if (wUid === 'watcher-error') {
+                            throw new Error('Firestore read failure');
+                          }
+                          if (wUid === 'watcher-not-found') {
+                            return { exists: false };
+                          }
+                          if (wUid === 'watcher-no-notify') {
+                            return { exists: true, data: () => ({ autoNotify: false }) };
+                          }
+                          return { exists: true, data: () => ({ autoNotify: true }) };
+                        },
+                      };
+                    },
+                  };
+                }
+                throw new Error(`Unexpected subcollection: ${subColName}`);
+              },
+              async get() {
+                // Fetching user doc for FCM token
+                if (docUid === 'watcher-valid-1') {
+                  return { exists: true, data: () => ({ fcmToken: 'fcm-token-1' }) };
+                }
+                if (docUid === 'watcher-valid-2') {
+                  return { exists: true, data: () => ({ fcmToken: '  fcm-token-2  ' }) };
+                }
+                return { exists: true, data: () => ({}) };
+              },
+            };
+          },
+        };
+      }
+      throw new Error(`Unexpected collection: ${colName}`);
+    },
+  };
+
+  const capturedMulticast: any[] = [];
+  const mockMessaging = {
+    async sendEachForMulticast(payload: any) {
+      capturedMulticast.push(payload);
+      return { successCount: payload.tokens.length, failureCount: 0 };
+    },
+  };
+
+  const verifiedCount = await dispatchTrustedWatcherNotifications({
+    ownerUid,
+    riderName: 'Test Rider',
+    sessionId: 'session-concurrency-test',
+    shareUrl: 'https://trackme.shvms.in/live/session-concurrency-test',
+    startedAt: 1700000000000,
+    expiresAt: '2026-11-13T16:00:00.000Z',
+    ttlSeconds: 3600,
+    watcherUids: [
+      'watcher-valid-1',
+      'watcher-no-notify',
+      'watcher-valid-2',
+      'watcher-not-found',
+      'watcher-error',
+    ],
+    db: mockDb,
+    messaging: mockMessaging,
+    redis,
+  });
+
+  // Concurrency proof: multiple relation reads were active concurrently in flight
+  assert.ok(maxConcurrentReads > 1, `Expected concurrent reads > 1, got ${maxConcurrentReads}`);
+
+  // Only watcher-valid-1 and watcher-valid-2 are verified
+  assert.strictEqual(verifiedCount, 2);
+
+  // FCM multicast payload verification
+  assert.strictEqual(capturedMulticast.length, 1);
+  assert.deepStrictEqual(capturedMulticast[0].tokens, ['fcm-token-1', 'fcm-token-2']);
+  assert.strictEqual(capturedMulticast[0].data.sessionId, 'session-concurrency-test');
+  assert.strictEqual(capturedMulticast[0].data.riderName, 'Test Rider');
+
+  // Redis watcher_inbox payload verification
+  const rawInbox1 = await redis.get('watcher_inbox:watcher-valid-1');
+  assert.ok(rawInbox1, 'watcher_inbox for watcher-valid-1 must exist');
+  const inbox1 = JSON.parse(rawInbox1!);
+  assert.strictEqual(inbox1.sessionId, 'session-concurrency-test');
+  assert.strictEqual(inbox1.riderName, 'Test Rider');
+
+  const rawInbox2 = await redis.get('watcher_inbox:watcher-valid-2');
+  assert.ok(rawInbox2, 'watcher_inbox for watcher-valid-2 must exist');
+
+  // Verify non-verified watchers do not receive inbox records
+  const rawInboxNoNotify = await redis.get('watcher_inbox:watcher-no-notify');
+  assert.strictEqual(rawInboxNoNotify, null);
+
+  // Clean up
+  await redis.del('watcher_inbox:watcher-valid-1');
+  await redis.del('watcher_inbox:watcher-valid-2');
+});
+
+test('dispatchTrustedWatcherNotifications returns 0 when watcherUids empty or missing DB', async () => {
+  const count1 = await dispatchTrustedWatcherNotifications({
+    ownerUid: 'u1',
+    riderName: 'Rider',
+    sessionId: 's1',
+    shareUrl: 'https://trackme.shvms.in/live/s1',
+    startedAt: 1000,
+    expiresAt: '2026-11-13T16:00:00.000Z',
+    ttlSeconds: 3600,
+    watcherUids: [],
+    db: {} as any,
+    messaging: null,
+    redis: null,
+  });
+  assert.strictEqual(count1, 0);
+
+  const count2 = await dispatchTrustedWatcherNotifications({
+    ownerUid: 'u1',
+    riderName: 'Rider',
+    sessionId: 's1',
+    shareUrl: 'https://trackme.shvms.in/live/s1',
+    startedAt: 1000,
+    expiresAt: '2026-11-13T16:00:00.000Z',
+    ttlSeconds: 3600,
+    watcherUids: ['w1'],
+    db: null,
+    messaging: null,
+    redis: null,
+  });
+  assert.strictEqual(count2, 0);
 });
 
 async function main() {
