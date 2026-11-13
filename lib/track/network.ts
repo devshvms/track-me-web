@@ -350,3 +350,54 @@ export function formatLocationShareText(
     return lines.join('\n');
 }
 
+export interface ForegroundReconnectionTransition {
+    readonly shouldFetchImmediately: boolean;
+    readonly resetConsecutiveErrors: boolean;
+    readonly newStatusText: string | null;
+    readonly newStatusClass: string | null;
+}
+
+/**
+ * Evaluates foreground return transition state for active live session viewers (CIE-027).
+ *
+ * Rules:
+ * 1. If trip has already ended, no foreground polling is triggered.
+ * 2. If trip is active:
+ *    - Backoff failure count resets so the fresh attempt happens immediately.
+ *    - If device/browser is online, triggers an immediate poll.
+ *    - If previously in an error or offline status, transitions to 'Reconnecting...'.
+ *
+ * @param isTripEnded Whether the session is stopped/ended
+ * @param isOnline Whether current network is reachable
+ * @param currentStatusText Current displayed status text (e.g. 'Viewer Offline', 'Connection Error', 'Connecting...')
+ */
+export function evaluateForegroundReconnection(
+    isTripEnded: boolean,
+    isOnline: boolean = true,
+    currentStatusText: string = ''
+): ForegroundReconnectionTransition {
+    if (isTripEnded) {
+        return {
+            shouldFetchImmediately: false,
+            resetConsecutiveErrors: false,
+            newStatusText: null,
+            newStatusClass: null,
+        };
+    }
+
+    const isErrorOrOffline =
+        currentStatusText.includes('Offline') ||
+        currentStatusText.includes('Error') ||
+        currentStatusText.includes('Connecting');
+
+    const newStatusText = isOnline && isErrorOrOffline ? 'Reconnecting...' : null;
+    const newStatusClass = newStatusText ? 'status delayed' : null;
+
+    return {
+        shouldFetchImmediately: isOnline,
+        resetConsecutiveErrors: true,
+        newStatusText,
+        newStatusClass,
+    };
+}
+

@@ -320,7 +320,7 @@
     <div id="overlay">
         <div class="status-row">
             <span class="status" id="statusText">Connecting...</span>
-            <button type="button" id="connectionRetryBtn" class="retry-btn" style="display: none;" title="Retry connection">Retry</button>
+            <button type="button" id="connectionRetryBtn" class="retry-btn" style="display: none;" title="Retry connection" aria-label="Retry connection">Retry</button>
         </div>
         <div class="user-name" id="userNameText"></div>
         <div class="destination-badge" id="destinationBadge" style="display: none;">
@@ -1445,9 +1445,22 @@
                 if (document.hidden) {
                     stopPollingTimers();
                 } else if (!isTripEnded) {
+                    if (typeof navigator !== 'undefined' && 'onLine' in navigator) {
+                        isViewerOnline = navigator.onLine;
+                    }
+                    consecutiveFetchErrors = 0;
+                    isFetchInProgress = false;
+                    stopPollingTimers();
+                    const statusEl = document.getElementById('statusText');
+                    if (statusEl && isViewerOnline && (statusEl.innerText.includes('Offline') || statusEl.innerText.includes('Error') || statusEl.innerText.includes('Connecting'))) {
+                        statusEl.innerText = 'Reconnecting...';
+                        statusEl.className = 'status delayed';
+                    }
                     // Refresh immediately upon foreground return
-                    fetchLocation();
-                    pingPresence();
+                    if (isViewerOnline) {
+                        fetchLocation();
+                        pingPresence();
+                    }
                 }
             });
 
