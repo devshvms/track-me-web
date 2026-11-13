@@ -407,6 +407,96 @@
         body.has-smart-banner #overlay {
             top: 68px;
         }
+
+        /* CIE-035: Smooth, Flash-Free Dark/Light Theme Switching */
+        @media (prefers-color-scheme: dark) {
+            :root {
+                color-scheme: dark;
+            }
+            body {
+                background: #0f172a;
+                color: #f1f5f9;
+            }
+            .status-card {
+                background: rgba(15, 23, 42, 0.94);
+                color: #f1f5f9;
+                border: 1px solid rgba(255, 255, 255, 0.12);
+                box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+            }
+            .user-name {
+                color: #f8fafc;
+            }
+            .details {
+                color: #94a3b8;
+            }
+            .map-ctrl-btn {
+                background: rgba(15, 23, 42, 0.92);
+                color: #f1f5f9;
+                border: 1px solid rgba(255, 255, 255, 0.15);
+                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+            }
+            .map-ctrl-btn:hover {
+                background: #1e293b;
+            }
+            .map-ctrl-btn.active {
+                background: #0284c7;
+                color: #ffffff;
+                border-color: #38bdf8;
+            }
+            .destination-badge {
+                background: rgba(14, 116, 144, 0.25);
+                color: #38bdf8;
+                border-color: rgba(56, 189, 248, 0.35);
+            }
+            .deadline-badge {
+                background: rgba(67, 56, 202, 0.25);
+                color: #a5b4fc;
+                border-color: rgba(165, 180, 252, 0.35);
+            }
+            .deadline-badge.overdue {
+                background: rgba(180, 83, 9, 0.25);
+                color: #fcd34d;
+                border-color: rgba(252, 211, 77, 0.35);
+            }
+            .power-save-banner {
+                background: rgba(120, 53, 15, 0.25);
+                border-color: rgba(245, 158, 11, 0.4);
+                color: #fef3c7;
+            }
+            .stale-signal-banner {
+                background: rgba(153, 27, 27, 0.25);
+                border-color: rgba(239, 68, 68, 0.4);
+                color: #fca5a5;
+            }
+            .low-battery-banner {
+                background: rgba(159, 18, 57, 0.25);
+                border-color: rgba(244, 63, 94, 0.4);
+                color: #fecdd3;
+            }
+            .get-app-strip {
+                background: rgba(15, 23, 42, 0.96);
+                border-top: 1px solid rgba(255, 255, 255, 0.12);
+                color: #f1f5f9;
+            }
+            .get-app-copy {
+                color: #e2e8f0;
+            }
+            .web-toast {
+                background: rgba(30, 41, 59, 0.95);
+                color: #f8fafc;
+                border-color: rgba(255, 255, 255, 0.2);
+            }
+            .web-toast.offline {
+                background: rgba(153, 27, 27, 0.95);
+                color: #ffffff;
+                border-color: rgba(239, 68, 68, 0.5);
+            }
+            .web-toast.reconnected {
+                background: rgba(6, 78, 59, 0.95);
+                color: #ffffff;
+                border-color: rgba(16, 185, 129, 0.5);
+            }
+        }
     </style>
 </head>
 <body>
@@ -1838,6 +1928,26 @@
                     map.setView(window.lastRiderPos, 15);
                 }
             });
+
+            // CIE-035: Device Orientation & Viewport Resize State Preservation
+            let resizeDebounceTimer = null;
+            function handleViewportResize() {
+                if (!map) return;
+                if (resizeDebounceTimer) clearTimeout(resizeDebounceTimer);
+                resizeDebounceTimer = setTimeout(() => {
+                    const previousCenter = map.getCenter();
+                    const previousZoom = map.getZoom();
+                    map.invalidateSize({ pan: false });
+                    if (window.isFollowingRider && window.lastRiderPos) {
+                        map.panTo(window.lastRiderPos, { animate: false });
+                    } else if (previousCenter) {
+                        map.setView(previousCenter, previousZoom, { animate: false });
+                    }
+                }, 80);
+            }
+
+            window.addEventListener('resize', handleViewportResize, { passive: true });
+            window.addEventListener('orientationchange', handleViewportResize, { passive: true });
 
             document.getElementById('staleRefreshBtn')?.addEventListener('click', () => manualRefresh('stale_banner'));
             document.getElementById('connectionRetryBtn')?.addEventListener('click', () => manualRefresh('connection_retry'));

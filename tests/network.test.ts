@@ -22,6 +22,7 @@ import {
     NETWORK_RECONNECTED_TOAST_MESSAGE,
     evaluateNetworkToastState,
     evaluateNetworkTransition,
+    evaluateViewportPreservation,
 } from '../lib/track/network';
 
 describe('Live Viewer Network Resilience & Tile Fallback (CIE-007)', () => {
@@ -455,6 +456,55 @@ describe('Live Viewer Network Resilience & Tile Fallback (CIE-007)', () => {
             assert.equal(sm.consumeReconnection(), true);
             assert.equal(sm.wasOffline, false);
             assert.equal(sm.consumeReconnection(), false);
+        });
+    });
+
+    describe('Live Viewer State Preservation across Orientation & Theme Changes (CIE-035)', () => {
+        it('preserves rider focus when following rider with valid last position', () => {
+            const riderPos: [number, number] = [28.6139, 77.2090];
+            const currentCenter: [number, number] = [28.6100, 77.2000];
+            const state = evaluateViewportPreservation(true, riderPos, currentCenter, 16, 'metric');
+
+            assert.equal(state.isFollowingRider, true);
+            assert.deepEqual(state.targetCenter, riderPos);
+            assert.equal(state.targetZoom, 16);
+            assert.equal(state.shouldPanToRider, true);
+            assert.equal(state.preservedUnitSystem, 'metric');
+        });
+
+        it('enforces minimum zoom level 15 when centering on rider', () => {
+            const riderPos: [number, number] = [28.6139, 77.2090];
+            const currentCenter: [number, number] = [28.6100, 77.2000];
+            const state = evaluateViewportPreservation(true, riderPos, currentCenter, 10, 'imperial');
+
+            assert.equal(state.isFollowingRider, true);
+            assert.deepEqual(state.targetCenter, riderPos);
+            assert.equal(state.targetZoom, 15);
+            assert.equal(state.shouldPanToRider, true);
+            assert.equal(state.preservedUnitSystem, 'imperial');
+        });
+
+        it('preserves custom pan/zoom viewport when user panned away', () => {
+            const riderPos: [number, number] = [28.6139, 77.2090];
+            const customCenter: [number, number] = [28.7000, 77.1000];
+            const state = evaluateViewportPreservation(false, riderPos, customCenter, 14, 'metric');
+
+            assert.equal(state.isFollowingRider, false);
+            assert.deepEqual(state.targetCenter, customCenter);
+            assert.equal(state.targetZoom, 14);
+            assert.equal(state.shouldPanToRider, false);
+            assert.equal(state.preservedUnitSystem, 'metric');
+        });
+
+        it('handles null rider position gracefully without resetting custom viewport', () => {
+            const customCenter: [number, number] = [20.5937, 78.9629];
+            const state = evaluateViewportPreservation(true, null, customCenter, 12, 'imperial');
+
+            assert.equal(state.isFollowingRider, false);
+            assert.deepEqual(state.targetCenter, customCenter);
+            assert.equal(state.targetZoom, 12);
+            assert.equal(state.shouldPanToRider, false);
+            assert.equal(state.preservedUnitSystem, 'imperial');
         });
     });
 });
