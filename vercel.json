@@ -10,6 +10,14 @@
       "destination": "/blog/:slug.html"
     },
     {
+      "source": "/live",
+      "destination": "/tracker.html"
+    },
+    {
+      "source": "/live/",
+      "destination": "/tracker.html"
+    },
+    {
       "source": "/live/:sessionId",
       "destination": "/tracker.html"
     },

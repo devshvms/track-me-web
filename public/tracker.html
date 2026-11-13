@@ -227,18 +227,21 @@
             smartAppBanner.setAttribute('content', `app-id=6800161248, app-argument=${window.location.href}`);
         }
 
-        // Extract sessionId from URL (e.g., /live/abc-123 or /live/watcher)
+        // Extract and sanitize sessionId from URL (e.g., /live/abc-123 or /live/watcher)
         const pathParts = window.location.pathname.split('/').filter(Boolean);
-        const sessionId = pathParts[pathParts.length - 1] || '';
-
-        if (!sessionId || sessionId === 'live') {
-            document.getElementById('statusText').innerText = 'Error';
-            document.getElementById('detailsText').innerText = 'No session ID provided in URL';
-            throw new Error('No session ID');
+        const rawSessionId = pathParts[pathParts.length - 1] || '';
+        let cleanSessionId = '';
+        if (rawSessionId && rawSessionId.toLowerCase() !== 'live') {
+            try {
+                cleanSessionId = decodeURIComponent(rawSessionId).trim();
+            } catch (_) {
+                cleanSessionId = rawSessionId.trim();
+            }
         }
-
+        const sessionId = cleanSessionId;
         const queryParams = new URLSearchParams(window.location.search);
         const isWatcherInvite = sessionId === 'watcher';
+        const isValidSession = isWatcherInvite || /^[A-Za-z0-9_-]{4,128}$/.test(sessionId);
 
         // Generate a random viewer ID to track concurrent users
         let viewerId = sessionStorage.getItem('viewerId');
@@ -275,15 +278,40 @@
             }).catch(() => {});
         }
 
-        if (!isWatcherInvite) {
+        if (!isWatcherInvite && isValidSession && sessionId) {
             // TASK-360: Immediate page-view telemetry so viewers who land on ended/expired trips are not lost
             emitTelemetry('live_share_viewed');
+        } else if (!isValidSession || !sessionId) {
+            // CIE-004: Missing or malformed session fallback recovery
+            emitTelemetry('live_share_missing_session', { rawSessionId });
+            const statusEl = document.getElementById('statusText');
+            if (statusEl) {
+                statusEl.innerText = 'No Live Session';
+                statusEl.className = 'status offline';
+            }
+            const detailsEl = document.getElementById('detailsText');
+            if (detailsEl) {
+                detailsEl.innerText = !sessionId
+                    ? 'No live session specified in link. Return to home or open TrackMe.'
+                    : 'The live session ID in this link is invalid.';
+            }
+            const userEl = document.getElementById('userName');
+            if (userEl) userEl.innerText = 'TrackMe Live Share';
         }
 
         // Configure "Open in TrackMe App" CTA button for live sessions & watcher invites
         function configureOpenInAppButton() {
             const btn = document.getElementById('openAppBtn');
             if (!btn) return;
+
+            if (!sessionId || !isValidSession) {
+                btn.textContent = 'Get TrackMe App';
+                btn.href = '/index.html#getApp';
+                btn.addEventListener('click', () => {
+                    emitTelemetry('open_in_app_tapped', { isMissingSession: true });
+                });
+                return;
+            }
 
             const playFallback = 'https://play.google.com/store/apps/details?id=in.shvms.trackme&referrer=utm_source%3Dlive_share_viewer%26utm_medium%3Dweb%26utm_campaign%3Dlive_tracker_open_app';
             const appStoreUrl = 'https://apps.apple.com/app/id6800161248?pt=128001612&ct=live_share_viewer_open_app&mt=8';
@@ -846,8 +874,14 @@
             });
 
             // Fetch immediately, then poll adaptively while tab is visible
-            fetchLocation();
-            pingPresence();
+            if (sessionId && isValidSession) {
+                fetchLocation();
+                pingPresence();
+            } else {
+                revealGetApp(false);
+                const copyEl = document.getElementById('getAppCopy');
+                if (copyEl) copyEl.innerText = '📍 No active session found. Download TrackMe to record rides and share your live location free.';
+            }
         }
     </script>
 </body>
