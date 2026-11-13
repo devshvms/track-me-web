@@ -333,6 +333,7 @@
         <div class="open-app-row" id="openAppRow">
             <a href="#getApp" id="openAppBtn" class="open-app-btn">Open in TrackMe App</a>
             <button type="button" id="shareLiveSessionBtn" class="open-app-btn" style="background: rgba(0, 229, 255, 0.15); border: 1px solid rgba(0, 229, 255, 0.35); color: #00e5ff; margin-left: 6px; cursor: pointer;" aria-label="Share live ride tracking link" title="Share live ride tracking link">🔗 Share Ride</button>
+            <button type="button" id="unitToggleBtn" class="open-app-btn" style="background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.22); color: #f1f5f9; margin-left: 6px; cursor: pointer; min-width: 48px; text-align: center;" aria-label="Toggle units between metric and imperial" title="Toggle units (km/h vs mph)">km/h</button>
         </div>
         <div id="powerSaveContainer" style="display: none;">
             <div class="power-save-badge">⚠️ Device in Power Saving Mode</div>
@@ -405,6 +406,49 @@
         const queryParams = new URLSearchParams(window.location.search);
         const isWatcherInvite = sessionId === 'watcher';
         const isValidSession = isWatcherInvite || /^[A-Za-z0-9_-]{4,128}$/.test(sessionId);
+
+        // CIE-030: Persistent interactive unit preference resolution
+        const PREFERRED_UNITS_STORAGE_KEY = 'trackme_preferred_units';
+        function detectInitialUnits() {
+            const q = queryParams.get('units') || queryParams.get('unit');
+            if (q) {
+                const clean = q.trim().toLowerCase();
+                if (clean === 'imperial' || clean === 'mi' || clean === 'mph' || clean === 'miles') return 'imperial';
+                if (clean === 'metric' || clean === 'km' || clean === 'kmh' || clean === 'kilometers') return 'metric';
+            }
+            try {
+                const stored = localStorage.getItem(PREFERRED_UNITS_STORAGE_KEY);
+                if (stored === 'imperial' || stored === 'metric') return stored;
+            } catch (_) {}
+            const languages = navigator.languages || [navigator.language || ''];
+            for (const lang of languages) {
+                if (typeof lang === 'string') {
+                    const clean = lang.trim();
+                    if (/(?:-|_)US$/i.test(clean) || /(?:-|_)LR$/i.test(clean) || /(?:-|_)MM$/i.test(clean)) {
+                        return 'imperial';
+                    }
+                }
+            }
+            return 'metric';
+        }
+
+        let activeUnitSystem = detectInitialUnits();
+
+        function updateUnitToggleButton() {
+            const btn = document.getElementById('unitToggleBtn');
+            if (btn) {
+                btn.textContent = activeUnitSystem === 'imperial' ? 'mph' : 'km/h';
+                btn.setAttribute('aria-label', `Active units: ${activeUnitSystem}. Click to toggle units.`);
+                btn.setAttribute('title', `Active units: ${activeUnitSystem === 'imperial' ? 'imperial (mph · mi)' : 'metric (km/h · km)'}. Click to toggle.`);
+            }
+        }
+
+        // Initialize button label immediately
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', updateUnitToggleButton);
+        } else {
+            updateUnitToggleButton();
+        }
 
         // Generate a random viewer ID to track concurrent users
         let viewerId = sessionStorage.getItem('viewerId');
@@ -1005,6 +1049,81 @@
                 }
             }
 
+            function renderTelemetryDetails(data) {
+                if (!data) return;
+                const detailsEl = document.getElementById('detailsText');
+                if (!detailsEl) return;
+
+                const isStopped = data.status === 'stopped' || data.status === 'ended';
+                const useMiles = activeUnitSystem === 'imperial';
+                const durationStr = formatElapsedDuration(data.startedAt, data.endedAt);
+                const durationPart = durationStr ? ` | Duration: ${durationStr}` : '';
+
+                if (data.lastLocation) {
+                    const { timestamp, batteryLevel, speed, powerSaveMode } = data.lastLocation;
+                    const speedKmh = typeof speed === 'number' && Number.isFinite(speed) && speed >= 0 ? (speed * 3.6) : null;
+                    const rawTimeAgo = Math.round((new Date() - new Date(timestamp)) / 1000);
+                    const timeAgo = Math.max(0, Number.isFinite(rawTimeAgo) ? rawTimeAgo : 0);
+                    const timeAgoStr = timeAgo < 60 ? `${timeAgo}s ago` : `${Math.round(timeAgo/60)}m ago`;
+                    const isStale = !isStopped && (timeAgo >= 180);
+                    const isDelayed = Boolean(powerSaveMode) || timeAgo >= 45;
+
+                    let batteryDisplay = 'N/A';
+                    if (typeof batteryLevel === 'number' && Number.isFinite(batteryLevel) && batteryLevel >= 0 && batteryLevel <= 100) {
+                        const roundedBat = Math.round(batteryLevel);
+                        batteryDisplay = roundedBat <= 15 ? `🪫 ${roundedBat}% (Low)` : `🔋 ${roundedBat}%`;
+                    }
+
+                    const pts = (window.lastTrailPoints && window.lastTrailPoints.length > 0) ? window.lastTrailPoints : data.path;
+                    const totalDistanceMeters = computePathDistanceMeters(pts);
+                    const distanceStr = formatViewerDistance(totalDistanceMeters, useMiles);
+                    const distancePart = totalDistanceMeters > 0 ? ` | Distance: ${distanceStr}` : '';
+
+                    if (isStopped) {
+                        const stopText = data.stopReason || data.endReason || 'The rider has ended this live trip.';
+                        const endedTimeStr = data.endedAt ? new Date(data.endedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : null;
+                        const durationLabel = durationStr ? ` · Duration: ${durationStr}` : '';
+                        const distanceLabel = totalDistanceMeters > 0 ? ` · Distance: ${distanceStr}` : '';
+                        detailsEl.innerText = endedTimeStr
+                            ? `${stopText} at ${endedTimeStr}${durationLabel}${distanceLabel} · Final location shown`
+                            : `${stopText}${durationLabel}${distanceLabel} · Final location shown`;
+                        return;
+                    }
+
+                    const locTimeMs = (typeof timestamp === 'number' ? timestamp : new Date(timestamp).getTime());
+                    const nowMs = Date.now();
+                    let speedDisplay = '0 km/h';
+                    if (speedKmh !== null && speedKmh >= 3.0) {
+                        const rawVal = useMiles ? (speedKmh * 0.621371) : speedKmh;
+                        const roundedSpeed = Math.round(rawVal);
+                        const unit = useMiles ? 'mph' : 'km/h';
+                        speedDisplay = isDelayed ? `~${roundedSpeed} ${unit} ⚠️ (delayed)` : `${roundedSpeed} ${unit}`;
+                    } else if (window.lastStoppedSinceMs) {
+                        const stoppedMinutes = Math.floor(Math.max(0, nowMs - window.lastStoppedSinceMs) / 60000);
+                        if (stoppedMinutes >= 1) {
+                            const stoppedDur = formatElapsedDuration(window.lastStoppedSinceMs, nowMs) || `${stoppedMinutes}m`;
+                            speedDisplay = `Stopped · ${stoppedDur}`;
+                        } else {
+                            const unit = useMiles ? 'mph' : 'km/h';
+                            speedDisplay = `0 ${unit}`;
+                        }
+                    } else {
+                        const unit = useMiles ? 'mph' : 'km/h';
+                        speedDisplay = `0 ${unit}`;
+                    }
+
+                    const staleNote = isStale ? ' ⚠️ (waiting for GPS)' : '';
+                    detailsEl.innerText = `Updated: ${timeAgoStr}${staleNote} | Battery: ${batteryDisplay} | Speed: ${speedDisplay}${durationPart}${distancePart}`;
+                } else if (isStopped) {
+                    const stoppedDurationStr = formatElapsedDuration(data.startedAt, data.endedAt);
+                    const stoppedDurationLabel = stoppedDurationStr ? ` · Duration: ${stoppedDurationStr}` : '';
+                    const stoppedDistMeters = computePathDistanceMeters(data.path);
+                    const stoppedDistStr = formatViewerDistance(stoppedDistMeters, useMiles);
+                    const stoppedDistLabel = stoppedDistMeters > 0 ? ` · Distance: ${stoppedDistStr}` : '';
+                    detailsEl.innerText = `${data.stopReason || data.endReason || 'The rider has ended this live trip.'}${stoppedDurationLabel}${stoppedDistLabel}`;
+                }
+            }
+
             async function fetchLocation() {
                 if (isTripEnded || isFetchInProgress) return;
                 if (!isViewerOnline) {
@@ -1036,6 +1155,7 @@
                     }
 
                     const data = await response.json();
+                    window.lastReceivedSnapshot = data;
                     consecutiveFetchErrors = 0;
                     const retryBtn = document.getElementById('connectionRetryBtn');
                     if (retryBtn) {
@@ -1240,14 +1360,6 @@
                             }
                         }
 
-                        const durationStr = formatElapsedDuration(data.startedAt, data.endedAt);
-                        const durationPart = durationStr ? ` | Duration: ${durationStr}` : '';
-
-                        const useMiles = queryParams.get('units') === 'imperial' || queryParams.get('unit') === 'imperial' || queryParams.get('units') === 'mi' || queryParams.get('unit') === 'mi';
-                        const totalDistanceMeters = computePathDistanceMeters(trailPoints.length > 0 ? trailPoints : data.path);
-                        const distanceStr = formatViewerDistance(totalDistanceMeters, useMiles);
-                        const distancePart = totalDistanceMeters > 0 ? ` | Distance: ${distanceStr}` : '';
-
                         const dest = typeof data.destination === 'string' ? data.destination.trim() : '';
                         const destinationBadge = document.getElementById('destinationBadge');
                         const destinationTextEl = document.getElementById('destinationText');
@@ -1281,12 +1393,7 @@
                             document.getElementById('statusText').innerText = 'Sharing Stopped';
                             document.getElementById('statusText').className = 'status offline';
                             document.getElementById('userNameText').innerText = `${username}'s Final Location`;
-                            const stopText = data.stopReason || data.endReason || 'The rider has ended this live trip.';
-                            const endedTimeStr = data.endedAt ? new Date(data.endedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : null;
-                            const durationLabel = durationStr ? ` · Duration: ${durationStr}` : '';
-                            const distanceLabel = totalDistanceMeters > 0 ? ` · Distance: ${distanceStr}` : '';
-                            document.getElementById('detailsText').innerText =
-                                endedTimeStr ? `${stopText} at ${endedTimeStr}${durationLabel}${distanceLabel} · Final location shown` : `${stopText}${durationLabel}${distanceLabel} · Final location shown`;
+                            renderTelemetryDetails(data);
                             const staleContainer = document.getElementById('staleSignalContainer');
                             if (staleContainer) staleContainer.style.display = 'none';
                             if (lowBatteryContainer) lowBatteryContainer.style.display = 'none';
@@ -1322,7 +1429,6 @@
                             }
                         }
 
-                        const useMiles = queryParams.get('units') === 'imperial' || queryParams.get('unit') === 'imperial' || queryParams.get('units') === 'mi' || queryParams.get('unit') === 'mi';
                         const locTimeMs = (typeof timestamp === 'number' ? timestamp : new Date(timestamp).getTime());
                         const nowMs = Date.now();
 
@@ -1334,30 +1440,8 @@
                             }
                         }
 
-                        let speedDisplay = '0 km/h';
-                        if (speedKmh !== null && speedKmh >= 3.0) {
-                            const rawVal = useMiles ? (speedKmh * 0.621371) : speedKmh;
-                            const roundedSpeed = Math.round(rawVal);
-                            const unit = useMiles ? 'mph' : 'km/h';
-                            speedDisplay = isDelayed ? `~${roundedSpeed} ${unit} ⚠️ (delayed)` : `${roundedSpeed} ${unit}`;
-                        } else if (window.lastStoppedSinceMs) {
-                            const stoppedMinutes = Math.floor(Math.max(0, nowMs - window.lastStoppedSinceMs) / 60000);
-                            if (stoppedMinutes >= 1) {
-                                const stoppedDur = formatElapsedDuration(window.lastStoppedSinceMs, nowMs) || `${stoppedMinutes}m`;
-                                speedDisplay = `Stopped · ${stoppedDur}`;
-                            } else {
-                                const unit = useMiles ? 'mph' : 'km/h';
-                                speedDisplay = `0 ${unit}`;
-                            }
-                        } else {
-                            const unit = useMiles ? 'mph' : 'km/h';
-                            speedDisplay = `0 ${unit}`;
-                        }
-
                         document.getElementById('userNameText').innerText = `${username}'s Live Location`;
-                        const staleNote = isStale ? ' ⚠️ (waiting for GPS)' : '';
-                        document.getElementById('detailsText').innerText =
-                            `Updated: ${timeAgoStr}${staleNote} | Battery: ${batteryDisplay} | Speed: ${speedDisplay}${durationPart}${distancePart}`;
+                        renderTelemetryDetails(data);
                     } else if (isStopped) {
                         const dest = typeof data.destination === 'string' ? data.destination.trim() : '';
                         const destinationBadge = document.getElementById('destinationBadge');
@@ -1370,15 +1454,9 @@
                                 destinationBadge.style.display = 'none';
                             }
                         }
-                        const useMiles = queryParams.get('units') === 'imperial' || queryParams.get('unit') === 'imperial' || queryParams.get('units') === 'mi' || queryParams.get('unit') === 'mi';
-                        const stoppedDurationStr = formatElapsedDuration(data.startedAt, data.endedAt);
-                        const stoppedDurationLabel = stoppedDurationStr ? ` · Duration: ${stoppedDurationStr}` : '';
-                        const stoppedDistMeters = computePathDistanceMeters(data.path);
-                        const stoppedDistStr = formatViewerDistance(stoppedDistMeters, useMiles);
-                        const stoppedDistLabel = stoppedDistMeters > 0 ? ` · Distance: ${stoppedDistStr}` : '';
                         document.getElementById('statusText').innerText = 'Sharing Stopped';
                         document.getElementById('statusText').className = 'status offline';
-                        document.getElementById('detailsText').innerText = `${data.stopReason || data.endReason || 'The rider has ended this live trip.'}${stoppedDurationLabel}${stoppedDistLabel}`;
+                        renderTelemetryDetails(data);
                         const staleContainer = document.getElementById('staleSignalContainer');
                         if (staleContainer) staleContainer.style.display = 'none';
                         updateDeadlineBadge(null, true);
@@ -1483,6 +1561,19 @@
                     });
                 } else {
                     copyTextWithFallback(liveUrl, 'Live ride link copied!');
+                }
+            });
+
+            document.getElementById('unitToggleBtn')?.addEventListener('click', () => {
+                activeUnitSystem = activeUnitSystem === 'imperial' ? 'metric' : 'imperial';
+                try {
+                    localStorage.setItem(PREFERRED_UNITS_STORAGE_KEY, activeUnitSystem);
+                } catch (_) {}
+                updateUnitToggleButton();
+                showWebToast(`Units changed to ${activeUnitSystem === 'imperial' ? 'imperial (mph · mi)' : 'metric (km/h · km)'}`);
+                emitTelemetry('live_share_unit_toggled', { units: activeUnitSystem });
+                if (window.lastReceivedSnapshot) {
+                    renderTelemetryDetails(window.lastReceivedSnapshot);
                 }
             });
 
