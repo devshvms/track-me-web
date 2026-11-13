@@ -857,4 +857,93 @@ export function formatConcludedSummary(
     };
 }
 
+/**
+ * CIE-040: Computes geodesic distance in meters between viewport center and rider position using Haversine formula.
+ * Returns 0 if any coordinate is missing or non-finite.
+ */
+export function computeOffCenterDistanceMeters(
+    lat1: number,
+    lon1: number,
+    lat2: number,
+    lon2: number
+): number {
+    if (!Number.isFinite(lat1) || !Number.isFinite(lon1) || !Number.isFinite(lat2) || !Number.isFinite(lon2)) {
+        return 0;
+    }
+    const R = 6371000; // Earth radius in meters
+    const dLat = ((lat2 - lat1) * Math.PI) / 180.0;
+    const dLon = ((lon2 - lon1) * Math.PI) / 180.0;
+    const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos((lat1 * Math.PI) / 180.0) *
+            Math.cos((lat2 * Math.PI) / 180.0) *
+            Math.sin(dLon / 2) *
+            Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(Math.max(0, 1 - a)));
+    return R * c;
+}
+
+/**
+ * CIE-040: Formats off-center distance badge string when distance exceeds threshold (default 250m).
+ * Returns null when rider is close to center (< 250m) so button remains clean.
+ */
+export function formatOffCenterDistance(
+    distanceMeters: number | null | undefined,
+    useMiles: boolean = false,
+    thresholdMeters: number = 250
+): string | null {
+    if (distanceMeters === null || distanceMeters === undefined || !Number.isFinite(distanceMeters) || distanceMeters < thresholdMeters) {
+        return null;
+    }
+    if (useMiles) {
+        const miles = distanceMeters / 1609.344;
+        return `${miles.toFixed(1)} mi`;
+    }
+    const km = distanceMeters / 1000.0;
+    return `${km.toFixed(1)} km`;
+}
+
+/**
+ * CIE-040: Formats recenter button label with optional distance badge ("Recenter · 1.4 km").
+ */
+export function formatRecenterButtonLabel(
+    distanceMeters: number | null | undefined,
+    useMiles: boolean = false,
+    thresholdMeters: number = 250,
+    baseLabel: string = 'Recenter'
+): string {
+    const distStr = formatOffCenterDistance(distanceMeters, useMiles, thresholdMeters);
+    return distStr ? `${baseLabel} · ${distStr}` : baseLabel;
+}
+
+/**
+ * CIE-040: Formats recenter button accessibility label ("Recenter on rider, 1.4 km away").
+ */
+export function formatRecenterAccessibilityLabel(
+    distanceMeters: number | null | undefined,
+    useMiles: boolean = false,
+    thresholdMeters: number = 250,
+    baseLabel: string = 'Recenter on rider'
+): string {
+    const distStr = formatOffCenterDistance(distanceMeters, useMiles, thresholdMeters);
+    return distStr ? `${baseLabel}, ${distStr} away` : baseLabel;
+}
+
+/**
+ * CIE-040: Evaluates whether follow mode should automatically resume after inactivity timeout (default 20s).
+ * Suppresses auto-resume when trip has ended or when user is currently in follow mode.
+ */
+export function shouldResumeFollowMode(
+    isFollowing: boolean,
+    isEnded: boolean,
+    lastInteractionEpochMs: number | null | undefined,
+    nowEpochMs: number = Date.now(),
+    timeoutMs: number = 20000
+): boolean {
+    if (isFollowing || isEnded) return false;
+    if (!lastInteractionEpochMs || !Number.isFinite(lastInteractionEpochMs) || lastInteractionEpochMs <= 0) return false;
+    return (nowEpochMs - lastInteractionEpochMs) >= timeoutMs;
+}
+
+
 

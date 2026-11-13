@@ -1860,6 +1860,9 @@
                             mapControls.hidden = false;
                             followBtn.hidden = isStopped;
                             fitRouteBtn.hidden = trailPoints.length < 2;
+                            if (typeof updateFollowButtonState === 'function') {
+                                updateFollowButtonState();
+                            }
                         }
 
                         const rawTimeAgo = Math.round((new Date() - new Date(timestamp)) / 1000);
@@ -2066,20 +2069,77 @@
             window.isFollowingRider = true;
             window.lastTrailPoints = [];
             window.lastRiderPos = null;
+            window.lastUserInteractionEpochMs = Date.now();
+
+            function computeOffCenterDistanceMeters(lat1, lon1, lat2, lon2) {
+                if (!Number.isFinite(lat1) || !Number.isFinite(lon1) || !Number.isFinite(lat2) || !Number.isFinite(lon2)) return 0;
+                const R = 6371000;
+                const dLat = ((lat2 - lat1) * Math.PI) / 180.0;
+                const dLon = ((lon2 - lon1) * Math.PI) / 180.0;
+                const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                    Math.cos((lat1 * Math.PI) / 180.0) * Math.cos((lat2 * Math.PI) / 180.0) *
+                    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+                return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(Math.max(0, 1 - a)));
+            }
+
+            function formatOffCenterDistance(distanceMeters, useMiles = false, thresholdMeters = 250) {
+                if (!Number.isFinite(distanceMeters) || distanceMeters < thresholdMeters) return null;
+                if (useMiles) {
+                    const miles = distanceMeters / 1609.344;
+                    return miles.toFixed(1) + ' mi';
+                }
+                const km = distanceMeters / 1000.0;
+                return km.toFixed(1) + ' km';
+            }
+
+            function formatRecenterButtonLabel(distanceMeters, useMiles = false, thresholdMeters = 250, baseLabel = 'Follow') {
+                const distStr = formatOffCenterDistance(distanceMeters, useMiles, thresholdMeters);
+                return distStr ? `${baseLabel} · ${distStr}` : baseLabel;
+            }
+
+            function formatRecenterAccessibilityLabel(distanceMeters, useMiles = false, thresholdMeters = 250, baseLabel = 'Follow rider') {
+                const distStr = formatOffCenterDistance(distanceMeters, useMiles, thresholdMeters);
+                return distStr ? `${baseLabel}, ${distStr} away` : baseLabel;
+            }
+
+            function shouldResumeFollowMode(isFollowing, isEnded, lastInteractionEpochMs, nowEpochMs = Date.now(), timeoutMs = 20000) {
+                if (isFollowing || isEnded) return false;
+                if (!lastInteractionEpochMs || !Number.isFinite(lastInteractionEpochMs) || lastInteractionEpochMs <= 0) return false;
+                return (nowEpochMs - lastInteractionEpochMs) >= timeoutMs;
+            }
 
             function updateFollowButtonState() {
                 const followBtn = document.getElementById('followBtn');
                 if (!followBtn) return;
                 followBtn.classList.toggle('active', Boolean(window.isFollowingRider));
+                if (window.isFollowingRider || !window.lastRiderPos) {
+                    followBtn.textContent = '🎯 Follow';
+                    followBtn.setAttribute('aria-label', 'Follow rider');
+                } else {
+                    const center = map.getCenter();
+                    const distMeters = computeOffCenterDistanceMeters(center.lat, center.lng, window.lastRiderPos[0], window.lastRiderPos[1]);
+                    const label = formatRecenterButtonLabel(distMeters, false, 250, 'Follow');
+                    const a11y = formatRecenterAccessibilityLabel(distMeters, false, 250, 'Follow rider');
+                    followBtn.textContent = '🎯 ' + label;
+                    followBtn.setAttribute('aria-label', a11y);
+                }
             }
 
-            map.on('dragstart', () => {
+            map.on('dragstart zoomstart', () => {
                 window.isFollowingRider = false;
+                window.lastUserInteractionEpochMs = Date.now();
                 updateFollowButtonState();
+            });
+
+            map.on('moveend', () => {
+                if (!window.isFollowingRider) {
+                    updateFollowButtonState();
+                }
             });
 
             document.getElementById('followBtn')?.addEventListener('click', () => {
                 window.isFollowingRider = true;
+                window.lastUserInteractionEpochMs = Date.now();
                 updateFollowButtonState();
                 if (window.lastRiderPos) {
                     map.setView(window.lastRiderPos, Math.max(map.getZoom(), 15), { animate: !isReducedMotionPreferred() });
@@ -2088,6 +2148,7 @@
 
             document.getElementById('fitRouteBtn')?.addEventListener('click', () => {
                 window.isFollowingRider = false;
+                window.lastUserInteractionEpochMs = Date.now();
                 updateFollowButtonState();
                 if (window.lastTrailPoints && window.lastTrailPoints.length >= 2) {
                     map.fitBounds(L.latLngBounds(window.lastTrailPoints), { padding: [70, 70], maxZoom: 16, animate: !isReducedMotionPreferred() });
@@ -2095,6 +2156,17 @@
                     map.setView(window.lastRiderPos, 15, { animate: !isReducedMotionPreferred() });
                 }
             });
+
+            // CIE-040: Auto-resume follow mode after 20s inactivity during an active trip
+            setInterval(() => {
+                if (!window.isFollowingRider && !isTripEnded && window.lastRiderPos) {
+                    if (shouldResumeFollowMode(window.isFollowingRider, isTripEnded, window.lastUserInteractionEpochMs, Date.now(), 20000)) {
+                        window.isFollowingRider = true;
+                        updateFollowButtonState();
+                        map.panTo(window.lastRiderPos, { animate: !isReducedMotionPreferred() });
+                    }
+                }
+            }, 2500);
 
             // CIE-035: Device Orientation & Viewport Resize State Preservation
             let resizeDebounceTimer = null;
