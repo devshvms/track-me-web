@@ -36,6 +36,11 @@ import {
     computeAverageSpeed,
     formatAverageSpeed,
     formatConcludedSummary,
+    computeOffCenterDistanceMeters,
+    formatOffCenterDistance,
+    formatRecenterButtonLabel,
+    formatRecenterAccessibilityLabel,
+    shouldResumeFollowMode,
 } from '../lib/track/network';
 
 describe('Live Viewer Network Resilience & Tile Fallback (CIE-007)', () => {
@@ -864,6 +869,99 @@ describe('Live Viewer Network Resilience & Tile Fallback (CIE-007)', () => {
                 assert.equal(summary.avgSpeedStr, '10.0 mph');
                 assert.ok(summary.detailsText.includes('Distance: 10.0 mi'));
                 assert.ok(summary.detailsText.includes('Avg Speed: 10.0 mph'));
+            });
+        });
+    });
+
+    describe('Live Share Viewer Off-Screen Distance Badge & Follow-Mode Inactivity Auto-Resume (CIE-040)', () => {
+        describe('computeOffCenterDistanceMeters', () => {
+            it('returns 0 for coincident points or invalid inputs', () => {
+                assert.equal(computeOffCenterDistanceMeters(28.6139, 77.2090, 28.6139, 77.2090), 0);
+                assert.equal(computeOffCenterDistanceMeters(NaN, 77.2090, 28.6139, 77.2090), 0);
+                assert.equal(computeOffCenterDistanceMeters(28.6139, Infinity, 28.6139, 77.2090), 0);
+            });
+
+            it('computes accurate geodesic distance between viewport center and rider', () => {
+                // 0.01 deg latitude difference ≈ 1,113 meters
+                const dist = computeOffCenterDistanceMeters(28.6100, 77.2000, 28.6200, 77.2000);
+                assert.ok(Math.abs(dist - 1113.2) < 5.0, `Expected ~1113m, got ${dist}`);
+            });
+        });
+
+        describe('formatOffCenterDistance', () => {
+            it('returns null when distance is below threshold (< 250m)', () => {
+                assert.equal(formatOffCenterDistance(0), null);
+                assert.equal(formatOffCenterDistance(150), null);
+                assert.equal(formatOffCenterDistance(249), null);
+            });
+
+            it('formats metric distance with 1 decimal precision when >= 250m', () => {
+                assert.equal(formatOffCenterDistance(250), '0.3 km');
+                assert.equal(formatOffCenterDistance(1400), '1.4 km');
+                assert.equal(formatOffCenterDistance(10000), '10.0 km');
+            });
+
+            it('formats imperial distance in miles when requested', () => {
+                assert.equal(formatOffCenterDistance(1609.344, true), '1.0 mi');
+                assert.equal(formatOffCenterDistance(4828.032, true), '3.0 mi');
+            });
+
+            it('handles invalid inputs safely', () => {
+                assert.equal(formatOffCenterDistance(null), null);
+                assert.equal(formatOffCenterDistance(undefined), null);
+                assert.equal(formatOffCenterDistance(NaN), null);
+                assert.equal(formatOffCenterDistance(-500), null);
+            });
+        });
+
+        describe('formatRecenterButtonLabel & AccessibilityLabel', () => {
+            it('returns clean base label when rider is near viewport center', () => {
+                assert.equal(formatRecenterButtonLabel(100, false, 250, 'Recenter'), 'Recenter');
+                assert.equal(formatRecenterButtonLabel(100, false, 250, 'Follow'), 'Follow');
+                assert.equal(formatRecenterAccessibilityLabel(100, false, 250, 'Recenter on rider'), 'Recenter on rider');
+            });
+
+            it('appends formatted distance badge when rider is far from center', () => {
+                assert.equal(formatRecenterButtonLabel(1400, false, 250, 'Recenter'), 'Recenter · 1.4 km');
+                assert.equal(formatRecenterButtonLabel(1400, false, 250, 'Follow'), 'Follow · 1.4 km');
+                assert.equal(formatRecenterButtonLabel(1609.344, true, 250, 'Recenter'), 'Recenter · 1.0 mi');
+                assert.equal(formatRecenterAccessibilityLabel(1400, false, 250, 'Recenter on rider'), 'Recenter on rider, 1.4 km away');
+                assert.equal(formatRecenterAccessibilityLabel(1609.344, true, 250, 'Follow rider'), 'Follow rider, 1.0 mi away');
+            });
+        });
+
+        describe('shouldResumeFollowMode', () => {
+            it('returns false if already following rider', () => {
+                const now = 1700000030000;
+                const lastInteraction = 1700000000000; // 30s ago (> 20s timeout)
+                assert.equal(shouldResumeFollowMode(true, false, lastInteraction, now, 20000), false);
+            });
+
+            it('returns false if trip has concluded', () => {
+                const now = 1700000030000;
+                const lastInteraction = 1700000000000; // 30s ago
+                assert.equal(shouldResumeFollowMode(false, true, lastInteraction, now, 20000), false);
+            });
+
+            it('returns false if user recently interacted (< timeout)', () => {
+                const now = 1700000015000;
+                const lastInteraction = 1700000000000; // 15s ago (< 20s timeout)
+                assert.equal(shouldResumeFollowMode(false, false, lastInteraction, now, 20000), false);
+            });
+
+            it('returns true when inactive for >= timeout during an active trip', () => {
+                const now = 1700000020000;
+                const lastInteraction = 1700000000000; // 20s exactly
+                assert.equal(shouldResumeFollowMode(false, false, lastInteraction, now, 20000), true);
+
+                const nowLater = 1700000045000; // 45s ago
+                assert.equal(shouldResumeFollowMode(false, false, lastInteraction, nowLater, 20000), true);
+            });
+
+            it('handles invalid or zero timestamps safely', () => {
+                assert.equal(shouldResumeFollowMode(false, false, 0, 1700000000000, 20000), false);
+                assert.equal(shouldResumeFollowMode(false, false, null, 1700000000000, 20000), false);
+                assert.equal(shouldResumeFollowMode(false, false, -100, 1700000000000, 20000), false);
             });
         });
     });
