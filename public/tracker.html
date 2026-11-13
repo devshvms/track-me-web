@@ -265,7 +265,9 @@
                     distinctId: viewerId,
                     properties: Object.assign({
                         sessionId,
+                        session_id: sessionId,
                         viewerId,
+                        viewer_id: viewerId,
                         os: viewerOS,
                         surface: isWatcherInvite ? 'watcher_invite_viewer' : 'live_share_viewer',
                     }, properties || {}),
@@ -661,8 +663,11 @@
                                 map.setView(pos, 15);
                             }
                             emitTelemetry('live_share_location_rendered', {
+                                path_points: trailPoints.length,
                                 pathPoints: trailPoints.length,
+                                has_heading: headingDeg !== null,
                                 hasHeading: headingDeg !== null,
+                                is_stopped: isStopped,
                                 isStopped,
                             });
                         } else if (!isStopped && window.isFollowingRider) {
