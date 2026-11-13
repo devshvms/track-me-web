@@ -1,7 +1,8 @@
 import assert from 'node:assert';
 import fs from 'node:fs';
 import path from 'node:path';
-import { VIEWER_VISIBLE_FIELDS } from '../api/track/[sessionId]/location';
+import { VIEWER_VISIBLE_FIELDS, deriveSessionTtlSeconds } from '../api/track/[sessionId]/location';
+import { getRedisClient } from '../lib/redis';
 import {
   MAX_PATH_POINTS,
   appendPathPoint,
@@ -195,6 +196,65 @@ test('tracker.html includes Smart App Banner, /live/watcher guard, trail polylin
   assert.ok(trackerHtml.includes('heading-cone-wrap'));
   assert.ok(trackerHtml.includes('start-pin'));
   assert.ok(trackerHtml.includes('nameBadge.textContent = username'));
+  assert.ok(trackerHtml.includes("statusEl.innerText = 'Connecting...';"));
+  assert.ok(trackerHtml.includes('stopPollingTimers()'));
+});
+
+test('deriveSessionTtlSeconds correctly calculates remaining seconds from ISO8601 expiresAt', () => {
+  const now = 1700000000000;
+  // 3600 seconds in the future
+  const futureIso = new Date(now + 3600 * 1000).toISOString();
+  assert.strictEqual(deriveSessionTtlSeconds({ expiresAt: futureIso }, now), 3600);
+
+  // 15 seconds in the past -> clamped to 0
+  const pastIso = new Date(now - 15 * 1000).toISOString();
+  assert.strictEqual(deriveSessionTtlSeconds({ expiresAt: pastIso }, now), 0);
+
+  // Missing or malformed sessionData
+  assert.strictEqual(deriveSessionTtlSeconds(null, now), 0);
+  assert.strictEqual(deriveSessionTtlSeconds({}, now), 0);
+  assert.strictEqual(deriveSessionTtlSeconds({ expiresAt: 'invalid-date' }, now), 0);
+});
+
+test('mockRedis emulates TTL expiration, keys lazy eviction, and multi() pipelining', async () => {
+  const redis = await getRedisClient();
+  const testKey = 'test:session:cie001';
+
+  // Test set with EX option
+  await redis.set(testKey, JSON.stringify({ ok: true }), { EX: 120 });
+  const ttl = await redis.ttl(testKey);
+  assert.ok(ttl > 100 && ttl <= 120, `Expected TTL around 120, got ${ttl}`);
+
+  const val = await redis.get(testKey);
+  assert.ok(val !== null);
+
+  // Test expire update
+  await redis.expire(testKey, 300);
+  const updatedTtl = await redis.ttl(testKey);
+  assert.ok(updatedTtl > 280 && updatedTtl <= 300, `Expected updated TTL around 300, got ${updatedTtl}`);
+
+  // Test multi() pipelining for zsets
+  const zsetKey = 'test:zset:cie001';
+  await redis.zAdd(zsetKey, [
+    { score: 100, value: 'item1' },
+    { score: 200, value: 'item2' },
+    { score: 300, value: 'item3' },
+  ]);
+
+  assert.strictEqual(typeof redis.multi, 'function');
+  const multi = redis.multi();
+  multi.zRemRangeByScore(zsetKey, 0, 150);
+  multi.zCard(zsetKey);
+  const results = await multi.exec();
+
+  assert.strictEqual(results.length, 2);
+  assert.strictEqual(results[0], 1, 'zRemRangeByScore should have removed 1 item');
+  assert.strictEqual(results[1], 2, 'zCard should report 2 remaining items');
+
+  // Clean up
+  await redis.del(testKey);
+  await redis.del(zsetKey);
+  assert.strictEqual(await redis.ttl(testKey), -2, 'Deleted key should return -2 for ttl');
 });
 
 async function main() {

@@ -49,10 +49,23 @@ export default async function handler(
     // Add or update the viewer's last ping timestamp
     await redis.zAdd(viewersKey, { score: now, value: viewerId });
     
-    // Ensure the viewers list expires when the session expires
-    const ttl = await redis.ttl(`session:${sessionId}`);
-    if (ttl > 0) {
-      await redis.expire(viewersKey, ttl);
+    // COST & LATENCY OPTIMIZATION (Upstash Free-Tier Command Budget):
+    // Only refresh the viewers set TTL when a new viewer joins (isExistingViewer === null).
+    // For existing viewers pinging every 15s, the TTL is already established on the set,
+    // so avoiding redundant redis.ttl + redis.expire network roundtrips eliminates ~2,400
+    // unnecessary Redis commands per hour for a 5-viewer session.
+    if (isExistingViewer === null) {
+      try {
+        const ttl = await redis.ttl(`session:${sessionId}`);
+        if (ttl > 0) {
+          await redis.expire(viewersKey, ttl);
+        } else {
+          // 24h safety TTL fallback if parent session TTL is indefinite or in test/dev
+          await redis.expire(viewersKey, 86400);
+        }
+      } catch (ttlErr) {
+        console.warn('Failed to set viewersKey expiration safely:', ttlErr);
+      }
     }
 
     return response.status(200).json({ success: true, viewers: currentViewerCount });

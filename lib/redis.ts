@@ -6,47 +6,81 @@ if (!globalAny._mockRedis) {
   const store = new Map<string, string>();
   const zsets = new Map<string, Map<string, number>>();
   const hashes = new Map<string, Map<string, number>>();
+  // High-fidelity in-memory TTL expiration tracker (timestamp in ms)
+  const expiries = new Map<string, number>();
+
+  const isExpired = (key: string): boolean => {
+    const exp = expiries.get(key);
+    if (exp !== undefined && Date.now() >= exp) {
+      store.delete(key);
+      zsets.delete(key);
+      hashes.delete(key);
+      expiries.delete(key);
+      return true;
+    }
+    return false;
+  };
 
   globalAny._mockRedis = {
     isOpen: true,
     isMock: true,
     async get(key: string) {
+      if (isExpired(key)) return null;
       return store.get(key) || null;
     },
     async set(key: string, value: string, options?: any) {
       store.set(key, value);
+      if (options?.EX && typeof options.EX === 'number' && options.EX > 0) {
+        expiries.set(key, Date.now() + options.EX * 1000);
+      } else if (options?.PX && typeof options.PX === 'number' && options.PX > 0) {
+        expiries.set(key, Date.now() + options.PX);
+      } else {
+        expiries.delete(key);
+      }
       return 'OK';
     },
     async keys(pattern: string) {
+      // Lazy evict any expired keys before pattern evaluation
+      for (const k of Array.from(expiries.keys())) {
+        isExpired(k);
+      }
       const regex = new RegExp('^' + pattern.replace(/\*/g, '.*') + '$');
       return Array.from(store.keys()).filter(k => regex.test(k));
     },
     async mGet(keys: string[]) {
       if (!keys || keys.length === 0) return [];
-      return keys.map(k => store.get(k) || null);
+      return keys.map(k => {
+        if (isExpired(k)) return null;
+        return store.get(k) || null;
+      });
     },
     async mget(keys: string[]) {
       return this.mGet(keys);
     },
     async del(key: string) {
+      const existed = store.has(key) || zsets.has(key) || hashes.has(key);
       store.delete(key);
       zsets.delete(key);
       hashes.delete(key);
-      return 1;
+      expiries.delete(key);
+      return existed ? 1 : 0;
     },
     async incr(key: string) {
+      if (isExpired(key)) store.delete(key);
       const current = parseInt(store.get(key) || '0', 10);
       const updated = current + 1;
       store.set(key, String(updated));
       return updated;
     },
     async incrByFloat(key: string, increment: number) {
+      if (isExpired(key)) store.delete(key);
       const current = parseFloat(store.get(key) || '0');
       const updated = current + increment;
       store.set(key, String(updated));
       return updated;
     },
     async zAdd(key: string, item: { score: number; value: string } | Array<{ score: number; value: string }>) {
+      if (isExpired(key)) zsets.delete(key);
       if (!zsets.has(key)) zsets.set(key, new Map());
       const set = zsets.get(key)!;
       const items = Array.isArray(item) ? item : [item];
@@ -54,10 +88,12 @@ if (!globalAny._mockRedis) {
       return items.length;
     },
     async zRem(key: string, value: string) {
+      if (isExpired(key)) return 0;
       if (!zsets.has(key)) return 0;
       return zsets.get(key)!.delete(value) ? 1 : 0;
     },
     async zRemRangeByScore(key: string, min: number, max: number) {
+      if (isExpired(key)) return 0;
       if (!zsets.has(key)) return 0;
       const set = zsets.get(key)!;
       let removed = 0;
@@ -70,15 +106,18 @@ if (!globalAny._mockRedis) {
       return removed;
     },
     async zScore(key: string, member: string) {
+      if (isExpired(key)) return null;
       if (!zsets.has(key)) return null;
       const score = zsets.get(key)!.get(member);
       return score !== undefined ? score : null;
     },
     async zCard(key: string) {
+      if (isExpired(key)) return 0;
       if (!zsets.has(key)) return 0;
       return zsets.get(key)!.size;
     },
     async zCount(key: string, min: number, max: number) {
+      if (isExpired(key)) return 0;
       if (!zsets.has(key)) return 0;
       const set = zsets.get(key)!;
       let count = 0;
@@ -88,10 +127,22 @@ if (!globalAny._mockRedis) {
       return count;
     },
     async ttl(key: string) {
-      // Mock always returns -1 (no expiry) since we don't track TTLs in memory
-      return store.has(key) || zsets.has(key) || hashes.has(key) ? -1 : -2;
+      const exists = store.has(key) || zsets.has(key) || hashes.has(key);
+      if (!exists) return -2; // Key does not exist
+      const exp = expiries.get(key);
+      if (exp === undefined) return -1; // Key exists without TTL
+      const remainingSec = Math.floor((exp - Date.now()) / 1000);
+      if (remainingSec <= 0) {
+        store.delete(key);
+        zsets.delete(key);
+        hashes.delete(key);
+        expiries.delete(key);
+        return -2;
+      }
+      return remainingSec;
     },
     async hIncrBy(key: string, field: string, increment: number) {
+      if (isExpired(key)) hashes.delete(key);
       if (!hashes.has(key)) hashes.set(key, new Map());
       const hash = hashes.get(key)!;
       const current = hash.get(field) || 0;
@@ -100,7 +151,32 @@ if (!globalAny._mockRedis) {
       return updated;
     },
     async expire(key: string, seconds: number) {
+      const exists = store.has(key) || zsets.has(key) || hashes.has(key);
+      if (!exists || seconds <= 0) return 0;
+      expiries.set(key, Date.now() + seconds * 1000);
       return 1;
+    },
+    multi() {
+      // Pipelining/multi implementation for batched operations in mock mode
+      const queue: Array<() => Promise<any>> = [];
+      const multiProxy = {
+        zRemRangeByScore: (key: string, min: number, max: number) => {
+          queue.push(() => globalAny._mockRedis.zRemRangeByScore(key, min, max));
+          return multiProxy;
+        },
+        zCard: (key: string) => {
+          queue.push(() => globalAny._mockRedis.zCard(key));
+          return multiProxy;
+        },
+        exec: async () => {
+          const results = [];
+          for (const fn of queue) {
+            results.push(await fn());
+          }
+          return results;
+        },
+      };
+      return multiProxy;
     },
     async connect() {
       return this;
