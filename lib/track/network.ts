@@ -641,3 +641,104 @@ export function formatPowerSaveCadenceNotice(
     return 'Power save active · Location updates every ~15s';
 }
 
+/**
+ * CIE-038: Evaluates whether a polyline should be decimated based on point count.
+ * For short trips (<= minPointsThreshold, default 200), points are preserved without decimation.
+ */
+export function shouldDecimatePolyline(pointCount: number, minPointsThreshold: number = 200): boolean {
+    return pointCount > minPointsThreshold;
+}
+
+/**
+ * CIE-038: Calculates perpendicular distance in meters from point P to line segment AB.
+ * Uses equirectangular local flat projection relative to point A for high performance.
+ */
+export function computePerpendicularDistanceMeters(
+    p: [number, number],
+    a: [number, number],
+    b: [number, number]
+): number {
+    const latRad = (a[0] * Math.PI) / 180.0;
+    const cosLat = Math.cos(latRad);
+    const mPerDegLat = 111320;
+    const mPerDegLng = 111320 * cosLat;
+
+    // Vector AB in meters
+    const dxAB = (b[1] - a[1]) * mPerDegLng;
+    const dyAB = (b[0] - a[0]) * mPerDegLat;
+
+    // Vector AP in meters
+    const dxAP = (p[1] - a[1]) * mPerDegLng;
+    const dyAP = (p[0] - a[0]) * mPerDegLat;
+
+    const segmentLenSq = dxAB * dxAB + dyAB * dyAB;
+    if (segmentLenSq === 0) {
+        // A and B are the same point
+        return Math.sqrt(dxAP * dxAP + dyAP * dyAP);
+    }
+
+    // Perpendicular distance = |cross product of AB and AP| / |AB|
+    const crossProduct = Math.abs(dxAB * dyAP - dyAB * dxAP);
+    return crossProduct / Math.sqrt(segmentLenSq);
+}
+
+/**
+ * CIE-038: Ramer-Douglas-Peucker (RDP) polyline decimation for live viewer breadcrumb trails.
+ * Prunes collinear micro-jitter points below epsilonMeters (default 3.5m) while strictly
+ * preserving start/finish endpoints and sharp corners/turns.
+ * Bypasses decimation if point count <= minPointsThreshold (default 200 points).
+ */
+export function decimatePolyline(
+    points: Array<[number, number]>,
+    epsilonMeters: number = 3.5,
+    minPointsThreshold: number = 200
+): Array<[number, number]> {
+    if (!Array.isArray(points) || points.length <= 2) {
+        return points || [];
+    }
+    if (minPointsThreshold > 0 && points.length <= minPointsThreshold) {
+        return points;
+    }
+
+    function rdp(
+        pts: Array<[number, number]>,
+        startIndex: number,
+        endIndex: number,
+        epsilon: number,
+        keepIndices: Set<number>
+    ): void {
+        let maxDist = 0;
+        let maxIndex = startIndex;
+        const first = pts[startIndex];
+        const last = pts[endIndex];
+
+        for (let i = startIndex + 1; i < endIndex; i++) {
+            const dist = computePerpendicularDistanceMeters(pts[i], first, last);
+            if (dist > maxDist) {
+                maxDist = dist;
+                maxIndex = i;
+            }
+        }
+
+        if (maxDist > epsilon) {
+            keepIndices.add(maxIndex);
+            rdp(pts, startIndex, maxIndex, epsilon, keepIndices);
+            rdp(pts, maxIndex, endIndex, epsilon, keepIndices);
+        }
+    }
+
+    const keepIndices = new Set<number>();
+    keepIndices.add(0);
+    keepIndices.add(points.length - 1);
+
+    rdp(points, 0, points.length - 1, epsilonMeters, keepIndices);
+
+    const result: Array<[number, number]> = [];
+    for (let i = 0; i < points.length; i++) {
+        if (keepIndices.has(i)) {
+            result.push(points[i]);
+        }
+    }
+    return result;
+}
+
