@@ -483,10 +483,44 @@
                 }
             };
 
-            let pollingInterval = null;
-            let pingInterval = null;
+            // CIE-003: Adaptive jittered backoff & concurrency controls to prevent Redis stampedes ($0/mo cost mandate)
+            let consecutiveFetchErrors = 0;
+            let isFetchInProgress = false;
+            let fetchTimeoutId = null;
+            let pingTimeoutId = null;
+
+            function computeViewerBackoffMs(failures) {
+                if (failures <= 0) return 5000;
+                const increments = [1000, 3000, 6000, 10000];
+                const step = increments[Math.min(failures - 1, increments.length - 1)];
+                const jitter = Math.floor(Math.random() * 500);
+                return Math.min(15000, 5000 + step + jitter);
+            }
+
+            function scheduleNextFetch(delayMs) {
+                if (isTripEnded) return;
+                if (fetchTimeoutId) clearTimeout(fetchTimeoutId);
+                fetchTimeoutId = setTimeout(fetchLocation, delayMs);
+            }
+
+            function scheduleNextPing(delayMs = 15000) {
+                if (isTripEnded) return;
+                if (pingTimeoutId) clearTimeout(pingTimeoutId);
+                pingTimeoutId = setTimeout(pingPresence, delayMs);
+            }
+
+            function stopPollingTimers() {
+                if (fetchTimeoutId) { clearTimeout(fetchTimeoutId); fetchTimeoutId = null; }
+                if (pingTimeoutId) { clearTimeout(pingTimeoutId); pingTimeoutId = null; }
+            }
 
             async function pingPresence() {
+                if (isTripEnded) return;
+                // Suppress presence pinging during connectivity outages to conserve Redis writes ($0/mo cost mandate)
+                if (consecutiveFetchErrors >= 2) {
+                    scheduleNextPing(15000);
+                    return;
+                }
                 try {
                     const response = await fetch(`/api/track/${sessionId}/ping`, {
                         method: 'POST',
@@ -515,10 +549,14 @@
                     }
                 } catch (err) {
                     console.error('Ping failed:', err);
+                } finally {
+                    scheduleNextPing(15000);
                 }
             }
 
             async function fetchLocation() {
+                if (isTripEnded || isFetchInProgress) return;
+                isFetchInProgress = true;
                 try {
                     const response = await fetch(`/api/track/${sessionId}/location`);
                     if (!response.ok) {
@@ -539,10 +577,11 @@
                             revealGetApp(true);
                             return;
                         }
-                        throw new Error('Failed to fetch');
+                        throw new Error(`HTTP ${response.status}`);
                     }
 
                     const data = await response.json();
+                    consecutiveFetchErrors = 0;
 
                     if (data.initialDuration) {
                         window.lastKnownDuration = data.initialDuration;
@@ -736,8 +775,12 @@
                         document.getElementById('userNameText').innerText = `${data.username || 'Anonymous'}'s Live Location`;
                         document.getElementById('detailsText').innerText = 'Session active, waiting for first location ping from rider.';
                     }
+                    if (!isStopped) {
+                        scheduleNextFetch(5000);
+                    }
                 } catch (err) {
                     console.error('Location fetch error:', err);
+                    consecutiveFetchErrors++;
                     // Defensive UX: Do not destroy the existing rider marker or map context on transient cellular glitches.
                     // If we have previously rendered the rider, show a non-blocking "Connecting..." indicator.
                     if (window.lastRiderPos && !isTripEnded) {
@@ -750,6 +793,12 @@
                         document.getElementById('statusText').innerText = 'Connection Error';
                         document.getElementById('statusText').className = 'status offline';
                     }
+                    if (!isTripEnded) {
+                        const backoffDelay = computeViewerBackoffMs(consecutiveFetchErrors);
+                        scheduleNextFetch(backoffDelay);
+                    }
+                } finally {
+                    isFetchInProgress = false;
                 }
             }
 
@@ -786,31 +835,19 @@
                 }
             });
 
-            function startPollingTimers() {
-                if (isTripEnded) return;
-                if (!pollingInterval) pollingInterval = setInterval(fetchLocation, 5000);
-                if (!pingInterval) pingInterval = setInterval(pingPresence, 15000);
-            }
-
-            function stopPollingTimers() {
-                if (pollingInterval) { clearInterval(pollingInterval); pollingInterval = null; }
-                if (pingInterval) { clearInterval(pingInterval); pingInterval = null; }
-            }
-
             document.addEventListener('visibilitychange', () => {
                 if (document.hidden) {
                     stopPollingTimers();
                 } else if (!isTripEnded) {
+                    // Refresh immediately upon foreground return
                     fetchLocation();
                     pingPresence();
-                    startPollingTimers();
                 }
             });
 
-            // Fetch immediately, then poll every 5 seconds while tab is visible
+            // Fetch immediately, then poll adaptively while tab is visible
             fetchLocation();
             pingPresence();
-            startPollingTimers();
         }
     </script>
 </body>
