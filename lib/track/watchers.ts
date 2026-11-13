@@ -90,17 +90,23 @@ export async function dispatchTrustedWatcherNotifications(
     expiresAt: params.expiresAt,
   };
 
-  if (params.redis && params.ttlSeconds > 0) {
-    for (const watcherUid of verifiedUids) {
-      try {
-        await params.redis.set(
-          `watcher_inbox:${watcherUid}`,
-          JSON.stringify(inboxPayload),
-          { EX: Math.min(params.ttlSeconds, 24 * 60 * 60) },
-        );
-      } catch (err) {
-        console.error(`Watcher inbox Redis write error for watcherUid=${watcherUid}:`, err);
+  if (params.redis && params.ttlSeconds > 0 && verifiedUids.length > 0) {
+    const ttl = Math.min(params.ttlSeconds, 24 * 60 * 60);
+    const payloadStr = JSON.stringify(inboxPayload);
+    try {
+      if (typeof params.redis.multi === 'function') {
+        const multi = params.redis.multi();
+        for (const watcherUid of verifiedUids) {
+          multi.set(`watcher_inbox:${watcherUid}`, payloadStr, { EX: ttl });
+        }
+        await multi.exec();
+      } else {
+        for (const watcherUid of verifiedUids) {
+          await params.redis.set(`watcher_inbox:${watcherUid}`, payloadStr, { EX: ttl });
+        }
       }
+    } catch (err) {
+      console.error('Watcher inbox Redis batch write error:', err);
     }
   }
 

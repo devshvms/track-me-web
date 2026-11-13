@@ -7,6 +7,7 @@ import { requireUser, sendAuthError } from '../../lib/auth';
 import { db, messaging } from '../../lib/firebase';
 import {
   dispatchTrustedWatcherNotifications,
+  normalizeWatcherUids,
   MAX_AUTO_WATCHERS,
 } from '../../lib/track/watchers';
 
@@ -15,6 +16,7 @@ export default async function handler(
   response: VercelResponse,
 ) {
   if (request.method === 'GET' && request.query?.inbox === '1') {
+    response.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
     try {
       const decoded = await requireUser(request);
       const redis = await getRedisClient();
@@ -22,14 +24,34 @@ export default async function handler(
       if (!rawInvite) {
         return response.status(200).json({ activeInvite: null });
       }
-      const invite = JSON.parse(rawInvite);
-      const sessionStr = invite?.sessionId ? await redis.get(`session:${invite.sessionId}`) : null;
+      let invite: any = null;
+      try {
+        invite = JSON.parse(rawInvite);
+      } catch (parseErr) {
+        console.error('Malformed watcher inbox JSON, purging key:', parseErr);
+        await redis.del(`watcher_inbox:${decoded.uid}`);
+        return response.status(200).json({ activeInvite: null });
+      }
+
+      if (!invite?.sessionId) {
+        await redis.del(`watcher_inbox:${decoded.uid}`);
+        return response.status(200).json({ activeInvite: null });
+      }
+
+      const sessionStr = await redis.get(`session:${invite.sessionId}`);
       if (!sessionStr) {
         await redis.del(`watcher_inbox:${decoded.uid}`);
         return response.status(200).json({ activeInvite: null });
       }
-      const session = JSON.parse(sessionStr);
-      if (session?.status && session.status !== 'active') {
+
+      let session: any = null;
+      try {
+        session = JSON.parse(sessionStr);
+      } catch {
+        session = null;
+      }
+
+      if (!session || (session.status && session.status !== 'active')) {
         await redis.del(`watcher_inbox:${decoded.uid}`);
         return response.status(200).json({ activeInvite: null });
       }
@@ -99,6 +121,12 @@ export default async function handler(
       return response.status(400).json({ error: 'Duration cannot exceed 24 hours (1440 minutes).' });
     }
 
+    const cleanUsername = typeof username === 'string' && username.trim().length > 0
+      ? username.trim().slice(0, 64)
+      : 'Anonymous';
+
+    const cleanWatcherUids = normalizeWatcherUids(watcherUids, decoded.uid);
+
     const redis = await getRedisClient();
 
     const now = Date.now();
@@ -109,7 +137,7 @@ export default async function handler(
       sessionId,
       ownerUid: decoded.uid,
       ownerEmail: decoded.email || null,
-      username: username || 'Anonymous',
+      username: cleanUsername,
       initialDuration: duration,
       startedAt: now,
       expiresAt: expiresAt.toISOString(),
@@ -123,9 +151,17 @@ export default async function handler(
     });
 
     try {
-      await redis.incr('stats:total_shares');
-      await redis.zAdd('stats:shares_24h', { score: now, value: sessionId });
-      await redis.zRemRangeByScore('stats:shares_24h', 0, now - 24 * 60 * 60 * 1000);
+      if (typeof redis.multi === 'function') {
+        const multi = redis.multi();
+        multi.incr('stats:total_shares');
+        multi.zAdd('stats:shares_24h', { score: now, value: sessionId });
+        multi.zRemRangeByScore('stats:shares_24h', 0, now - 24 * 60 * 60 * 1000);
+        await multi.exec();
+      } else {
+        await redis.incr('stats:total_shares');
+        await redis.zAdd('stats:shares_24h', { score: now, value: sessionId });
+        await redis.zRemRangeByScore('stats:shares_24h', 0, now - 24 * 60 * 60 * 1000);
+      }
     } catch (e) {
       console.error('Stats update error:', e);
     }
@@ -142,7 +178,7 @@ export default async function handler(
         startedAt: now,
         expiresAt: sessionData.expiresAt,
         ttlSeconds: duration * 60,
-        watcherUids,
+        watcherUids: cleanWatcherUids,
         db,
         messaging,
         redis,

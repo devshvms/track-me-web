@@ -177,23 +177,27 @@ if (!globalAny._mockRedis) {
     multi() {
       // Pipelining/multi implementation for batched operations in mock mode
       const queue: Array<() => Promise<any>> = [];
-      const multiProxy = {
-        zRemRangeByScore: (key: string, min: number, max: number) => {
-          queue.push(() => globalAny._mockRedis.zRemRangeByScore(key, min, max));
-          return multiProxy;
-        },
-        zCard: (key: string) => {
-          queue.push(() => globalAny._mockRedis.zCard(key));
-          return multiProxy;
-        },
-        exec: async () => {
-          const results = [];
-          for (const fn of queue) {
-            results.push(await fn());
+      const multiProxy: any = new Proxy({}, {
+        get(_target, prop: string) {
+          if (prop === 'exec') {
+            return async () => {
+              const results = [];
+              for (const fn of queue) {
+                results.push(await fn());
+              }
+              return results;
+            };
           }
-          return results;
+          return (...args: any[]) => {
+            const client = globalAny._mockRedis;
+            const method = client ? (client as any)[prop] : null;
+            if (typeof method === 'function') {
+              queue.push(() => method.apply(client, args));
+            }
+            return multiProxy;
+          };
         },
-      };
+      });
       return multiProxy;
     },
     async connect() {
