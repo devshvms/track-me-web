@@ -1,6 +1,7 @@
 import assert from 'node:assert';
 import {
   STALE_SIGNAL_THRESHOLD_MS,
+  evaluateDeadlineStatus,
   formatElapsedDuration,
   isSignalStale,
   parseTimestampMs,
@@ -70,6 +71,41 @@ test('isSignalStale identifies active rides with no update for >= 3 minutes', ()
   // Missing or invalid
   assert.strictEqual(isSignalStale(null, now), false);
   assert.strictEqual(isSignalStale('invalid', now), false);
+});
+
+test('evaluateDeadlineStatus evaluates on-time and overdue deadlines accurately', () => {
+  // Edge cases
+  assert.strictEqual(evaluateDeadlineStatus(null), null);
+  assert.strictEqual(evaluateDeadlineStatus(undefined), null);
+  assert.strictEqual(evaluateDeadlineStatus('invalid'), null);
+  assert.strictEqual(evaluateDeadlineStatus(-100), null);
+
+  const deadlineMs = 1700000000000;
+  const fixedFormatter = () => '6:30 PM';
+
+  // On-time (now is 15 minutes before deadline)
+  const onTimeNow = deadlineMs - 15 * 60_000;
+  const onTime = evaluateDeadlineStatus(deadlineMs, onTimeNow, fixedFormatter);
+  assert.ok(onTime !== null);
+  assert.strictEqual(onTime.isOverdue, false);
+  assert.strictEqual(onTime.overdueMinutes, 0);
+  assert.strictEqual(onTime.timeString, '6:30 PM');
+  assert.strictEqual(onTime.displayText, 'Expected by 6:30 PM');
+
+  // Overdue (now is 22 minutes past deadline)
+  const overdueNow = deadlineMs + 22 * 60_000;
+  const overdue = evaluateDeadlineStatus(deadlineMs, overdueNow, fixedFormatter);
+  assert.ok(overdue !== null);
+  assert.strictEqual(overdue.isOverdue, true);
+  assert.strictEqual(overdue.overdueMinutes, 22);
+  assert.strictEqual(overdue.displayText, 'Overdue · Expected by 6:30 PM');
+
+  // Handles ISO-8601 string input
+  const iso = new Date(deadlineMs).toISOString();
+  const fromIso = evaluateDeadlineStatus(iso, onTimeNow, fixedFormatter);
+  assert.ok(fromIso !== null);
+  assert.strictEqual(fromIso.isOverdue, false);
+  assert.strictEqual(fromIso.timeString, '6:30 PM');
 });
 
 async function main() {

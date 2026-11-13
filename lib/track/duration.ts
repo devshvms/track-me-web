@@ -80,3 +80,47 @@ export function isSignalStale(
 
   return (nowMs - lastMs) >= thresholdMs;
 }
+
+export interface DeadlineStatus {
+  isOverdue: boolean;
+  deadlineMs: number;
+  timeString: string;
+  overdueMinutes: number;
+  displayText: string;
+}
+
+/**
+ * Evaluates a scheduled trip deadline or ETA (CIE-025).
+ * Formats user-facing status e.g. "Expected by 6:30 PM" or "Overdue · Expected by 6:30 PM".
+ */
+export function evaluateDeadlineStatus(
+  deadlineRaw?: number | string | null,
+  referenceNowMs?: number,
+  timeFormatter?: (ms: number) => string,
+): DeadlineStatus | null {
+  const deadlineMs = parseTimestampMs(deadlineRaw);
+  if (!deadlineMs) return null;
+
+  const nowMs = typeof referenceNowMs === 'number' && Number.isFinite(referenceNowMs)
+    ? referenceNowMs
+    : Date.now();
+
+  const isOverdue = nowMs > deadlineMs;
+  const overdueMinutes = isOverdue ? Math.floor((nowMs - deadlineMs) / 60_000) : 0;
+
+  const timeString = typeof timeFormatter === 'function'
+    ? timeFormatter(deadlineMs)
+    : new Date(deadlineMs).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+
+  const displayText = isOverdue
+    ? `Overdue · Expected by ${timeString}`
+    : `Expected by ${timeString}`;
+
+  return {
+    isOverdue,
+    deadlineMs,
+    timeString,
+    overdueMinutes,
+    displayText,
+  };
+}
