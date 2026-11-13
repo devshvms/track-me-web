@@ -236,3 +236,56 @@ export function shouldShowConnectionRetry(consecutiveFetchErrors: number, isOnli
     return !isOnline || consecutiveFetchErrors >= 1;
 }
 
+/**
+ * Constructs Google Maps and Apple Maps navigation links for a given coordinate.
+ */
+export function buildMapsUrls(lat: number, lon: number): { googleMapsUrl: string; appleMapsUrl: string } {
+    const safeLat = Number(lat) || 0;
+    const safeLon = Number(lon) || 0;
+    return {
+        googleMapsUrl: `https://maps.google.com/?q=${safeLat},${safeLon}`,
+        appleMapsUrl: `https://maps.apple.com/?q=${safeLat},${safeLon}`,
+    };
+}
+
+/**
+ * Formats a clean, standard live share message text matching iOS & Android formats.
+ *
+ * @param username Optional username of the rider
+ * @param liveUrl Full web URL of the live tracking session
+ */
+export function formatLiveShareText(username: string | null | undefined, liveUrl: string): string {
+    const cleanName = username?.trim();
+    if (cleanName) {
+        return `Track ${cleanName}'s live ride on TrackMe: ${liveUrl}`;
+    }
+    return `Track my live ride on TrackMe: ${liveUrl}`;
+}
+
+/**
+ * Formats location action text including live link, last seen time, and maps navigation links.
+ */
+export function formatLocationShareText(
+    username: string | null | undefined,
+    liveUrl: string,
+    lat: number,
+    lon: number,
+    timestampMs?: number
+): string {
+    const { googleMapsUrl, appleMapsUrl } = buildMapsUrls(lat, lon);
+    const timeStr = timestampMs && timestampMs > 0
+        ? new Date(timestampMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        : null;
+
+    const lines = [
+        formatLiveShareText(username, liveUrl),
+    ];
+    if (timeStr) {
+        lines.push(`Last seen at ${timeStr}`);
+    }
+    lines.push(`Google Maps: ${googleMapsUrl}`);
+    lines.push(`Apple Maps: ${appleMapsUrl}`);
+
+    return lines.join('\n');
+}
+
