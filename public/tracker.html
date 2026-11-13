@@ -1115,6 +1115,22 @@
                 return `${(meters / 1000).toFixed(1)} km`;
             }
 
+            // CIE-039: Concluded trip average speed computation and formatting
+            function computeAverageSpeed(distanceMeters, durationSeconds, useMiles) {
+                if (!Number.isFinite(distanceMeters) || distanceMeters < 0) return null;
+                if (!Number.isFinite(durationSeconds) || durationSeconds < 5) return null;
+                if (distanceMeters === 0) return 0;
+                const speedKmh = (distanceMeters / 1000) / (durationSeconds / 3600);
+                if (!Number.isFinite(speedKmh) || speedKmh > 200) return null;
+                const speed = useMiles ? speedKmh * 0.621371 : speedKmh;
+                return Math.round(speed * 10) / 10;
+            }
+
+            function formatAverageSpeed(avgSpeed, useMiles) {
+                if (!Number.isFinite(avgSpeed) || avgSpeed < 0) return null;
+                return `${avgSpeed.toFixed(1)} ${useMiles ? 'mph' : 'km/h'}`;
+            }
+
             // CIE-025: Scheduled ETA / Deadline display and overdue evaluation
             function formatDeadlineStatus(deadlineRaw, isStopped) {
                 if (isStopped || !deadlineRaw) return null;
@@ -1584,9 +1600,21 @@
                         const endedTimeStr = data.endedAt ? new Date(data.endedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : null;
                         const durationLabel = durationStr ? ` · Duration: ${durationStr}` : '';
                         const distanceLabel = totalDistanceMeters > 0 ? ` · Distance: ${distanceStr}` : '';
+                        const startMs = data.startedAt ? (typeof data.startedAt === 'number' ? data.startedAt : new Date(data.startedAt).getTime()) : null;
+                        const endMs = data.endedAt ? (typeof data.endedAt === 'number' ? data.endedAt : new Date(data.endedAt).getTime()) : Date.now();
+                        const durSec = (startMs && Number.isFinite(startMs) && endMs >= startMs) ? Math.floor((endMs - startMs) / 1000) : null;
+                        const avgSpeed = computeAverageSpeed(totalDistanceMeters, durSec, useMiles);
+                        const avgSpeedStr = formatAverageSpeed(avgSpeed, useMiles);
+                        const avgSpeedLabel = avgSpeedStr ? ` · Avg Speed: ${avgSpeedStr}` : '';
+
                         detailsEl.innerText = endedTimeStr
-                            ? `${stopText} at ${endedTimeStr}${durationLabel}${distanceLabel} · Final location shown`
-                            : `${stopText}${durationLabel}${distanceLabel} · Final location shown`;
+                            ? `${stopText} at ${endedTimeStr}${durationLabel}${distanceLabel}${avgSpeedLabel} · Final location shown`
+                            : `${stopText}${durationLabel}${distanceLabel}${avgSpeedLabel} · Final location shown`;
+
+                        if (!window.hasAnnouncedTripEnded) {
+                            window.hasAnnouncedTripEnded = true;
+                            announceA11y(`Trip ended. ${stopText}. Total distance ${distanceStr}. Duration ${durationStr || 'elapsed'}.${avgSpeedStr ? ` Average speed ${avgSpeedStr}.` : ''}`);
+                        }
                         return;
                     }
 

@@ -32,6 +32,10 @@ import {
     shouldDecimatePolyline,
     computePerpendicularDistanceMeters,
     decimatePolyline,
+    computeElapsedSeconds,
+    computeAverageSpeed,
+    formatAverageSpeed,
+    formatConcludedSummary,
 } from '../lib/track/network';
 
 describe('Live Viewer Network Resilience & Tile Fallback (CIE-007)', () => {
@@ -761,5 +765,108 @@ describe('Live Viewer Network Resilience & Tile Fallback (CIE-007)', () => {
             });
         });
     });
+
+    describe('Concluded Trip Summary, Stop Reason & Average Speed Parity (CIE-039)', () => {
+        describe('computeElapsedSeconds', () => {
+            it('returns elapsed seconds between timestamps', () => {
+                const start = '2026-11-13T10:00:00Z';
+                const end = '2026-11-13T10:45:30Z';
+                assert.equal(computeElapsedSeconds(start, end), 2730);
+            });
+
+            it('handles numeric epoch timestamps', () => {
+                const start = 1700000000000;
+                const end = 1700000060000;
+                assert.equal(computeElapsedSeconds(start, end), 60);
+            });
+
+            it('returns null on invalid or future timestamps', () => {
+                assert.equal(computeElapsedSeconds(null, '2026-11-13T10:00:00Z'), null);
+                assert.equal(computeElapsedSeconds('2026-11-13T11:00:00Z', '2026-11-13T10:00:00Z'), null);
+                assert.equal(computeElapsedSeconds('not-a-date'), null);
+            });
+        });
+
+        describe('computeAverageSpeed', () => {
+            it('computes metric average speed in km/h', () => {
+                // 10,000 meters in 1,800 seconds (30m) = 20 km/h
+                assert.equal(computeAverageSpeed(10000, 1800, false), 20.0);
+                // 15,250 meters in 2,745 seconds ≈ 20.0 km/h
+                assert.equal(computeAverageSpeed(15250, 2745, false), 20.0);
+            });
+
+            it('computes imperial average speed in mph', () => {
+                // 10,000 meters in 1,800 seconds = 20 km/h * 0.621371 = 12.427 -> 12.4 mph
+                assert.equal(computeAverageSpeed(10000, 1800, true), 12.4);
+            });
+
+            it('returns 0 for zero distance when duration >= 5s', () => {
+                assert.equal(computeAverageSpeed(0, 60, false), 0.0);
+                assert.equal(computeAverageSpeed(0, 60, true), 0.0);
+            });
+
+            it('returns null for short durations (< 5s), negative distances, or non-finite inputs', () => {
+                assert.equal(computeAverageSpeed(1000, 4, false), null);
+                assert.equal(computeAverageSpeed(1000, 0, false), null);
+                assert.equal(computeAverageSpeed(-500, 60, false), null);
+                assert.equal(computeAverageSpeed(null, 60, false), null);
+                assert.equal(computeAverageSpeed(1000, null, false), null);
+                assert.equal(computeAverageSpeed(NaN, 60, false), null);
+                assert.equal(computeAverageSpeed(1000, Infinity, false), null);
+            });
+
+            it('rejects supersonic single-hop glitches (> 200 km/h)', () => {
+                // 50,000 meters in 600 seconds = 300 km/h -> reject
+                assert.equal(computeAverageSpeed(50000, 600, false), null);
+            });
+        });
+
+        describe('formatAverageSpeed', () => {
+            it('formats metric and imperial speeds with single decimal precision', () => {
+                assert.equal(formatAverageSpeed(21.43, false), '21.4 km/h');
+                assert.equal(formatAverageSpeed(13.28, true), '13.3 mph');
+                assert.equal(formatAverageSpeed(0, false), '0.0 km/h');
+            });
+
+            it('returns null for invalid inputs', () => {
+                assert.equal(formatAverageSpeed(null), null);
+                assert.equal(formatAverageSpeed(undefined), null);
+                assert.equal(formatAverageSpeed(-5), null);
+                assert.equal(formatAverageSpeed(NaN), null);
+            });
+        });
+
+        describe('formatConcludedSummary', () => {
+            it('formats a complete summary with duration, distance, and average speed', () => {
+                const summary = formatConcludedSummary(
+                    'Arrived at destination safely.',
+                    14200, // 14.2 km
+                    2700,  // 45m
+                    false  // metric
+                );
+                assert.equal(summary.statusText, 'Trip Completed');
+                assert.equal(summary.avgSpeedStr, '18.9 km/h');
+                assert.equal(summary.durationStr, '45m');
+                assert.equal(summary.distanceStr, '14.2 km');
+                assert.equal(summary.detailsText, 'Arrived at destination safely. · Duration: 45m · Distance: 14.2 km · Avg Speed: 18.9 km/h');
+                assert.equal(summary.a11yText, 'Trip ended. Arrived at destination safely.. Total distance 14.2 km. Duration 45m. Average speed 18.9 km/h.');
+            });
+
+            it('uses fallback text when stopReason is null or empty', () => {
+                const summary = formatConcludedSummary(null, 5000, 1200, false);
+                assert.ok(summary.detailsText.startsWith('The rider has ended this live trip.'));
+                assert.ok(summary.a11yText.includes('The rider has ended this live trip.'));
+            });
+
+            it('handles imperial unit conversion correctly', () => {
+                const summary = formatConcludedSummary('Ride finished', 16093.44, 3600, true);
+                assert.equal(summary.distanceStr, '10.0 mi');
+                assert.equal(summary.avgSpeedStr, '10.0 mph');
+                assert.ok(summary.detailsText.includes('Distance: 10.0 mi'));
+                assert.ok(summary.detailsText.includes('Avg Speed: 10.0 mph'));
+            });
+        });
+    });
 });
+
 
