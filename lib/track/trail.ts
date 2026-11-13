@@ -264,3 +264,35 @@ export function formatViewerDistance(meters: number, useMiles = false): string {
   return `${km.toFixed(1)} km`;
 }
 
+/**
+ * Calculates the shortest signed angular difference between two compass bearings in degrees.
+ * Returns a value in [-180, 180). Positive indicates clockwise turn, negative indicates counter-clockwise.
+ *
+ * Prevents 350-degree spin-around jitter when heading crosses the 0°/360° north boundary (CIE-028).
+ *
+ * @param fromAngle Starting angle in degrees
+ * @param toAngle Target angle in degrees
+ */
+export function computeShortestArcDelta(fromAngle: number, toAngle: number): number {
+  if (!Number.isFinite(fromAngle) || !Number.isFinite(toAngle)) return 0;
+  let c = fromAngle % 360;
+  if (c < 0) c += 360;
+  let t = toAngle % 360;
+  if (t < 0) t += 360;
+  return ((t - c + 540) % 360) - 180;
+}
+
+/**
+ * Calculates continuous rotation angle by applying shortest-arc delta to existing continuous angle.
+ * Used for smooth CSS / map marker rotation transitions without boundary wrap flips (CIE-028).
+ *
+ * @param currentContinuousAngle Current accumulated continuous rotation angle (e.g. 355, 365, -10)
+ * @param targetAngle Target compass bearing (0-360)
+ */
+export function computeContinuousAngle(currentContinuousAngle: number, targetAngle: number): number {
+  if (!Number.isFinite(targetAngle)) return currentContinuousAngle;
+  if (!Number.isFinite(currentContinuousAngle)) return targetAngle;
+  const delta = computeShortestArcDelta(currentContinuousAngle, targetAngle);
+  return currentContinuousAngle + delta;
+}
+

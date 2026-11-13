@@ -1150,7 +1150,21 @@
                             const coneWrap = markerEl.querySelector('.heading-cone-wrap');
                             if (coneWrap) {
                                 coneWrap.innerHTML = buildHeadingConeSvg(headingDeg !== null && !isStopped);
-                                coneWrap.style.transform = headingDeg !== null && !isStopped ? `rotate(${Math.round(headingDeg)}deg)` : 'none';
+                                if (headingDeg !== null && !isStopped) {
+                                    if (window.lastContinuousHeading === undefined || window.lastContinuousHeading === null) {
+                                        window.lastContinuousHeading = headingDeg;
+                                    } else {
+                                        let c = window.lastContinuousHeading % 360;
+                                        if (c < 0) c += 360;
+                                        let t = headingDeg % 360;
+                                        if (t < 0) t += 360;
+                                        const delta = ((t - c + 540) % 360) - 180;
+                                        window.lastContinuousHeading += delta;
+                                    }
+                                    coneWrap.style.transform = `rotate(${Math.round(window.lastContinuousHeading)}deg)`;
+                                } else {
+                                    coneWrap.style.transform = 'none';
+                                }
                             }
                         }
 
