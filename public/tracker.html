@@ -1340,15 +1340,19 @@
                                 if (hasHeading) {
                                     if (window.lastContinuousHeading === undefined || window.lastContinuousHeading === null) {
                                         window.lastContinuousHeading = headingDeg;
+                                        coneWrap.style.transform = `rotate(${Math.round(window.lastContinuousHeading)}deg)`;
                                     } else {
                                         let c = window.lastContinuousHeading % 360;
                                         if (c < 0) c += 360;
                                         let t = headingDeg % 360;
                                         if (t < 0) t += 360;
                                         const delta = ((t - c + 540) % 360) - 180;
-                                        window.lastContinuousHeading += delta;
+                                        // CIE-032: Deadband threshold (>= 3.0 deg) prevents battery-draining continuous CSS transitions on sensor noise
+                                        if (Math.abs(delta) >= 3.0) {
+                                            window.lastContinuousHeading += delta;
+                                            coneWrap.style.transform = `rotate(${Math.round(window.lastContinuousHeading)}deg)`;
+                                        }
                                     }
-                                    coneWrap.style.transform = `rotate(${Math.round(window.lastContinuousHeading)}deg)`;
                                 } else {
                                     coneWrap.style.transform = 'none';
                                 }
@@ -1372,7 +1376,11 @@
                                 isStopped,
                             });
                         } else if (!isStopped && window.isFollowingRider) {
-                            map.panTo(pos, { animate: true });
+                            // CIE-032: Throttle camera panning when rider is stationary or within GPS jitter radius (< 3m)
+                            const distMeters = window.lastRiderPos ? map.distance(window.lastRiderPos, pos) : 999;
+                            if (distMeters >= 3.0) {
+                                map.panTo(pos, { animate: true });
+                            }
                         }
 
                         const mapControls = document.getElementById('mapControls');
