@@ -29,6 +29,9 @@ import {
     shouldAnnounceLowBattery,
     computeViewerAdaptivePollMs,
     formatPowerSaveCadenceNotice,
+    shouldDecimatePolyline,
+    computePerpendicularDistanceMeters,
+    decimatePolyline,
 } from '../lib/track/network';
 
 describe('Live Viewer Network Resilience & Tile Fallback (CIE-007)', () => {
@@ -640,6 +643,121 @@ describe('Live Viewer Network Resilience & Tile Fallback (CIE-007)', () => {
                 assert.equal(formatPowerSaveCadenceNotice(false, 50), null);
                 assert.equal(formatPowerSaveCadenceNotice(false, null), null);
                 assert.equal(formatPowerSaveCadenceNotice(false, -1), null);
+            });
+        });
+    });
+
+    describe('Live Share Viewer Breadcrumb Polyline Decimation & Memory Compaction (CIE-038)', () => {
+        describe('shouldDecimatePolyline', () => {
+            it('returns false when point count is below or equal to threshold', () => {
+                assert.equal(shouldDecimatePolyline(0, 200), false);
+                assert.equal(shouldDecimatePolyline(50, 200), false);
+                assert.equal(shouldDecimatePolyline(200, 200), false);
+            });
+
+            it('returns true when point count exceeds threshold', () => {
+                assert.equal(shouldDecimatePolyline(201, 200), true);
+                assert.equal(shouldDecimatePolyline(500, 200), true);
+            });
+
+            it('respects custom minPointsThreshold', () => {
+                assert.equal(shouldDecimatePolyline(100, 50), true);
+                assert.equal(shouldDecimatePolyline(40, 50), false);
+            });
+        });
+
+        describe('computePerpendicularDistanceMeters', () => {
+            it('returns near-zero distance for a point on a line segment', () => {
+                const a: [number, number] = [28.6139, 77.2090];
+                const b: [number, number] = [28.6239, 77.2090];
+                const p: [number, number] = [28.6189, 77.2090]; // exact midpoint
+                const dist = computePerpendicularDistanceMeters(p, a, b);
+                assert.ok(dist < 0.01, `Expected near zero, got ${dist}`);
+            });
+
+            it('calculates accurate perpendicular distance for an offset point', () => {
+                // A and B on same latitude, P offset north by ~111 meters (0.001 deg)
+                const a: [number, number] = [28.6139, 77.2000];
+                const b: [number, number] = [28.6139, 77.2100];
+                const p: [number, number] = [28.6149, 77.2050];
+                const dist = computePerpendicularDistanceMeters(p, a, b);
+                // ~0.001 deg lat * 111320 m/deg ≈ 111.3m
+                assert.ok(Math.abs(dist - 111.3) < 1.0, `Expected ~111.3m, got ${dist}`);
+            });
+
+            it('handles coincident A and B points safely without divide-by-zero', () => {
+                const a: [number, number] = [28.6139, 77.2090];
+                const p: [number, number] = [28.6149, 77.2090];
+                const dist = computePerpendicularDistanceMeters(p, a, a);
+                assert.ok(dist > 100 && dist < 120, `Expected ~111.3m, got ${dist}`);
+            });
+        });
+
+        describe('decimatePolyline', () => {
+            it('bypasses decimation and returns points directly when count <= 2', () => {
+                const twoPoints: Array<[number, number]> = [[28.61, 77.20], [28.62, 77.21]];
+                const result = decimatePolyline(twoPoints, 3.5, 0);
+                assert.deepEqual(result, twoPoints);
+            });
+
+            it('bypasses decimation when point count <= minPointsThreshold', () => {
+                const points: Array<[number, number]> = [
+                    [28.610, 77.200],
+                    [28.611, 77.200],
+                    [28.612, 77.200],
+                    [28.613, 77.200],
+                ];
+                // Threshold = 10, points count = 4 -> should not decimate
+                const result = decimatePolyline(points, 3.5, 10);
+                assert.equal(result.length, 4);
+                assert.deepEqual(result, points);
+            });
+
+            it('decimates perfectly collinear points down to first and last endpoints', () => {
+                const collinearPoints: Array<[number, number]> = [
+                    [28.6100, 77.2000],
+                    [28.6110, 77.2000],
+                    [28.6120, 77.2000],
+                    [28.6130, 77.2000],
+                    [28.6140, 77.2000],
+                    [28.6150, 77.2000],
+                ];
+                const decimated = decimatePolyline(collinearPoints, 3.5, 0);
+                assert.equal(decimated.length, 2);
+                assert.deepEqual(decimated[0], collinearPoints[0]);
+                assert.deepEqual(decimated[1], collinearPoints[5]);
+            });
+
+            it('preserves sharp corners and turns where perpendicular distance exceeds epsilon', () => {
+                const rightAngleRoute: Array<[number, number]> = [
+                    [28.6100, 77.2000], // Start
+                    [28.6110, 77.2000], // Collinear on leg 1
+                    [28.6120, 77.2000], // Corner turn point
+                    [28.6120, 77.2010], // Collinear on leg 2
+                    [28.6120, 77.2020], // Finish
+                ];
+                const decimated = decimatePolyline(rightAngleRoute, 3.5, 0);
+                // Corner should be preserved, intermediate collinear points pruned
+                assert.equal(decimated.length, 3);
+                assert.deepEqual(decimated[0], rightAngleRoute[0]);
+                assert.deepEqual(decimated[1], rightAngleRoute[2]); // Corner preserved
+                assert.deepEqual(decimated[2], rightAngleRoute[4]); // Finish preserved
+            });
+
+            it('filters out GPS micro-jitter below epsilon while maintaining route shape', () => {
+                // Jitter of 1-2 meters (< 3.5m epsilon) along North-bound path
+                // 1 deg latitude ≈ 111,320m -> 0.00001 deg ≈ 1.11m
+                const jitterRoute: Array<[number, number]> = [
+                    [28.6100, 77.20000], // Start
+                    [28.6110, 77.20001], // ~0.9m jitter east
+                    [28.6120, 77.19999], // ~0.9m jitter west
+                    [28.6130, 77.20001], // ~0.9m jitter east
+                    [28.6140, 77.20000], // Finish
+                ];
+                const decimated = decimatePolyline(jitterRoute, 3.5, 0);
+                assert.equal(decimated.length, 2);
+                assert.deepEqual(decimated[0], jitterRoute[0]);
+                assert.deepEqual(decimated[1], jitterRoute[4]);
             });
         });
     });

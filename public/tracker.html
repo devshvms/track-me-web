@@ -1310,6 +1310,59 @@
                 return 'Power save active · Location updates every ~15s';
             }
 
+            // CIE-038: Polyline Decimation & Memory Compaction for Extended Rides
+            function computePerpendicularDistanceMeters(p, a, b) {
+                const latRad = (a[0] * Math.PI) / 180.0;
+                const cosLat = Math.cos(latRad);
+                const mPerDegLat = 111320;
+                const mPerDegLng = 111320 * cosLat;
+                const dxAB = (b[1] - a[1]) * mPerDegLng;
+                const dyAB = (b[0] - a[0]) * mPerDegLat;
+                const dxAP = (p[1] - a[1]) * mPerDegLng;
+                const dyAP = (p[0] - a[0]) * mPerDegLat;
+                const segmentLenSq = dxAB * dxAB + dyAB * dyAB;
+                if (segmentLenSq === 0) {
+                    return Math.sqrt(dxAP * dxAP + dyAP * dyAP);
+                }
+                const crossProduct = Math.abs(dxAB * dyAP - dyAB * dxAP);
+                return crossProduct / Math.sqrt(segmentLenSq);
+            }
+
+            function decimatePolyline(points, epsilonMeters = 3.5, minPointsThreshold = 200) {
+                if (!Array.isArray(points) || points.length <= 2) return points || [];
+                if (minPointsThreshold > 0 && points.length <= minPointsThreshold) return points;
+
+                function rdp(pts, startIndex, endIndex, epsilon, keepIndices) {
+                    let maxDist = 0;
+                    let maxIndex = startIndex;
+                    const first = pts[startIndex];
+                    const last = pts[endIndex];
+                    for (let i = startIndex + 1; i < endIndex; i++) {
+                        const dist = computePerpendicularDistanceMeters(pts[i], first, last);
+                        if (dist > maxDist) {
+                            maxDist = dist;
+                            maxIndex = i;
+                        }
+                    }
+                    if (maxDist > epsilon) {
+                        keepIndices.add(maxIndex);
+                        rdp(pts, startIndex, maxIndex, epsilon, keepIndices);
+                        rdp(pts, maxIndex, endIndex, epsilon, keepIndices);
+                    }
+                }
+
+                const keepIndices = new Set();
+                keepIndices.add(0);
+                keepIndices.add(points.length - 1);
+                rdp(points, 0, points.length - 1, epsilonMeters, keepIndices);
+
+                const result = [];
+                for (let i = 0; i < points.length; i++) {
+                    if (keepIndices.has(i)) result.push(points[i]);
+                }
+                return result;
+            }
+
             function copyTextWithFallback(text, successMessage) {
                 const feedback = successMessage || 'Link copied to clipboard!';
                 if (navigator.clipboard && window.isSecureContext) {
@@ -1669,15 +1722,17 @@
 
                         // Two-layer breadcrumb polyline (dark casing + bright cyan trail)
                         if (trailPoints.length >= 2) {
+                            // CIE-038: RDP polyline decimation eliminates SVG path bloat and DOM lag on extended rides
+                            const renderPoints = decimatePolyline(trailPoints, 3.5, 200);
                             if (!trailCasing) {
-                                trailCasing = L.polyline(trailPoints, {
+                                trailCasing = L.polyline(renderPoints, {
                                     color: '#0a2540',
                                     weight: 7,
                                     opacity: 0.78,
                                     lineCap: 'round',
                                     lineJoin: 'round',
                                 }).addTo(map);
-                                trailLine = L.polyline(trailPoints, {
+                                trailLine = L.polyline(renderPoints, {
                                     color: '#00e5ff',
                                     weight: 4,
                                     opacity: 0.95,
@@ -1685,8 +1740,8 @@
                                     lineJoin: 'round',
                                 }).addTo(map);
                             } else {
-                                trailCasing.setLatLngs(trailPoints);
-                                trailLine.setLatLngs(trailPoints);
+                                trailCasing.setLatLngs(renderPoints);
+                                trailLine.setLatLngs(renderPoints);
                             }
                         }
 
