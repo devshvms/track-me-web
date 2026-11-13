@@ -2,6 +2,7 @@ import assert from 'node:assert';
 import {
   STALE_SIGNAL_THRESHOLD_MS,
   evaluateDeadlineStatus,
+  evaluateSpeedOrStopped,
   formatElapsedDuration,
   isSignalStale,
   parseTimestampMs,
@@ -106,6 +107,54 @@ test('evaluateDeadlineStatus evaluates on-time and overdue deadlines accurately'
   assert.ok(fromIso !== null);
   assert.strictEqual(fromIso.isOverdue, false);
   assert.strictEqual(fromIso.timeString, '6:30 PM');
+});
+
+test('evaluateSpeedOrStopped evaluates motion, stationary, and stopped timer states (CIE-029)', () => {
+  const now = 2000000000000;
+
+  // In motion (25 km/h)
+  const movingMetric = evaluateSpeedOrStopped(24.8, null, now, false, false);
+  assert.strictEqual(movingMetric.isStationary, false);
+  assert.strictEqual(movingMetric.isStoppedTimerActive, false);
+  assert.strictEqual(movingMetric.displayText, '25 km/h');
+  assert.strictEqual(movingMetric.a11yText, 'Rider speed: 25 km/h');
+
+  // In motion imperial (15 mph)
+  const movingImperial = evaluateSpeedOrStopped(24.8, null, now, true, false);
+  assert.strictEqual(movingImperial.isStationary, false);
+  assert.strictEqual(movingImperial.displayText, '15 mph');
+
+  // In motion delayed
+  const movingDelayed = evaluateSpeedOrStopped(20.0, null, now, false, true);
+  assert.strictEqual(movingDelayed.displayText, '~20 km/h ⚠️ (delayed)');
+
+  // Stationary recently stopped (< 60s)
+  const recentStop = evaluateSpeedOrStopped(0, now - 45_000, now, false, false);
+  assert.strictEqual(recentStop.isStationary, true);
+  assert.strictEqual(recentStop.isStoppedTimerActive, false);
+  assert.strictEqual(recentStop.displayText, '0 km/h');
+  assert.strictEqual(recentStop.a11yText, 'Rider stationary');
+
+  // Stationary stopped for 3 minutes
+  const stopped3m = evaluateSpeedOrStopped(0.5, now - 180_000, now, false, false);
+  assert.strictEqual(stopped3m.isStationary, true);
+  assert.strictEqual(stopped3m.isStoppedTimerActive, true);
+  assert.strictEqual(stopped3m.stoppedDurationMinutes, 3);
+  assert.strictEqual(stopped3m.displayText, 'Stopped · 3m');
+  assert.strictEqual(stopped3m.a11yText, 'Rider stopped for 3m');
+
+  // Stationary stopped for 1 hour 15 minutes
+  const stoppedLong = evaluateSpeedOrStopped(null, now - 75 * 60_000, now, false, false);
+  assert.strictEqual(stoppedLong.isStationary, true);
+  assert.strictEqual(stoppedLong.isStoppedTimerActive, true);
+  assert.strictEqual(stoppedLong.stoppedDurationMinutes, 75);
+  assert.strictEqual(stoppedLong.displayText, 'Stopped · 1h 15m');
+
+  // Missing or negative speeds without stoppedSinceMs
+  const stoppedDefault = evaluateSpeedOrStopped(null, null, now, false, false);
+  assert.strictEqual(stoppedDefault.isStationary, true);
+  assert.strictEqual(stoppedDefault.isStoppedTimerActive, false);
+  assert.strictEqual(stoppedDefault.displayText, '0 km/h');
 });
 
 async function main() {
