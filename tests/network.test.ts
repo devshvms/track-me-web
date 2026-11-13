@@ -11,6 +11,9 @@ import {
     isSignalStale,
     formatStaleSignalText,
     shouldShowConnectionRetry,
+    buildMapsUrls,
+    formatLiveShareText,
+    formatLocationShareText,
 } from '../lib/track/network';
 
 describe('Live Viewer Network Resilience & Tile Fallback (CIE-007)', () => {
@@ -217,6 +220,34 @@ describe('Live Viewer Network Resilience & Tile Fallback (CIE-007)', () => {
             assert.equal(shouldShowConnectionRetry(1, true), true);
             assert.equal(shouldShowConnectionRetry(3, true), true);
             assert.equal(shouldShowConnectionRetry(2, false), true);
+        });
+    });
+
+    describe('Live Share & Location Share Text Formatting (CIE-021)', () => {
+        it('builds valid Google Maps and Apple Maps navigation URLs', () => {
+            const urls = buildMapsUrls(28.6139, 77.2090);
+            assert.equal(urls.googleMapsUrl, 'https://maps.google.com/?q=28.6139,77.209');
+            assert.equal(urls.appleMapsUrl, 'https://maps.apple.com/?q=28.6139,77.209');
+        });
+
+        it('formats live share message text with rider name or fallback', () => {
+            const withName = formatLiveShareText('Shivam', 'https://trackme.shvms.in/live/abc123');
+            assert.equal(withName, "Track Shivam's live ride on TrackMe: https://trackme.shvms.in/live/abc123");
+
+            const withoutName = formatLiveShareText(null, 'https://trackme.shvms.in/live/abc123');
+            assert.equal(withoutName, 'Track my live ride on TrackMe: https://trackme.shvms.in/live/abc123');
+
+            const emptyName = formatLiveShareText('   ', 'https://trackme.shvms.in/live/abc123');
+            assert.equal(emptyName, 'Track my live ride on TrackMe: https://trackme.shvms.in/live/abc123');
+        });
+
+        it('formats location action text with live link, timestamp, and maps URLs', () => {
+            const fixedTime = new Date('2026-11-13T10:30:00Z').getTime();
+            const formatted = formatLocationShareText('RiderX', 'https://trackme.shvms.in/live/session1', 37.7749, -122.4194, fixedTime);
+            assert.ok(formatted.includes("Track RiderX's live ride on TrackMe: https://trackme.shvms.in/live/session1"));
+            assert.ok(formatted.includes('Google Maps: https://maps.google.com/?q=37.7749,-122.4194'));
+            assert.ok(formatted.includes('Apple Maps: https://maps.apple.com/?q=37.7749,-122.4194'));
+            assert.ok(formatted.includes('Last seen at'));
         });
     });
 });

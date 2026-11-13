@@ -251,6 +251,31 @@
             border-color: #00e5ff;
             color: #00e5ff;
         }
+        .web-toast {
+            position: fixed;
+            bottom: 24px;
+            left: 50%;
+            transform: translateX(-50%) translateY(80px);
+            background: rgba(15, 23, 42, 0.94);
+            color: #ffffff;
+            border: 1px solid rgba(0, 229, 255, 0.35);
+            padding: 9px 18px;
+            border-radius: 999px;
+            font-size: 0.85em;
+            font-weight: 500;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+            z-index: 2000;
+            pointer-events: none;
+            opacity: 0;
+            transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.28s ease;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .web-toast.show {
+            transform: translateX(-50%) translateY(0);
+            opacity: 1;
+        }
     </style>
 </head>
 <body>
@@ -266,6 +291,7 @@
         <div class="details" id="detailsText">Waiting for location data</div>
         <div class="open-app-row" id="openAppRow">
             <a href="#getApp" id="openAppBtn" class="open-app-btn">Open in TrackMe App</a>
+            <button type="button" id="shareLiveSessionBtn" class="open-app-btn" style="background: rgba(0, 229, 255, 0.15); border: 1px solid rgba(0, 229, 255, 0.35); color: #00e5ff; margin-left: 6px; cursor: pointer;">🔗 Share Ride</button>
         </div>
         <div id="powerSaveContainer" style="display: none;">
             <div class="power-save-badge">⚠️ Device in Power Saving Mode</div>
@@ -664,17 +690,67 @@
                 return container;
             }
 
+            let toastTimeout = null;
+            function showWebToast(message) {
+                const toast = document.getElementById('webToast');
+                if (!toast) return;
+                toast.textContent = message;
+                toast.classList.add('show');
+                if (toastTimeout) clearTimeout(toastTimeout);
+                toastTimeout = setTimeout(() => {
+                    toast.classList.remove('show');
+                }, 2600);
+            }
+
+            function copyTextWithFallback(text, successMessage) {
+                const feedback = successMessage || 'Link copied to clipboard!';
+                if (navigator.clipboard && window.isSecureContext) {
+                    navigator.clipboard.writeText(text).then(() => {
+                        showWebToast(`📋 ${feedback}`);
+                    }).catch(() => {
+                        execCommandFallback(text, feedback);
+                    });
+                } else {
+                    execCommandFallback(text, feedback);
+                }
+            }
+
+            function execCommandFallback(text, feedback) {
+                try {
+                    const textarea = document.createElement('textarea');
+                    textarea.value = text;
+                    textarea.style.position = 'fixed';
+                    textarea.style.left = '-9999px';
+                    textarea.style.top = '0';
+                    document.body.appendChild(textarea);
+                    textarea.focus();
+                    textarea.select();
+                    const successful = document.execCommand('copy');
+                    document.body.removeChild(textarea);
+                    if (successful) {
+                        showWebToast(`📋 ${feedback}`);
+                    } else {
+                        showWebToast('⚠️ Unable to copy link');
+                    }
+                } catch (e) {
+                    showWebToast('⚠️ Copy failed');
+                }
+            }
+
             window.shareLocation = function(lat, lon, username, timestamp) {
                 emitTelemetry('share_location_clicked', { username });
+                const liveUrl = window.location.href;
                 const googleMapsLink = `https://maps.google.com/?q=${lat},${lon}`;
                 const appleMapsLink = `https://maps.apple.com/?q=${lat},${lon}`;
                 const timeString = new Date(timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-                const text = `${username}'s last location was fetched here at ${timeString}:\nGoogle Maps: ${googleMapsLink}\nApple Maps: ${appleMapsLink}`;
+                const text = `${username ? `Track ${username}'s live ride on TrackMe: ` : 'Track my live ride on TrackMe: '}${liveUrl}\nLast seen at ${timeString}\nGoogle Maps: ${googleMapsLink}\nApple Maps: ${appleMapsLink}`;
 
                 if (navigator.share) {
-                    navigator.share({ title: `${username}'s Location`, text: text }).catch(console.error);
+                    navigator.share({ title: username ? `${username}'s Live Ride` : 'TrackMe Live Ride', text: text }).catch(() => {
+                        copyTextWithFallback(liveUrl, 'Live ride link copied!');
+                    });
                 } else {
-                    navigator.clipboard.writeText(text).then(() => alert('Copied to clipboard!'));
+                    copyTextWithFallback(text, 'Location copied to clipboard!');
                 }
             };
 
@@ -850,6 +926,7 @@
                         const lon = data.lastLocation.lng !== undefined ? data.lastLocation.lng : data.lastLocation.lon;
                         const pos = [lat, lon];
                         const username = data.username || 'Anonymous';
+                        window.lastKnownUserName = data.username || '';
 
                         // Build breadcrumb polyline coordinates from accumulated path ([lat, lng] tuples) + latest live point
                         const trailPoints = Array.isArray(data.path)
@@ -1183,6 +1260,19 @@
 
             document.getElementById('staleRefreshBtn')?.addEventListener('click', () => manualRefresh('stale_banner'));
             document.getElementById('connectionRetryBtn')?.addEventListener('click', () => manualRefresh('connection_retry'));
+            document.getElementById('shareLiveSessionBtn')?.addEventListener('click', () => {
+                const liveUrl = window.location.href;
+                const user = window.lastKnownUserName;
+                const shareText = user ? `Track ${user}'s live ride on TrackMe: ${liveUrl}` : `Track my live ride on TrackMe: ${liveUrl}`;
+                emitTelemetry('live_share_viewer_share_clicked', { sessionId });
+                if (navigator.share) {
+                    navigator.share({ title: 'TrackMe Live Ride', text: shareText, url: liveUrl }).catch(() => {
+                        copyTextWithFallback(liveUrl, 'Live ride link copied!');
+                    });
+                } else {
+                    copyTextWithFallback(liveUrl, 'Live ride link copied!');
+                }
+            });
 
             document.addEventListener('visibilitychange', () => {
                 if (document.hidden) {
@@ -1205,5 +1295,6 @@
             }
         }
     </script>
+    <div id="webToast" class="web-toast" role="status" aria-live="polite"></div>
 </body>
 </html>
