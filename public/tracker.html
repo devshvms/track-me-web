@@ -325,6 +325,16 @@
             transform: translateX(-50%) translateY(0);
             opacity: 1;
         }
+        .web-toast.offline {
+            background: rgba(28, 25, 23, 0.95);
+            color: #f59e0b;
+            border: 1px solid rgba(245, 158, 11, 0.45);
+        }
+        .web-toast.reconnected {
+            background: rgba(6, 78, 59, 0.95);
+            color: #34d399;
+            border: 1px solid rgba(52, 211, 153, 0.45);
+        }
         /* CIE-033: Mobile Smart App Banner */
         #smartBanner {
             position: fixed;
@@ -1092,11 +1102,49 @@
                 const toast = document.getElementById('webToast');
                 if (!toast) return;
                 toast.textContent = message;
+                toast.classList.remove('offline', 'reconnected');
                 toast.classList.add('show');
                 if (toastTimeout) clearTimeout(toastTimeout);
                 toastTimeout = setTimeout(() => {
                     toast.classList.remove('show');
                 }, 2600);
+            }
+
+            // CIE-034: Non-blocking Network Disconnection & Reconnection Toast Pill
+            function showNetworkOfflineToast() {
+                const toast = document.getElementById('webToast');
+                if (!toast) return;
+                toast.textContent = '⚡ Network offline · Retrying automatically';
+                toast.classList.remove('reconnected');
+                toast.classList.add('offline', 'show');
+                if (toastTimeout) {
+                    clearTimeout(toastTimeout);
+                    toastTimeout = null;
+                }
+            }
+
+            function showNetworkReconnectedToast() {
+                const toast = document.getElementById('webToast');
+                if (!toast) return;
+                toast.textContent = '✓ Reconnected · Updating location…';
+                toast.classList.remove('offline');
+                toast.classList.add('reconnected', 'show');
+                if (toastTimeout) clearTimeout(toastTimeout);
+                toastTimeout = setTimeout(() => {
+                    toast.classList.remove('show', 'reconnected');
+                }, 2500);
+            }
+
+            function dismissNetworkToast() {
+                const toast = document.getElementById('webToast');
+                if (!toast) return;
+                if (toast.classList.contains('offline') || toast.classList.contains('reconnected')) {
+                    toast.classList.remove('show', 'offline', 'reconnected');
+                    if (toastTimeout) {
+                        clearTimeout(toastTimeout);
+                        toastTimeout = null;
+                    }
+                }
             }
 
             function copyTextWithFallback(text, successMessage) {
@@ -1187,6 +1235,9 @@
                 }
                 const retryBtn = document.getElementById('connectionRetryBtn');
                 if (retryBtn) retryBtn.style.display = 'none';
+                if (!isTripEnded) {
+                    showNetworkReconnectedToast();
+                }
                 // Immediately resume polling and presence ping on reconnection without waiting for backoff
                 if (!isTripEnded && !isFetchInProgress) {
                     fetchLocation();
@@ -1207,6 +1258,9 @@
                 if (retryBtn && !isTripEnded) {
                     retryBtn.innerText = 'Retry';
                     retryBtn.style.display = 'inline-flex';
+                }
+                if (!isTripEnded) {
+                    showNetworkOfflineToast();
                 }
                 emitTelemetry('live_share_viewer_offline', { sessionId });
             });
@@ -1384,6 +1438,7 @@
                     const data = await response.json();
                     window.lastReceivedSnapshot = data;
                     consecutiveFetchErrors = 0;
+                    dismissNetworkToast();
                     const retryBtn = document.getElementById('connectionRetryBtn');
                     if (retryBtn) {
                         retryBtn.innerText = 'Retry';

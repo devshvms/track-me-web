@@ -401,3 +401,98 @@ export function evaluateForegroundReconnection(
     };
 }
 
+export const NETWORK_OFFLINE_TOAST_MESSAGE = 'Network offline · Retrying automatically';
+export const NETWORK_RECONNECTED_TOAST_MESSAGE = 'Reconnected · Updating…';
+
+export interface NetworkToastState {
+    readonly isVisible: boolean;
+    readonly message: string;
+    readonly icon: string;
+    readonly type: 'offline' | 'reconnected';
+    readonly isPersistent: boolean;
+    readonly autoDismissDelayMs?: number;
+}
+
+/**
+ * Evaluates the non-blocking network reconnection toast state (CIE-034).
+ *
+ * Rules:
+ * 1. If trip has ended, return null (no transient network alerts needed on completed rides).
+ * 2. When offline: display persistent offline toast pill with retry indication.
+ * 3. When transitioning from offline back to online (wasOffline=true):
+ *    display transient green reconnected toast pill with auto-dismissal (2500ms).
+ * 4. When steadily online: return null (clean UI).
+ *
+ * @param isOnline Whether current device/browser connection is reachable
+ * @param wasOffline Whether the client recently experienced an offline state
+ * @param isTripEnded Whether the session is stopped/ended
+ */
+export function evaluateNetworkToastState(
+    isOnline: boolean,
+    wasOffline: boolean,
+    isTripEnded: boolean
+): NetworkToastState | null {
+    if (isTripEnded) return null;
+
+    if (!isOnline) {
+        return {
+            isVisible: true,
+            message: NETWORK_OFFLINE_TOAST_MESSAGE,
+            icon: '⚡',
+            type: 'offline',
+            isPersistent: true,
+        };
+    }
+
+    if (wasOffline) {
+        return {
+            isVisible: true,
+            message: NETWORK_RECONNECTED_TOAST_MESSAGE,
+            icon: '✓',
+            type: 'reconnected',
+            isPersistent: false,
+            autoDismissDelayMs: 2500,
+        };
+    }
+
+    return null;
+}
+
+export interface NetworkTransitionEvaluation {
+    readonly shouldTriggerImmediateFetch: boolean;
+    readonly resetConsecutiveErrors: boolean;
+    readonly toast: NetworkToastState | null;
+}
+
+/**
+ * Evaluates state transition upon network status change (CIE-034).
+ *
+ * @param isOnline Current network online status
+ * @param wasOffline Whether previously offline
+ * @param isTripEnded Whether session has concluded
+ * @param isFetchInProgress Whether a location fetch is currently in flight
+ */
+export function evaluateNetworkTransition(
+    isOnline: boolean,
+    wasOffline: boolean,
+    isTripEnded: boolean,
+    isFetchInProgress: boolean = false
+): NetworkTransitionEvaluation {
+    if (isTripEnded) {
+        return {
+            shouldTriggerImmediateFetch: false,
+            resetConsecutiveErrors: false,
+            toast: null,
+        };
+    }
+
+    const toast = evaluateNetworkToastState(isOnline, wasOffline, isTripEnded);
+    const isReconnecting = isOnline && wasOffline;
+
+    return {
+        shouldTriggerImmediateFetch: isReconnecting && !isFetchInProgress,
+        resetConsecutiveErrors: isReconnecting,
+        toast,
+    };
+}
+

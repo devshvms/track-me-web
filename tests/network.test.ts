@@ -18,6 +18,10 @@ import {
     formatLowBatteryBannerText,
     shouldEmitLowBatteryTelemetry,
     evaluateForegroundReconnection,
+    NETWORK_OFFLINE_TOAST_MESSAGE,
+    NETWORK_RECONNECTED_TOAST_MESSAGE,
+    evaluateNetworkToastState,
+    evaluateNetworkTransition,
 } from '../lib/track/network';
 
 describe('Live Viewer Network Resilience & Tile Fallback (CIE-007)', () => {
@@ -367,4 +371,91 @@ describe('Live Viewer Network Resilience & Tile Fallback (CIE-007)', () => {
             assert.equal(res.newStatusClass, null);
         });
     });
+
+    describe('Live Viewer Network Reconnection Toast & Resiliency (CIE-034)', () => {
+        it('returns persistent offline toast pill when client is offline during active trip', () => {
+            const toast = evaluateNetworkToastState(false, false, false);
+            assert.ok(toast);
+            assert.equal(toast.isVisible, true);
+            assert.equal(toast.message, NETWORK_OFFLINE_TOAST_MESSAGE);
+            assert.equal(toast.message, 'Network offline · Retrying automatically');
+            assert.equal(toast.type, 'offline');
+            assert.equal(toast.icon, '⚡');
+            assert.equal(toast.isPersistent, true);
+        });
+
+        it('returns transient green reconnected toast pill with auto-dismiss delay when reconnecting', () => {
+            const toast = evaluateNetworkToastState(true, true, false);
+            assert.ok(toast);
+            assert.equal(toast.isVisible, true);
+            assert.equal(toast.message, NETWORK_RECONNECTED_TOAST_MESSAGE);
+            assert.equal(toast.message, 'Reconnected · Updating…');
+            assert.equal(toast.type, 'reconnected');
+            assert.equal(toast.icon, '✓');
+            assert.equal(toast.isPersistent, false);
+            assert.equal(toast.autoDismissDelayMs, 2500);
+        });
+
+        it('returns null toast when steadily online without recent offline state', () => {
+            const toast = evaluateNetworkToastState(true, false, false);
+            assert.equal(toast, null);
+        });
+
+        it('suppresses network toasts when trip has ended', () => {
+            assert.equal(evaluateNetworkToastState(false, false, true), null);
+            assert.equal(evaluateNetworkToastState(true, true, true), null);
+            assert.equal(evaluateNetworkToastState(true, false, true), null);
+        });
+
+        it('evaluates network transition on offline event', () => {
+            const evaluation = evaluateNetworkTransition(false, false, false);
+            assert.equal(evaluation.shouldTriggerImmediateFetch, false);
+            assert.equal(evaluation.resetConsecutiveErrors, false);
+            assert.ok(evaluation.toast);
+            assert.equal(evaluation.toast.type, 'offline');
+        });
+
+        it('evaluates network transition on reconnection event (resets errors and fetches immediately)', () => {
+            const evaluation = evaluateNetworkTransition(true, true, false, false);
+            assert.equal(evaluation.shouldTriggerImmediateFetch, true);
+            assert.equal(evaluation.resetConsecutiveErrors, true);
+            assert.ok(evaluation.toast);
+            assert.equal(evaluation.toast.type, 'reconnected');
+        });
+
+        it('does not trigger duplicate fetch if fetch is already in progress on reconnection', () => {
+            const evaluation = evaluateNetworkTransition(true, true, false, true);
+            assert.equal(evaluation.shouldTriggerImmediateFetch, false);
+            assert.equal(evaluation.resetConsecutiveErrors, true);
+            assert.ok(evaluation.toast);
+        });
+
+        it('evaluates state transitions in ViewerNetworkStateMachine', () => {
+            const sm = new ViewerNetworkStateMachine(true);
+            assert.equal(sm.isOnline, true);
+            assert.equal(sm.wasOffline, false);
+            assert.equal(sm.offlineCount, 0);
+
+            // Go offline
+            assert.equal(sm.setOffline(), true);
+            assert.equal(sm.isOnline, false);
+            assert.equal(sm.wasOffline, true);
+            assert.equal(sm.offlineCount, 1);
+
+            // Redundant offline call returns false
+            assert.equal(sm.setOffline(), false);
+            assert.equal(sm.offlineCount, 1);
+
+            // Come back online
+            assert.equal(sm.setOnline(), true);
+            assert.equal(sm.isOnline, true);
+            assert.equal(sm.wasOffline, true);
+
+            // Consume reconnection flag
+            assert.equal(sm.consumeReconnection(), true);
+            assert.equal(sm.wasOffline, false);
+            assert.equal(sm.consumeReconnection(), false);
+        });
+    });
 });
+
