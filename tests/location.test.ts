@@ -15,6 +15,10 @@ import {
   compactPath,
   computeBearingDegrees,
   haversineMeters,
+  isValidLatLng,
+  parseCoordinate,
+  isNullIsland,
+  isImplausibleJump,
 } from '../lib/track/trail';
 import {
   MAX_AUTO_WATCHERS,
@@ -560,6 +564,176 @@ test('POST location pipelines session set, prune, and active viewers lookup into
 
   await redis.del(`session:${sessionId}`);
   await redis.del(viewersKey);
+});
+
+test('parseCoordinate handles numbers and valid string representations while rejecting invalid inputs (CIE-020)', () => {
+  assert.strictEqual(parseCoordinate(37.7749), 37.7749);
+  assert.strictEqual(parseCoordinate('37.7749'), 37.7749);
+  assert.strictEqual(parseCoordinate('-122.4194'), -122.4194);
+  assert.strictEqual(parseCoordinate('  42.5  '), 42.5);
+  assert.strictEqual(parseCoordinate(0), 0);
+  assert.strictEqual(parseCoordinate('0'), 0);
+
+  assert.strictEqual(parseCoordinate(null), null);
+  assert.strictEqual(parseCoordinate(undefined), null);
+  assert.strictEqual(parseCoordinate(''), null);
+  assert.strictEqual(parseCoordinate('   '), null);
+  assert.strictEqual(parseCoordinate('abc'), null);
+  assert.strictEqual(parseCoordinate(NaN), null);
+  assert.strictEqual(parseCoordinate(Infinity), null);
+  assert.strictEqual(parseCoordinate(-Infinity), null);
+  assert.strictEqual(parseCoordinate({}), null);
+  assert.strictEqual(parseCoordinate([]), null);
+});
+
+test('isValidLatLng enforces strict WGS84 geographic boundaries (CIE-020)', () => {
+  assert.strictEqual(isValidLatLng(0, 0), true);
+  assert.strictEqual(isValidLatLng(90, 180), true);
+  assert.strictEqual(isValidLatLng(-90, -180), true);
+  assert.strictEqual(isValidLatLng(37.7749, -122.4194), true);
+
+  assert.strictEqual(isValidLatLng(90.1, 0), false);
+  assert.strictEqual(isValidLatLng(-90.1, 0), false);
+  assert.strictEqual(isValidLatLng(0, 180.1), false);
+  assert.strictEqual(isValidLatLng(0, -180.1), false);
+  assert.strictEqual(isValidLatLng(NaN, 0), false);
+  assert.strictEqual(isValidLatLng(0, Infinity), false);
+});
+
+test('isNullIsland identifies Null Island coordinates and ignores standard coordinates (CIE-020)', () => {
+  assert.strictEqual(isNullIsland(0, 0), true);
+  assert.strictEqual(isNullIsland(0.00001, -0.00001), true);
+  assert.strictEqual(isNullIsland(12.9716, 77.5946), false);
+  assert.strictEqual(isNullIsland(0.1, 0.1), false);
+});
+
+test('isImplausibleJump filters supersonic jumps and uninitialized Null Island spikes (CIE-020)', () => {
+  const p1: [number, number] = [12.9716, 77.5946];
+  const p2Normal: [number, number] = [12.9720, 77.5946]; // ~44m away
+  const pNullIsland: [number, number] = [0, 0];
+  const pFarAway: [number, number] = [28.6139, 77.2090]; // Delhi, ~1,740 km from Bangalore
+
+  // Normal displacement within 100m is always plausible
+  assert.strictEqual(isImplausibleJump(p1, p2Normal), false);
+
+  // Jump from Bangalore to Null Island (> 6,000 km) is implausible hardware glitch
+  assert.strictEqual(isImplausibleJump(p1, pNullIsland), true);
+
+  // Supersonic jump: 1,740 km in 5 seconds (348,000 m/s > 250 m/s) is implausible
+  const t1 = new Date('2026-11-13T10:00:00.000Z').toISOString();
+  const t2 = new Date('2026-11-13T10:00:05.000Z').toISOString();
+  assert.strictEqual(isImplausibleJump(p1, pFarAway, t1, t2), true);
+
+  // Reasonable jump: 1,740 km over 4 hours (120 m/s < 250 m/s, e.g. flight) is allowed with valid timestamp gap
+  const t3 = new Date('2026-11-13T14:00:00.000Z').toISOString();
+  assert.strictEqual(isImplausibleJump(p1, pFarAway, t1, t3), false);
+
+  // Jump > 50km without timestamp gap is clamped
+  assert.strictEqual(isImplausibleJump(p1, pFarAway), true);
+});
+
+test('locationHandler rejects invalid coordinates with HTTP 400 (CIE-020)', async () => {
+  const sessionId = 'coord-invalid-test';
+  const redis = await getRedisClient();
+  await redis.set(`session:${sessionId}`, JSON.stringify({
+    ownerUid: 'user-owner-123',
+    status: 'active',
+    initialDuration: 60,
+    startedAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + 3600000).toISOString(),
+    path: [],
+  }));
+
+  const res1 = fakeResponse();
+  await locationHandler({
+    method: 'POST',
+    query: { sessionId },
+    headers: { authorization: 'Bearer valid-owner-token' },
+    body: { lat: 95.0, lng: 77.5946 }, // Out of bounds lat
+  } as any, res1 as any);
+  assert.strictEqual(res1.captured.statusCode, 400);
+
+  const res2 = fakeResponse();
+  await locationHandler({
+    method: 'POST',
+    query: { sessionId },
+    headers: { authorization: 'Bearer valid-owner-token' },
+    body: { lat: 'bad-number', lng: 77.5946 }, // Malformed string
+  } as any, res2 as any);
+  assert.strictEqual(res2.captured.statusCode, 400);
+
+  await redis.del(`session:${sessionId}`);
+});
+
+test('locationHandler filters implausible GPS jumps from path and anchors lastLocation (CIE-020)', async () => {
+  const sessionId = 'jump-filter-test';
+  const redis = await getRedisClient();
+  const startTime = new Date(Date.now() - 60000).toISOString();
+  await redis.set(`session:${sessionId}`, JSON.stringify({
+    ownerUid: 'user-owner-123',
+    status: 'active',
+    initialDuration: 60,
+    startedAt: startTime,
+    expiresAt: new Date(Date.now() + 3600000).toISOString(),
+    path: [[12.9716, 77.5946]],
+    lastLocation: {
+      lat: 12.9716,
+      lng: 77.5946,
+      timestamp: startTime,
+      batteryLevel: 80,
+    },
+  }));
+
+  // Send an implausible jump to Null Island [0, 0] 5 seconds later
+  const glitchTime = new Date().toISOString();
+  const resGlitch = fakeResponse();
+  await locationHandler({
+    method: 'POST',
+    query: { sessionId },
+    headers: { authorization: 'Bearer valid-owner-token' },
+    body: {
+      lat: 0.0,
+      lng: 0.0,
+      batteryLevel: 79,
+      timestamp: glitchTime,
+    },
+  } as any, resGlitch as any);
+
+  assert.strictEqual(resGlitch.captured.statusCode, 200);
+
+  const sessionStr = await redis.get(`session:${sessionId}`);
+  assert.ok(sessionStr !== null);
+  const parsed = JSON.parse(sessionStr);
+
+  // Breadcrumb path must NOT contain the corrupted [0, 0] point!
+  assert.strictEqual(parsed.path.length, 1);
+  assert.deepStrictEqual(parsed.path[0], [12.9716, 77.5946]);
+
+  // lastLocation must remain anchored at Bangalore, but battery updated
+  assert.strictEqual(parsed.lastLocation.lat, 12.9716);
+  assert.strictEqual(parsed.lastLocation.lng, 77.5946);
+  assert.strictEqual(parsed.lastLocation.batteryLevel, 79);
+
+  // Now send a valid nearby location 20 meters away
+  const validRes = fakeResponse();
+  await locationHandler({
+    method: 'POST',
+    query: { sessionId },
+    headers: { authorization: 'Bearer valid-owner-token' },
+    body: {
+      lat: 12.9720,
+      lng: 77.5946,
+      batteryLevel: 78,
+    },
+  } as any, validRes as any);
+
+  assert.strictEqual(validRes.captured.statusCode, 200);
+  const updatedStr = await redis.get(`session:${sessionId}`);
+  const updated = JSON.parse(updatedStr!);
+  assert.strictEqual(updated.path.length, 2);
+  assert.strictEqual(updated.lastLocation.lat, 12.972);
+
+  await redis.del(`session:${sessionId}`);
 });
 
 async function main() {
