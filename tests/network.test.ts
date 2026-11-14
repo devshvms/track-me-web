@@ -51,6 +51,10 @@ import {
     deserializeViewerCachePayload,
     buildDirectionsUrl,
     evaluateSpectatorThrottleState,
+    computeLowDataPollDelay,
+    computeDecimationMetrics,
+    buildLowDataTelemetryPayload,
+    formatLowDataNoticeText,
 } from '../lib/track/network';
 
 describe('Live Viewer Network Resilience & Tile Fallback (CIE-007)', () => {
@@ -1334,6 +1338,59 @@ describe('Live Viewer Network Resilience & Tile Fallback (CIE-007)', () => {
             assert.equal(result.isThrottled, false);
             assert.equal(result.shouldAnimateMap, false);
             assert.equal(result.noticeText, null);
+        });
+    });
+
+    describe('Live Share Viewer Low-Data Mode & Breadcrumb Decimation Telemetry (CIE-045)', () => {
+        it('slows polling delay to 30s (30,000ms) when low-data mode is activated', () => {
+            assert.equal(computeLowDataPollDelay(true, 5000), 30000);
+            assert.equal(computeLowDataPollDelay(true, 15000), 30000);
+        });
+
+        it('retains default polling delay when low-data mode is off', () => {
+            assert.equal(computeLowDataPollDelay(false, 5000), 5000);
+            assert.equal(computeLowDataPollDelay(false, 10000), 10000);
+            assert.equal(computeLowDataPollDelay(false, 500), 1000);
+        });
+
+        it('computes decimation metrics accurately and calculates estimated bytes saved', () => {
+            const metrics = computeDecimationMetrics(300, 75);
+            assert.equal(metrics.pointsPreDecimation, 300);
+            assert.equal(metrics.pointsPostDecimation, 75);
+            assert.equal(metrics.pointsSaved, 225);
+            assert.equal(metrics.decimationRatio, 0.75);
+            assert.equal(metrics.estimatedBytesSaved, 225 * 28);
+        });
+
+        it('handles zero or inverted counts safely in decimation metrics', () => {
+            const zeroMetrics = computeDecimationMetrics(0, 0);
+            assert.equal(zeroMetrics.pointsSaved, 0);
+            assert.equal(zeroMetrics.decimationRatio, 0);
+            assert.equal(zeroMetrics.estimatedBytesSaved, 0);
+
+            const safeInverted = computeDecimationMetrics(50, 100);
+            assert.equal(safeInverted.pointsSaved, 0);
+            assert.equal(safeInverted.decimationRatio, 0);
+        });
+
+        it('builds sanitized, non-PII telemetry payload conforming to privacy rules', () => {
+            const payload = buildLowDataTelemetryPayload(true, 250, 50);
+            assert.equal(payload.low_data_mode, true);
+            assert.equal(payload.points_pre_decimation, 250);
+            assert.equal(payload.points_post_decimation, 50);
+            assert.equal(payload.points_saved, 200);
+            assert.equal(payload.decimation_ratio, 0.8);
+            assert.equal(payload.estimated_bytes_saved, 200 * 28);
+
+            assert.equal('lat' in payload, false);
+            assert.equal('lng' in payload, false);
+            assert.equal('token' in payload, false);
+            assert.equal('email' in payload, false);
+        });
+
+        it('formats user-facing low-data notice text appropriately', () => {
+            assert.equal(formatLowDataNoticeText(true), 'Low-data mode active · Polling every 30s');
+            assert.equal(formatLowDataNoticeText(false), null);
         });
     });
 });
