@@ -1318,6 +1318,75 @@ export function evaluateSpectatorThrottleState(
     };
 }
 
+/**
+ * Metrics describing breadcrumb decimation efficiency.
+ */
+export interface DecimationMetrics {
+    pointsPreDecimation: number;
+    pointsPostDecimation: number;
+    pointsSaved: number;
+    decimationRatio: number;
+    estimatedBytesSaved: number;
+}
 
+/**
+ * Computes polling delay under Low-Data Mode.
+ * When Low-Data Mode is enabled, polling slows to 30,000ms (30s) to conserve cellular data.
+ *
+ * @param isLowDataMode Whether low-data mode is activated
+ * @param defaultDelayMs Default polling delay in ms (defaults to 5000)
+ */
+export function computeLowDataPollDelay(isLowDataMode: boolean, defaultDelayMs: number = 5000): number {
+    return isLowDataMode ? 30000 : Math.max(1000, defaultDelayMs);
+}
 
+/**
+ * Computes decimation metrics comparing raw points to decimated stored points.
+ * Standard JSON format for coordinate pair `[lat, lng]` consumes ~28 bytes.
+ *
+ * @param preCount Total points recorded prior to decimation
+ * @param postCount Points retained following decimation
+ */
+export function computeDecimationMetrics(preCount: number, postCount: number): DecimationMetrics {
+    const safePre = Math.max(0, Math.floor(preCount || 0));
+    const safePost = Math.max(0, Math.floor(postCount || 0));
+    const pointsSaved = Math.max(0, safePre - safePost);
+    const decimationRatio = safePre > 0 ? pointsSaved / safePre : 0;
+    const estimatedBytesSaved = pointsSaved * 28;
 
+    return {
+        pointsPreDecimation: safePre,
+        pointsPostDecimation: safePost,
+        pointsSaved,
+        decimationRatio,
+        estimatedBytesSaved,
+    };
+}
+
+/**
+ * Builds a sanitized, non-PII telemetry payload for low-data mode and decimation.
+ * Strictly adheres to privacy invariants: zero raw coordinates, session tokens, or personal info.
+ */
+export function buildLowDataTelemetryPayload(
+    isLowDataMode: boolean,
+    preCount: number = 0,
+    postCount: number = 0
+): Record<string, any> {
+    const metrics = computeDecimationMetrics(preCount, postCount);
+    return {
+        low_data_mode: isLowDataMode,
+        points_pre_decimation: metrics.pointsPreDecimation,
+        points_post_decimation: metrics.pointsPostDecimation,
+        points_saved: metrics.pointsSaved,
+        decimation_ratio: Number(metrics.decimationRatio.toFixed(3)),
+        estimated_bytes_saved: metrics.estimatedBytesSaved,
+    };
+}
+
+/**
+ * Formats user-facing status notice when low-data mode is active.
+ */
+export function formatLowDataNoticeText(isLowDataMode: boolean): string | null {
+    if (!isLowDataMode) return null;
+    return 'Low-data mode active · Polling every 30s';
+}

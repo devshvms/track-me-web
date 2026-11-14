@@ -576,6 +576,7 @@
     <div class="map-controls" id="mapControls" hidden>
         <button type="button" id="shareBtn" class="map-ctrl-btn" aria-label="Share live ride link">🔗 Share</button>
         <button type="button" id="directionsBtn" class="map-ctrl-btn" aria-label="Get directions to rider" hidden>🧭 Directions</button>
+        <button type="button" id="lowDataBtn" class="map-ctrl-btn" aria-label="Toggle low data mode" aria-pressed="false" title="Reduce cellular data by polling every 30s">📶 Low Data</button>
         <button type="button" id="followBtn" class="map-ctrl-btn active" hidden>🎯 Follow</button>
         <button type="button" id="fitRouteBtn" class="map-ctrl-btn" hidden>🗺️ Fit Route</button>
     </div>
@@ -2133,7 +2134,8 @@
                     if (!isStopped) {
                         const psMode = Boolean(data && data.lastLocation && data.lastLocation.powerSaveMode);
                         const batLevel = data && data.lastLocation ? data.lastLocation.batteryLevel : null;
-                        const nextPollDelay = computeViewerAdaptivePollMs(psMode, batLevel, 5000);
+                        const baseDelay = computeViewerAdaptivePollMs(psMode, batLevel, 5000);
+                        const nextPollDelay = window.isLowDataMode ? 30000 : baseDelay;
                         scheduleNextFetch(nextPollDelay);
                     }
                 } catch (err) {
@@ -2303,6 +2305,43 @@
                 });
                 window.open(navUrl, '_blank', 'noopener,noreferrer');
             });
+
+            // CIE-045: Low data mode toggle
+            window.isLowDataMode = (function() {
+                try {
+                    return localStorage.getItem('trackme_low_data_mode') === 'true';
+                } catch (_) {
+                    return false;
+                }
+            })();
+
+            const lowDataBtn = document.getElementById('lowDataBtn');
+            if (lowDataBtn) {
+                if (window.isLowDataMode) {
+                    lowDataBtn.classList.add('active');
+                    lowDataBtn.setAttribute('aria-pressed', 'true');
+                }
+                lowDataBtn.addEventListener('click', () => {
+                    window.isLowDataMode = !window.isLowDataMode;
+                    lowDataBtn.classList.toggle('active', window.isLowDataMode);
+                    lowDataBtn.setAttribute('aria-pressed', window.isLowDataMode ? 'true' : 'false');
+                    try {
+                        localStorage.setItem('trackme_low_data_mode', window.isLowDataMode ? 'true' : 'false');
+                    } catch (_) {}
+                    emitTelemetry('live_share_low_data_mode_toggled', {
+                        sessionId,
+                        enabled: window.isLowDataMode
+                    });
+                    if (window.isLowDataMode) {
+                        announceA11y('Low data mode enabled. Updates slowed to 30 seconds.');
+                    } else {
+                        announceA11y('Low data mode disabled. Regular updates restored.');
+                        if (!isTripEnded && !isFetchInProgress) {
+                            fetchLocation();
+                        }
+                    }
+                });
+            }
 
             // CIE-044: Track spectator interaction across touch, pointer, and keyboard events
             ['pointerdown', 'keydown', 'wheel', 'touchstart'].forEach((evt) => {
