@@ -49,6 +49,7 @@ import {
     evaluateReconnectionResync,
     serializeViewerCachePayload,
     deserializeViewerCachePayload,
+    buildDirectionsUrl,
 } from '../lib/track/network';
 
 describe('Live Viewer Network Resilience & Tile Fallback (CIE-007)', () => {
@@ -1251,6 +1252,43 @@ describe('Live Viewer Network Resilience & Tile Fallback (CIE-007)', () => {
             });
         });
     });
+
+    describe('Live Share Viewer Forward/Share Action & Directions Navigation Parity (CIE-043)', () => {
+        describe('buildDirectionsUrl', () => {
+            it('constructs valid Google Maps directions URL with destination coordinates', () => {
+                const url = buildDirectionsUrl(12.9716, 77.5946, 'google_maps');
+                assert.equal(url, 'https://maps.google.com/?daddr=12.9716,77.5946');
+            });
+
+            it('constructs valid Apple Maps directions URL with destination coordinates', () => {
+                const url = buildDirectionsUrl(37.7749, -122.4194, 'apple_maps');
+                assert.equal(url, 'https://maps.apple.com/?daddr=37.7749,-122.4194');
+            });
+
+            it('returns null for non-finite or out-of-range coordinates', () => {
+                assert.equal(buildDirectionsUrl(NaN, 77.5946), null);
+                assert.equal(buildDirectionsUrl(12.9716, Infinity), null);
+                assert.equal(buildDirectionsUrl(95.0, 77.5946), null);
+                assert.equal(buildDirectionsUrl(12.9716, -190.0), null);
+            });
+        });
+
+        describe('formatLiveShareText', () => {
+            it('formats share text with rider username when provided', () => {
+                const text = formatLiveShareText('Maya Lin', 'https://trackme.shvms.in/live/session-123');
+                assert.equal(text, "Track Maya Lin's live ride on TrackMe: https://trackme.shvms.in/live/session-123");
+            });
+
+            it('formats fallback share text when username is missing or empty', () => {
+                const text1 = formatLiveShareText(null, 'https://trackme.shvms.in/live/session-123');
+                assert.equal(text1, 'Track my live ride on TrackMe: https://trackme.shvms.in/live/session-123');
+
+                const text2 = formatLiveShareText('   ', 'https://trackme.shvms.in/live/session-123');
+                assert.equal(text2, 'Track my live ride on TrackMe: https://trackme.shvms.in/live/session-123');
+            });
+        });
+    });
 });
+
 
 

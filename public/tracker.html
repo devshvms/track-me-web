@@ -574,6 +574,8 @@
     </div>
     <div id="map"></div>
     <div class="map-controls" id="mapControls" hidden>
+        <button type="button" id="shareBtn" class="map-ctrl-btn" aria-label="Share live ride link">🔗 Share</button>
+        <button type="button" id="directionsBtn" class="map-ctrl-btn" aria-label="Get directions to rider" hidden>🧭 Directions</button>
         <button type="button" id="followBtn" class="map-ctrl-btn active" hidden>🎯 Follow</button>
         <button type="button" id="fitRouteBtn" class="map-ctrl-btn" hidden>🗺️ Fit Route</button>
     </div>
@@ -1892,10 +1894,12 @@
                         const mapControls = document.getElementById('mapControls');
                         const followBtn = document.getElementById('followBtn');
                         const fitRouteBtn = document.getElementById('fitRouteBtn');
+                        const dirBtn = document.getElementById('directionsBtn');
                         if (mapControls && followBtn && fitRouteBtn) {
                             mapControls.hidden = false;
                             followBtn.hidden = isStopped;
                             fitRouteBtn.hidden = trailPoints.length < 2;
+                            if (dirBtn) dirBtn.hidden = !window.lastRiderPos;
                             if (typeof updateFollowButtonState === 'function') {
                                 updateFollowButtonState();
                             }
@@ -2201,6 +2205,44 @@
                 } else if (window.lastRiderPos) {
                     map.setView(window.lastRiderPos, 15, { animate: !isReducedMotionPreferred() });
                 }
+            });
+
+            // CIE-043: Share ride button & native maps directions handoff
+            document.getElementById('shareBtn')?.addEventListener('click', () => {
+                const username = window.lastKnownUserName;
+                const liveUrl = window.location.href;
+                const text = username
+                    ? `Track ${username}'s live ride on TrackMe: ${liveUrl}`
+                    : `Track my live ride on TrackMe: ${liveUrl}`;
+
+                emitTelemetry('live_share_forward_clicked', { sessionId, surface: 'map_controls' });
+
+                if (navigator.share) {
+                    navigator.share({
+                        title: username ? `${username}'s Live Ride` : 'TrackMe Live Ride',
+                        text: text,
+                        url: liveUrl
+                    }).catch(() => {
+                        copyTextWithFallback(liveUrl, 'Live ride link copied!');
+                    });
+                } else {
+                    copyTextWithFallback(liveUrl, 'Live ride link copied!');
+                }
+            });
+
+            document.getElementById('directionsBtn')?.addEventListener('click', () => {
+                if (!window.lastRiderPos) return;
+                const lat = window.lastRiderPos[0];
+                const lon = window.lastRiderPos[1];
+                const isAppleDevice = /Mac|iPhone|iPad|iPod/.test(navigator.userAgent);
+                const navUrl = isAppleDevice
+                    ? `https://maps.apple.com/?daddr=${lat},${lon}`
+                    : `https://maps.google.com/?daddr=${lat},${lon}`;
+                emitTelemetry('live_share_directions_clicked', {
+                    sessionId,
+                    provider: isAppleDevice ? 'apple_maps' : 'google_maps'
+                });
+                window.open(navUrl, '_blank', 'noopener,noreferrer');
             });
 
             // CIE-040: Auto-resume follow mode after 20s inactivity during an active trip
