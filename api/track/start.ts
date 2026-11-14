@@ -70,21 +70,102 @@ export default async function handler(
   try {
     const decoded = await requireUser(request);
 
-    if (request.body?.action === 'accept_watcher') {
-      const inviterUid = typeof request.body?.inviterUid === 'string' ? request.body.inviterUid.trim() : '';
-      const inviterName = typeof request.body?.inviterName === 'string' && request.body.inviterName.trim()
-        ? request.body.inviterName.trim().slice(0, 64)
-        : 'Rider';
-      const watcherDisplayName = typeof request.body?.displayName === 'string' && request.body.displayName.trim()
-        ? request.body.displayName.trim().slice(0, 64)
-        : (decoded.name || decoded.email?.split('@')[0] || 'TrackMe Watcher');
+    if (request.body?.action === 'create_watcher_invite') {
+      const redis = await getRedisClient();
+      const rawName = typeof request.body?.displayName === 'string' && request.body.displayName.trim()
+        ? request.body.displayName.trim()
+        : (decoded.name || decoded.email?.split('@')[0] || 'Rider');
+      const inviterName = rawName.slice(0, 64);
+      const code = crypto.randomBytes(16).toString('base64url');
+      const ttlSeconds = 86400; // 24h single-use invite
 
-      if (!inviterUid || inviterUid === decoded.uid) {
-        return response.status(400).json({ error: 'Invalid inviterUid.' });
+      await redis.set(
+        `watcher_invite:${code}`,
+        JSON.stringify({
+          inviterUid: decoded.uid,
+          inviterName,
+          createdAt: Date.now(),
+        }),
+        { EX: ttlSeconds },
+      );
+
+      const inviteUrl = absoluteUrl(
+        request,
+        `/live/watcher?code=${encodeURIComponent(code)}&inviterName=${encodeURIComponent(inviterName)}`,
+      );
+      return response.status(200).json({
+        success: true,
+        code,
+        inviteUrl,
+        expiresInSeconds: ttlSeconds,
+      });
+    }
+
+    if (request.body?.action === 'accept_watcher') {
+      const code = typeof request.body?.code === 'string' ? request.body.code.trim() : '';
+      if (!code || !/^[A-Za-z0-9_-]{12,128}$/.test(code)) {
+        return response.status(400).json({
+          error: 'Valid single-use invite code is required. Ask the rider for a fresh invite.',
+        });
       }
+
       if (!db) {
         return response.status(503).json({ error: 'Watcher pairing service temporarily unavailable.' });
       }
+
+      const redis = await getRedisClient();
+      const inviteKey = `watcher_invite:${code}`;
+      let rawInvite: string | null = null;
+      if (typeof redis.getDel === 'function') {
+        rawInvite = await redis.getDel(inviteKey);
+      } else if (typeof redis.multi === 'function') {
+        const multi = redis.multi();
+        multi.get(inviteKey);
+        multi.del(inviteKey);
+        const execRes = await multi.exec();
+        rawInvite = typeof execRes?.[0] === 'string' ? execRes[0] : null;
+      } else {
+        rawInvite = await redis.get(inviteKey);
+        if (rawInvite !== null) {
+          await redis.del(inviteKey);
+        }
+      }
+
+      if (!rawInvite) {
+        return response.status(410).json({
+          error: 'Invite link expired or already used. Ask the rider for a new invite.',
+        });
+      }
+
+      let inviteRecord: any = null;
+      try {
+        inviteRecord = JSON.parse(rawInvite);
+      } catch {
+        inviteRecord = null;
+      }
+
+      const inviterUid = typeof inviteRecord?.inviterUid === 'string' ? inviteRecord.inviterUid.trim() : '';
+      if (!inviterUid) {
+        return response.status(410).json({ error: 'Invalid or corrupted invite.' });
+      }
+
+      const claimedInviterUid = typeof request.body?.inviterUid === 'string' ? request.body.inviterUid.trim() : '';
+      if (claimedInviterUid && claimedInviterUid !== inviterUid) {
+        return response.status(403).json({ error: 'Invite owner mismatch.' });
+      }
+
+      if (inviterUid === decoded.uid) {
+        return response.status(400).json({ error: 'You cannot accept your own watcher invite.' });
+      }
+
+      const inviterName = typeof inviteRecord?.inviterName === 'string' && inviteRecord.inviterName.trim()
+        ? inviteRecord.inviterName.trim().slice(0, 64)
+        : (typeof request.body?.inviterName === 'string' && request.body.inviterName.trim()
+          ? request.body.inviterName.trim().slice(0, 64)
+          : 'Rider');
+      const watcherDisplayName = typeof request.body?.displayName === 'string' && request.body.displayName.trim()
+        ? request.body.displayName.trim().slice(0, 64)
+        : (decoded.name || decoded.email?.split('@')[0] || 'TrackMe Watcher');
 
       const watchersRef = db.collection('users').doc(inviterUid).collection('trusted_watchers');
       const existingDoc = await watchersRef.doc(decoded.uid).get();
@@ -110,7 +191,7 @@ export default async function handler(
         addedAt: now,
       }, { merge: true });
 
-      return response.status(200).json({ success: true, paired: true, inviterUid });
+      return response.status(200).json({ success: true, paired: true, inviterUid, inviterName });
     }
 
     const { durationMinutes, username, watcherUids } = request.body || {};

@@ -394,6 +394,131 @@ test('dispatchTrustedWatcherNotifications returns 0 when watcherUids empty or mi
   assert.strictEqual(count2, 0);
 });
 
+test('startHandler H-2 single-use create_watcher_invite and accept_watcher flow blocks static inviterUid and replays', async () => {
+  const redis = await getRedisClient();
+  const firebaseMod = require('../lib/firebase');
+  const origVerify = (auth as any).verifyIdToken;
+  const origDb = firebaseMod.db;
+
+  const writes: Array<{ col: string; doc: string; subCol: string; subDoc: string; data: any }> = [];
+  firebaseMod.db = {
+    collection(col: string) {
+      return {
+        doc(docId: string) {
+          return {
+            collection(subCol: string) {
+              return {
+                doc(subDoc: string) {
+                  return {
+                    async get() {
+                      return { exists: false };
+                    },
+                    async set(data: any) {
+                      writes.push({ col, doc: docId, subCol, subDoc, data });
+                    },
+                  };
+                },
+                limit() {
+                  return {
+                    async get() {
+                      return { size: 0 };
+                    },
+                  };
+                },
+              };
+            },
+          };
+        },
+      };
+    },
+  };
+
+  (auth as any).verifyIdToken = async (token: string) => {
+    if (token === 'inviter-token') return { uid: 'uid-rider-1', name: 'Alice Rider' };
+    if (token === 'watcher-token') return { uid: 'uid-watcher-2', name: 'Bob Watcher' };
+    throw new Error('Invalid token');
+  };
+
+  try {
+    // 1. Legacy unauthenticated/static inviterUid without code must be rejected (400)
+    const legacyRes = fakeResponse();
+    await startHandler({
+      method: 'POST',
+      headers: { authorization: 'Bearer watcher-token' },
+      body: { action: 'accept_watcher', inviterUid: 'uid-rider-1', inviterName: 'Alice' },
+    } as any, legacyRes as any);
+    assert.strictEqual(legacyRes.captured.statusCode, 400);
+
+    // 2. Inviter creates single-use invite
+    const createRes = fakeResponse();
+    await startHandler({
+      method: 'POST',
+      headers: { authorization: 'Bearer inviter-token', 'x-forwarded-proto': 'https', host: 'trackme.shvms.in' },
+      body: { action: 'create_watcher_invite', displayName: 'Alice Rider' },
+    } as any, createRes as any);
+    assert.strictEqual(createRes.captured.statusCode, 200);
+    const { code, inviteUrl } = createRes.captured.body;
+    assert.ok(typeof code === 'string' && code.length >= 16);
+    assert.ok(inviteUrl.startsWith('https://trackme.shvms.in/live/watcher?code='));
+    assert.ok(!inviteUrl.includes('inviterUid='), 'Static inviterUid must not be exposed in invite URL');
+
+    // 3. Wrong claimed inviterUid is rejected with 403 and consumes/blocks spoof attempt
+    const createResSpoof = fakeResponse();
+    await startHandler({
+      method: 'POST',
+      headers: { authorization: 'Bearer inviter-token' },
+      body: { action: 'create_watcher_invite' },
+    } as any, createResSpoof as any);
+    const spoofRes = fakeResponse();
+    await startHandler({
+      method: 'POST',
+      headers: { authorization: 'Bearer watcher-token' },
+      body: { action: 'accept_watcher', code: createResSpoof.captured.body.code, inviterUid: 'attacker-uid' },
+    } as any, spoofRes as any);
+    assert.strictEqual(spoofRes.captured.statusCode, 403);
+
+    // 4. Watcher redeems valid single-use invite once (200)
+    const acceptRes = fakeResponse();
+    await startHandler({
+      method: 'POST',
+      headers: { authorization: 'Bearer watcher-token' },
+      body: { action: 'accept_watcher', code },
+    } as any, acceptRes as any);
+    assert.strictEqual(acceptRes.captured.statusCode, 200);
+    assert.strictEqual(acceptRes.captured.body.paired, true);
+    assert.strictEqual(acceptRes.captured.body.inviterUid, 'uid-rider-1');
+    assert.strictEqual(writes.length, 2);
+
+    // 5. Replaying same single-use code fails with 410 Gone
+    const replayRes = fakeResponse();
+    await startHandler({
+      method: 'POST',
+      headers: { authorization: 'Bearer watcher-token' },
+      body: { action: 'accept_watcher', code },
+    } as any, replayRes as any);
+    assert.strictEqual(replayRes.captured.statusCode, 410);
+
+    // 6. Self-invite redemption fails with 400
+    const createSelfRes = fakeResponse();
+    await startHandler({
+      method: 'POST',
+      headers: { authorization: 'Bearer inviter-token' },
+      body: { action: 'create_watcher_invite' },
+    } as any, createSelfRes as any);
+    const selfRes = fakeResponse();
+    await startHandler({
+      method: 'POST',
+      headers: { authorization: 'Bearer inviter-token' },
+      body: { action: 'accept_watcher', code: createSelfRes.captured.body.code },
+    } as any, selfRes as any);
+    assert.strictEqual(selfRes.captured.statusCode, 400);
+    await redis.del(`watcher_invite:${createSelfRes.captured.body.code}`);
+  } finally {
+    (auth as any).verifyIdToken = origVerify;
+    firebaseMod.db = origDb;
+  }
+});
+
 async function main() {
   let passed = 0;
   const failures: string[] = [];

@@ -9,6 +9,9 @@
  * Enterprise standards: strictly typed, zero external dependencies, 100% testable in Node.
  */
 
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const TrackCore = require('../../public/js/tracker-core.js');
+
 export interface TileLayerConfig {
     readonly url: string;
     readonly subdomains: string[];
@@ -596,69 +599,29 @@ export function formatA11yLiveAnnouncement(
  * CIE-037: Sanitize and clamp battery level to 0-100%, rejecting negative simulator fallbacks (-1) and non-finite values.
  */
 export function clampBatteryLevel(batteryLevel: unknown): number | null {
-    if (typeof batteryLevel !== 'number' || !Number.isFinite(batteryLevel)) {
-        return null;
-    }
-    if (batteryLevel < 0 || batteryLevel > 100) {
-        return null;
-    }
-    return Math.min(100, Math.max(0, Math.round(batteryLevel)));
+    return TrackCore.clampBatteryLevel(batteryLevel);
 }
 
-/**
- * CIE-037: Evaluates whether an auditory/VoiceOver announcement should be made for low battery.
- * Throttles announcements to prevent auditory spam:
- * - Fires when first transitioning into low battery (<= 15%).
- * - Fires when battery drops to critical level (<= 5%) from a higher level.
- * - Suppresses redundant announcements on intermediate 1% drops (e.g. 14%, 13%, 12%).
- */
 export function shouldAnnounceLowBattery(
     previousBattery: number | null,
     newBattery: number | null
 ): boolean {
-    const prev = clampBatteryLevel(previousBattery);
-    const curr = clampBatteryLevel(newBattery);
-    if (curr === null) return false;
-
-    // 1. Initial warning when dipping into low battery (<= 15%)
-    if (curr <= 15 && (prev === null || prev > 15)) {
-        return true;
-    }
-
-    // 2. Critical warning when dipping into <= 5%
-    if (curr <= 5 && prev !== null && prev > 5) {
-        return true;
-    }
-
-    return false;
+    return TrackCore.shouldAnnounceLowBattery(previousBattery, newBattery);
 }
 
-/**
- * CIE-037: Computes adaptive polling interval for the live viewer.
- * When the rider is in power-save mode (or battery <= 15%), broadcaster pushes occur at ~15s cadence.
- * Adapting the viewer polling interval to 12s avoids burning ~66% unnecessary Redis queries on the $0/mo free tier.
- */
 export function computeViewerAdaptivePollMs(
     isPowerSaveMode: boolean,
     batteryLevel: number | null,
     basePollMs: number = 5000
 ): number {
-    const clampedBat = clampBatteryLevel(batteryLevel);
-    const isEffectivePowerSave = isPowerSaveMode || (clampedBat !== null && clampedBat <= 15);
-    return isEffectivePowerSave ? 12000 : basePollMs;
+    return TrackCore.computeViewerAdaptivePollMs(isPowerSaveMode, batteryLevel, basePollMs);
 }
 
-/**
- * CIE-037: Formats user-facing disclosure when updates arrive at relaxed interval due to power saving.
- */
 export function formatPowerSaveCadenceNotice(
     isPowerSaveMode: boolean,
     batteryLevel: number | null
 ): string | null {
-    const clampedBat = clampBatteryLevel(batteryLevel);
-    const isEffectivePowerSave = isPowerSaveMode || (clampedBat !== null && clampedBat <= 15);
-    if (!isEffectivePowerSave) return null;
-    return 'Power save active · Location updates every ~15s';
+    return TrackCore.formatPowerSaveCadenceNotice(isPowerSaveMode, batteryLevel);
 }
 
 /**
@@ -669,97 +632,20 @@ export function shouldDecimatePolyline(pointCount: number, minPointsThreshold: n
     return pointCount > minPointsThreshold;
 }
 
-/**
- * CIE-038: Calculates perpendicular distance in meters from point P to line segment AB.
- * Uses equirectangular local flat projection relative to point A for high performance.
- */
 export function computePerpendicularDistanceMeters(
     p: [number, number],
     a: [number, number],
     b: [number, number]
 ): number {
-    const latRad = (a[0] * Math.PI) / 180.0;
-    const cosLat = Math.cos(latRad);
-    const mPerDegLat = 111320;
-    const mPerDegLng = 111320 * cosLat;
-
-    // Vector AB in meters
-    const dxAB = (b[1] - a[1]) * mPerDegLng;
-    const dyAB = (b[0] - a[0]) * mPerDegLat;
-
-    // Vector AP in meters
-    const dxAP = (p[1] - a[1]) * mPerDegLng;
-    const dyAP = (p[0] - a[0]) * mPerDegLat;
-
-    const segmentLenSq = dxAB * dxAB + dyAB * dyAB;
-    if (segmentLenSq === 0) {
-        // A and B are the same point
-        return Math.sqrt(dxAP * dxAP + dyAP * dyAP);
-    }
-
-    // Perpendicular distance = |cross product of AB and AP| / |AB|
-    const crossProduct = Math.abs(dxAB * dyAP - dyAB * dxAP);
-    return crossProduct / Math.sqrt(segmentLenSq);
+    return TrackCore.computePerpendicularDistanceMeters(p, a, b);
 }
 
-/**
- * CIE-038: Ramer-Douglas-Peucker (RDP) polyline decimation for live viewer breadcrumb trails.
- * Prunes collinear micro-jitter points below epsilonMeters (default 3.5m) while strictly
- * preserving start/finish endpoints and sharp corners/turns.
- * Bypasses decimation if point count <= minPointsThreshold (default 200 points).
- */
 export function decimatePolyline(
     points: Array<[number, number]>,
     epsilonMeters: number = 3.5,
     minPointsThreshold: number = 200
 ): Array<[number, number]> {
-    if (!Array.isArray(points) || points.length <= 2) {
-        return points || [];
-    }
-    if (minPointsThreshold > 0 && points.length <= minPointsThreshold) {
-        return points;
-    }
-
-    function rdp(
-        pts: Array<[number, number]>,
-        startIndex: number,
-        endIndex: number,
-        epsilon: number,
-        keepIndices: Set<number>
-    ): void {
-        let maxDist = 0;
-        let maxIndex = startIndex;
-        const first = pts[startIndex];
-        const last = pts[endIndex];
-
-        for (let i = startIndex + 1; i < endIndex; i++) {
-            const dist = computePerpendicularDistanceMeters(pts[i], first, last);
-            if (dist > maxDist) {
-                maxDist = dist;
-                maxIndex = i;
-            }
-        }
-
-        if (maxDist > epsilon) {
-            keepIndices.add(maxIndex);
-            rdp(pts, startIndex, maxIndex, epsilon, keepIndices);
-            rdp(pts, maxIndex, endIndex, epsilon, keepIndices);
-        }
-    }
-
-    const keepIndices = new Set<number>();
-    keepIndices.add(0);
-    keepIndices.add(points.length - 1);
-
-    rdp(points, 0, points.length - 1, epsilonMeters, keepIndices);
-
-    const result: Array<[number, number]> = [];
-    for (let i = 0; i < points.length; i++) {
-        if (keepIndices.has(i)) {
-            result.push(points[i]);
-        }
-    }
-    return result;
+    return TrackCore.decimatePolyline(points, epsilonMeters, minPointsThreshold);
 }
 
 /**
@@ -793,37 +679,14 @@ export function computeAverageSpeed(
     durationSeconds: number | null | undefined,
     useMiles: boolean = false
 ): number | null {
-    if (distanceMeters === null || distanceMeters === undefined || !Number.isFinite(distanceMeters) || distanceMeters < 0) {
-        return null;
-    }
-    if (durationSeconds === null || durationSeconds === undefined || !Number.isFinite(durationSeconds) || durationSeconds < 5) {
-        return null;
-    }
-    if (distanceMeters === 0) {
-        return 0;
-    }
-
-    const speedKmh = (distanceMeters / 1000) / (durationSeconds / 3600);
-    if (!Number.isFinite(speedKmh) || speedKmh > 200) {
-        return null;
-    }
-
-    const speed = useMiles ? speedKmh * 0.621371 : speedKmh;
-    return Math.round(speed * 10) / 10;
+    return TrackCore.computeAverageSpeed(distanceMeters, durationSeconds, useMiles);
 }
 
-/**
- * CIE-039: Formats numeric average speed into a localized/unit-aware string ("21.4 km/h" or "13.3 mph").
- */
 export function formatAverageSpeed(
     averageSpeed: number | null | undefined,
     useMiles: boolean = false
 ): string | null {
-    if (averageSpeed === null || averageSpeed === undefined || !Number.isFinite(averageSpeed) || averageSpeed < 0) {
-        return null;
-    }
-    const unit = useMiles ? 'mph' : 'km/h';
-    return `${averageSpeed.toFixed(1)} ${unit}`;
+    return TrackCore.formatAverageSpeed(averageSpeed, useMiles);
 }
 
 export interface ConcludedSummary {
@@ -887,72 +750,35 @@ export function computeOffCenterDistanceMeters(
     lat2: number,
     lon2: number
 ): number {
-    if (!Number.isFinite(lat1) || !Number.isFinite(lon1) || !Number.isFinite(lat2) || !Number.isFinite(lon2)) {
-        return 0;
-    }
-    const R = 6371000; // Earth radius in meters
-    const dLat = ((lat2 - lat1) * Math.PI) / 180.0;
-    const dLon = ((lon2 - lon1) * Math.PI) / 180.0;
-    const a =
-        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-        Math.cos((lat1 * Math.PI) / 180.0) *
-            Math.cos((lat2 * Math.PI) / 180.0) *
-            Math.sin(dLon / 2) *
-            Math.sin(dLon / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(Math.max(0, 1 - a)));
-    return R * c;
+    return TrackCore.computeOffCenterDistanceMeters(lat1, lon1, lat2, lon2);
 }
 
-/**
- * CIE-040: Formats off-center distance badge string when distance exceeds threshold (default 250m).
- * Returns null when rider is close to center (< 250m) so button remains clean.
- */
 export function formatOffCenterDistance(
     distanceMeters: number | null | undefined,
     useMiles: boolean = false,
     thresholdMeters: number = 250
 ): string | null {
-    if (distanceMeters === null || distanceMeters === undefined || !Number.isFinite(distanceMeters) || distanceMeters < thresholdMeters) {
-        return null;
-    }
-    if (useMiles) {
-        const miles = distanceMeters / 1609.344;
-        return `${miles.toFixed(1)} mi`;
-    }
-    const km = distanceMeters / 1000.0;
-    return `${km.toFixed(1)} km`;
+    return TrackCore.formatOffCenterDistance(distanceMeters, useMiles, thresholdMeters);
 }
 
-/**
- * CIE-040: Formats recenter button label with optional distance badge ("Recenter · 1.4 km").
- */
 export function formatRecenterButtonLabel(
     distanceMeters: number | null | undefined,
     useMiles: boolean = false,
     thresholdMeters: number = 250,
     baseLabel: string = 'Recenter'
 ): string {
-    const distStr = formatOffCenterDistance(distanceMeters, useMiles, thresholdMeters);
-    return distStr ? `${baseLabel} · ${distStr}` : baseLabel;
+    return TrackCore.formatRecenterButtonLabel(distanceMeters, useMiles, thresholdMeters, baseLabel);
 }
 
-/**
- * CIE-040: Formats recenter button accessibility label ("Recenter on rider, 1.4 km away").
- */
 export function formatRecenterAccessibilityLabel(
     distanceMeters: number | null | undefined,
     useMiles: boolean = false,
     thresholdMeters: number = 250,
     baseLabel: string = 'Recenter on rider'
 ): string {
-    const distStr = formatOffCenterDistance(distanceMeters, useMiles, thresholdMeters);
-    return distStr ? `${baseLabel}, ${distStr} away` : baseLabel;
+    return TrackCore.formatRecenterAccessibilityLabel(distanceMeters, useMiles, thresholdMeters, baseLabel);
 }
 
-/**
- * CIE-040: Evaluates whether follow mode should automatically resume after inactivity timeout (default 20s).
- * Suppresses auto-resume when trip has ended or when user is currently in follow mode.
- */
 export function shouldResumeFollowMode(
     isFollowing: boolean,
     isEnded: boolean,
@@ -960,9 +786,7 @@ export function shouldResumeFollowMode(
     nowEpochMs: number = Date.now(),
     timeoutMs: number = 20000
 ): boolean {
-    if (isFollowing || isEnded) return false;
-    if (!lastInteractionEpochMs || !Number.isFinite(lastInteractionEpochMs) || lastInteractionEpochMs <= 0) return false;
-    return (nowEpochMs - lastInteractionEpochMs) >= timeoutMs;
+    return TrackCore.shouldResumeFollowMode(isFollowing, isEnded, lastInteractionEpochMs, nowEpochMs, timeoutMs);
 }
 
 /**
@@ -1262,60 +1086,16 @@ export function evaluateSpectatorThrottleState(
     basePollDelayMs: number = 5000,
     inactivityThresholdMs: number = 300000 // 5 minutes
 ): SpectatorThrottleEvaluation {
-    if (isTripEnded) {
-        return {
-            isInactive: false,
-            isThrottled: false,
-            pollDelayMs: basePollDelayMs,
-            shouldAnimateMap: false,
-            noticeText: null,
-        };
-    }
-
-    if (isDocumentHidden) {
-        return {
-            isInactive: false,
-            isThrottled: true,
-            pollDelayMs: 30000,
-            shouldAnimateMap: false,
-            noticeText: null,
-        };
-    }
-
-    const elapsed = lastInteractionEpochMs !== null && Number.isFinite(lastInteractionEpochMs)
-        ? Math.max(0, nowEpochMs - lastInteractionEpochMs)
-        : 0;
-
-    const isInactive = lastInteractionEpochMs !== null && elapsed >= inactivityThresholdMs;
-
-    if (isInactive) {
-        return {
-            isInactive: true,
-            isThrottled: true,
-            pollDelayMs: 15000,
-            shouldAnimateMap: false,
-            noticeText: 'Viewer idle · Updates slowed to save battery',
-        };
-    }
-
-    const isEffectivePowerSave = riderPowerSave || (riderBatteryLevel !== null && Number.isFinite(riderBatteryLevel) && riderBatteryLevel <= 15);
-    if (isEffectivePowerSave) {
-        return {
-            isInactive: false,
-            isThrottled: true,
-            pollDelayMs: 12000,
-            shouldAnimateMap: true,
-            noticeText: 'Power save active · Location updates every ~15s',
-        };
-    }
-
-    return {
-        isInactive: false,
-        isThrottled: false,
-        pollDelayMs: basePollDelayMs,
-        shouldAnimateMap: true,
-        noticeText: null,
-    };
+    return TrackCore.evaluateSpectatorThrottleState(
+        isTripEnded,
+        isDocumentHidden,
+        lastInteractionEpochMs,
+        nowEpochMs,
+        riderPowerSave,
+        riderBatteryLevel,
+        basePollDelayMs,
+        inactivityThresholdMs
+    );
 }
 
 /**
