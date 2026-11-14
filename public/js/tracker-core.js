@@ -125,6 +125,12 @@
     return { title, description, ogImage, canonicalUrl };
   }
 
+  const VIEWER_PING_BASE_MS = 15000;
+  const VIEWER_PING_THROTTLED_MS = 30000;
+  const VIEWER_PING_MAX_BACKOFF_MS = 60000;
+  const ZERO_VIEWER_HIBERNATION_THRESHOLD_MS = 600000;
+  const ZERO_VIEWER_HIBERNATION_INTERVAL_MS = 30000;
+
   function computeBackoffDelay(consecutiveFailures, options, randomFn) {
     const opts = options || {};
     const rng = typeof randomFn === 'function' ? randomFn : Math.random;
@@ -140,8 +146,72 @@
     return Math.min(maxMs, baseMs + stepIncrement + jitter);
   }
 
-  function shouldSkipPresencePing(consecutiveFailures) {
+  function shouldSkipPresencePing(consecutiveFailures, isOnline) {
+    if (isOnline === false) return true;
     return consecutiveFailures >= 2;
+  }
+
+  function computeViewerPingDelay(consecutivePingFailures, options, randomFn) {
+    const opts = options || {};
+    const rng = typeof randomFn === 'function' ? randomFn : Math.random;
+    const isThrottled = Boolean(opts.isLowDataMode || opts.isBackground || opts.isViewerIdle);
+    const baseMs = Math.max(1000, opts.baseMs !== undefined ? opts.baseMs : VIEWER_PING_BASE_MS);
+    const throttledMs = Math.max(baseMs, opts.throttledMs !== undefined ? opts.throttledMs : VIEWER_PING_THROTTLED_MS);
+    const effectiveBaseMs = isThrottled ? throttledMs : baseMs;
+    const maxMs = Math.max(effectiveBaseMs, opts.maxMs !== undefined ? opts.maxMs : VIEWER_PING_MAX_BACKOFF_MS);
+    const jitterMaxMs = Math.max(0, opts.jitterMaxMs !== undefined ? opts.jitterMaxMs : 1000);
+    if (consecutivePingFailures <= 0) return effectiveBaseMs;
+
+    const increments = [5000, 15000, 30000, 45000];
+    const stepIndex = Math.min(consecutivePingFailures - 1, increments.length - 1);
+    const stepIncrement = increments[stepIndex];
+    const jitter = jitterMaxMs > 0 ? Math.floor(rng() * jitterMaxMs) : 0;
+    return Math.min(maxMs, effectiveBaseMs + stepIncrement + jitter);
+  }
+
+  function evaluateZeroViewerHibernation(params) {
+    const opts = params || {};
+    const rawViewers = Number(opts.activeViewers);
+    const activeViewers = Number.isFinite(rawViewers) ? Math.max(0, Math.floor(rawViewers)) : 0;
+    const nowEpochMs = Number.isFinite(opts.nowEpochMs) ? Number(opts.nowEpochMs) : Date.now();
+    const configuredIntervalMs = Math.max(1000, opts.configuredIntervalMs !== undefined ? opts.configuredIntervalMs : 5000);
+    const isPowerSaveOrLowBattery = Boolean(opts.isPowerSaveOrLowBattery);
+    const thresholdMs = Math.max(1000, opts.thresholdMs !== undefined ? opts.thresholdMs : ZERO_VIEWER_HIBERNATION_THRESHOLD_MS);
+    const hibernationIntervalMs = Math.max(1000, opts.hibernationIntervalMs !== undefined ? opts.hibernationIntervalMs : ZERO_VIEWER_HIBERNATION_INTERVAL_MS);
+    const normalBaseIntervalMs = isPowerSaveOrLowBattery ? Math.max(configuredIntervalMs, 15000) : configuredIntervalMs;
+
+    if (activeViewers > 0) {
+      return {
+        isHibernating: false,
+        zeroViewersSinceEpochMs: null,
+        idleDurationMs: 0,
+        effectiveIntervalMs: normalBaseIntervalMs,
+      };
+    }
+
+    const hasValidStart = opts.zeroViewersSinceEpochMs !== null &&
+      opts.zeroViewersSinceEpochMs !== undefined &&
+      Number.isFinite(opts.zeroViewersSinceEpochMs);
+    const effectiveStartMs = hasValidStart ? Number(opts.zeroViewersSinceEpochMs) : nowEpochMs;
+    const idleDurationMs = Math.max(0, nowEpochMs - effectiveStartMs);
+    const isHibernating = idleDurationMs >= thresholdMs;
+    return {
+      isHibernating,
+      zeroViewersSinceEpochMs: effectiveStartMs,
+      idleDurationMs,
+      effectiveIntervalMs: isHibernating ? Math.max(normalBaseIntervalMs, hibernationIntervalMs) : normalBaseIntervalMs,
+    };
+  }
+
+  function buildZeroViewerHibernationTelemetryPayload(sessionId, isHibernating, idleDurationMs, intervalMs, platform) {
+    return {
+      session_id: String(sessionId || ''),
+      sessionId: String(sessionId || ''),
+      is_hibernating: Boolean(isHibernating),
+      idle_seconds: Math.max(0, Math.round((Number(idleDurationMs) || 0) / 1000)),
+      interval_seconds: Math.max(1, Math.round((Number(intervalMs) || 1000) / 1000)),
+      platform: String(platform || 'web'),
+    };
   }
 
   function computeHaversineDistanceMeters(lat1, lon1, lat2, lon2) {
@@ -530,8 +600,16 @@
     sanitizeRiderName,
     buildLiveShareUrl,
     resolveLiveShareMetadata,
+    VIEWER_PING_BASE_MS,
+    VIEWER_PING_THROTTLED_MS,
+    VIEWER_PING_MAX_BACKOFF_MS,
+    ZERO_VIEWER_HIBERNATION_THRESHOLD_MS,
+    ZERO_VIEWER_HIBERNATION_INTERVAL_MS,
     computeBackoffDelay,
     shouldSkipPresencePing,
+    computeViewerPingDelay,
+    evaluateZeroViewerHibernation,
+    buildZeroViewerHibernationTelemetryPayload,
     computeHaversineDistanceMeters,
     shouldPanCamera,
     shouldUpdateContinuousHeading,

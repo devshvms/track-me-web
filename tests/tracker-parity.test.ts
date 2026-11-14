@@ -173,9 +173,15 @@ test('tracker.html loads /js/tracker-core.js and eliminates duplicate math/throt
   assert.ok(html.includes('TrackCore.evaluateSpectatorThrottleState'));
   assert.ok(html.includes('TrackCore.decimatePolyline'));
   assert.ok(html.includes('TrackCore.computeBackoffDelay'));
+  assert.ok(html.includes('TrackCore.computeViewerPingDelay'));
+  assert.ok(html.includes('TrackCore.shouldSkipPresencePing'));
 });
 
-test('TrackCore matches server-side duration.ts and trail.ts implementations without drift (M-2)', () => {
+test('TrackCore matches server-side duration.ts, trail.ts, and backoff.ts implementations without drift (M-2)', () => {
+  const {
+    computeViewerPingDelay: computeViewerPingDelayTs,
+    evaluateZeroViewerHibernation: evaluateZeroViewerHibernationTs,
+  } = require('../lib/track/backoff');
   const now = 1700000000000;
   assert.strictEqual(TrackCore.formatElapsedDuration(now - 30_000, now, now), formatElapsedDurationTs(now - 30_000, now, now));
   assert.strictEqual(TrackCore.formatElapsedDuration(now - 4_500_000, now, now), formatElapsedDurationTs(now - 4_500_000, now, now));
@@ -191,6 +197,29 @@ test('TrackCore matches server-side duration.ts and trail.ts implementations wit
   const throttle = TrackCore.evaluateSpectatorThrottleState(false, false, now, now, false, -1, 5000, 300000);
   assert.strictEqual(throttle.isThrottled, false);
   assert.strictEqual(throttle.pollDelayMs, 5000);
+
+  // CIE-046 parity check between TrackCore and lib/track/backoff.ts
+  const noJitter = () => 0;
+  assert.strictEqual(
+    TrackCore.computeViewerPingDelay(2, { isLowDataMode: true }, noJitter),
+    computeViewerPingDelayTs(2, { isLowDataMode: true }, noJitter),
+  );
+  assert.deepStrictEqual(
+    TrackCore.evaluateZeroViewerHibernation({
+      activeViewers: 0,
+      zeroViewersSinceEpochMs: now - 600_000,
+      nowEpochMs: now,
+      configuredIntervalMs: 5000,
+      isPowerSaveOrLowBattery: false,
+    }),
+    evaluateZeroViewerHibernationTs({
+      activeViewers: 0,
+      zeroViewersSinceEpochMs: now - 600_000,
+      nowEpochMs: now,
+      configuredIntervalMs: 5000,
+      isPowerSaveOrLowBattery: false,
+    }),
+  );
 });
 
 test('tracker.html inline script renders /live/watcher?code=... with valid iOS deep link and rejects legacy inviterUid-only links (H-2, M-2)', () => {
