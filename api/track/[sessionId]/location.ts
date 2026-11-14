@@ -11,10 +11,10 @@ import {
 
 /**
  * The share link is public; the stored session blob is not. It carries the
- * owner's account identity (ownerUid, ownerEmail — written by start.ts) and
- * internal fields (startedAt) that anyone holding the link must never see.
+ * owner's account identity (ownerUid, ownerEmail — written by start.ts) that
+ * anyone holding the link must never see.
  * The GET response is built from this whitelist; adding a field here publishes
- * it to every viewer.
+ * it to every viewer. (startedAt is intentionally public for trip duration.)
  */
 export const VIEWER_VISIBLE_FIELDS = [
   'username',
@@ -206,13 +206,15 @@ export default async function handler(
         }
       }
 
-      // CIE-017: Persist updated session state, prune stale viewers, and count active viewers
-      // in a SINGLE atomic network roundtrip via multi() when supported.
-      // Eliminates separate network roundtrips between set and viewer counting, cutting
-      // serverless invocation latency by ~50% on every location push.
+      // CIE-017 / V1.9.3 M-1: Persist updated session state and count non-stale active viewers
+      // in a SINGLE atomic network roundtrip via multi() using read-only zCount(cutoff, upperBound).
+      // Ping already prunes expired viewers and sets viewersKey TTL, avoiding redundant Redis
+      // write mutations (zRemRangeByScore) on every 5s location push ($0/mo Upstash budget).
       let activeViewers = 0;
       const viewersKey = `session:${sessionId}:viewers`;
-      const cutoff = Date.now() - STALE_VIEWER_WINDOW_MS;
+      const nowMs = Date.now();
+      const cutoff = nowMs - STALE_VIEWER_WINDOW_MS;
+      const upperBound = nowMs + 86_400_000;
 
       if (typeof redis.multi === 'function') {
         const multi = redis.multi();
@@ -223,13 +225,11 @@ export default async function handler(
         } else {
           multi.set(`session:${sessionId}`, JSON.stringify(sessionData));
         }
-        multi.zRemRangeByScore(viewersKey, 0, cutoff);
-        multi.zCard(viewersKey);
+        multi.zCount(viewersKey, cutoff, upperBound);
         const results = await multi.exec();
         // results[0] = result of set ("OK")
-        // results[1] = result of zRemRangeByScore (pruned count)
-        // results[2] = result of zCard (active viewers count)
-        activeViewers = typeof results?.[2] === 'number' ? results[2] : 0;
+        // results[1] = result of zCount (active non-stale viewers count)
+        activeViewers = typeof results?.[1] === 'number' ? results[1] : 0;
       } else {
         if (remainingTtlSeconds > 0) {
           await redis.set(`session:${sessionId}`, JSON.stringify(sessionData), {
@@ -239,8 +239,7 @@ export default async function handler(
           await redis.set(`session:${sessionId}`, JSON.stringify(sessionData));
         }
         try {
-          await redis.zRemRangeByScore(viewersKey, 0, cutoff);
-          activeViewers = await redis.zCard(viewersKey);
+          activeViewers = await redis.zCount(viewersKey, cutoff, upperBound);
         } catch (viewerErr) {
           console.error('Active viewer count lookup error:', viewerErr);
         }

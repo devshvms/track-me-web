@@ -83,6 +83,11 @@ if (!globalAny._mockRedis) {
       expiries.delete(key);
       return existed ? 1 : 0;
     },
+    async getDel(key: string) {
+      const value = await this.get(key);
+      await this.del(key);
+      return value;
+    },
     async incr(key: string) {
       if (isExpired(key)) store.delete(key);
       const current = parseInt(store.get(key) || '0', 10);

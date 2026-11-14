@@ -608,6 +608,7 @@
     </section>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="/js/tracker-core.js"></script>
     <script>
         // Keep iOS Smart App Banner synced with the exact current session URL.
         const smartAppBanner = document.getElementById('smartAppBanner');
@@ -616,44 +617,23 @@
         }
 
         // Extract and sanitize sessionId from URL (e.g., /live/abc-123 or /live/watcher)
-        const pathParts = window.location.pathname.split('/').filter(Boolean);
-        const rawSessionId = pathParts[pathParts.length - 1] || '';
-        let cleanSessionId = '';
-        if (rawSessionId && rawSessionId.toLowerCase() !== 'live') {
-            try {
-                cleanSessionId = decodeURIComponent(rawSessionId).trim();
-            } catch (_) {
-                cleanSessionId = rawSessionId.trim();
-            }
-        }
-        const sessionId = cleanSessionId;
+        const parsedLivePath = TrackCore.parseLiveSessionPath(window.location.pathname);
+        const rawSessionId = parsedLivePath.raw;
+        const sessionId = parsedLivePath.sessionId;
         const queryParams = new URLSearchParams(window.location.search);
         const isWatcherInvite = sessionId === 'watcher';
-        const isValidSession = isWatcherInvite || /^[A-Za-z0-9_-]{4,128}$/.test(sessionId);
+        const isValidSession = parsedLivePath.isValid;
 
         // CIE-030: Persistent interactive unit preference resolution
-        const PREFERRED_UNITS_STORAGE_KEY = 'trackme_preferred_units';
+        const PREFERRED_UNITS_STORAGE_KEY = TrackCore.PREFERRED_UNITS_STORAGE_KEY;
         function detectInitialUnits() {
             const q = queryParams.get('units') || queryParams.get('unit');
-            if (q) {
-                const clean = q.trim().toLowerCase();
-                if (clean === 'imperial' || clean === 'mi' || clean === 'mph' || clean === 'miles') return 'imperial';
-                if (clean === 'metric' || clean === 'km' || clean === 'kmh' || clean === 'kilometers') return 'metric';
-            }
+            let stored = null;
             try {
-                const stored = localStorage.getItem(PREFERRED_UNITS_STORAGE_KEY);
-                if (stored === 'imperial' || stored === 'metric') return stored;
+                stored = localStorage.getItem(PREFERRED_UNITS_STORAGE_KEY);
             } catch (_) {}
             const languages = navigator.languages || [navigator.language || ''];
-            for (const lang of languages) {
-                if (typeof lang === 'string') {
-                    const clean = lang.trim();
-                    if (/(?:-|_)US$/i.test(clean) || /(?:-|_)LR$/i.test(clean) || /(?:-|_)MM$/i.test(clean)) {
-                        return 'imperial';
-                    }
-                }
-            }
-            return 'metric';
+            return TrackCore.resolveInitialUnits(q, stored, languages);
         }
 
         let activeUnitSystem = detectInitialUnits();
@@ -676,9 +656,7 @@
 
         // CIE-031: Live Share Social Cards & Dynamic Metadata Resolution
         function sanitizeRiderNameClient(rawName) {
-            if (!rawName || typeof rawName !== 'string') return null;
-            const stripped = rawName.replace(/<[^>]*>/g, '').replace(/[\r\n\t]/g, ' ').trim();
-            return stripped ? stripped.slice(0, 60) : null;
+            return TrackCore.sanitizeRiderName(rawName);
         }
 
         function updateSocialMetadata(riderName, isStopped) {
@@ -725,6 +703,17 @@
             }
         }
 
+        // Detect viewer platform to highlight and promote native store badge
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+        const isAndroid = /Android/i.test(navigator.userAgent);
+        const viewerOS = isIOS ? 'ios' : (isAndroid ? 'android' : 'desktop');
+        if (isIOS) document.body.classList.add('is-ios');
+        else if (isAndroid) document.body.classList.add('is-android');
+
+        // CIE-033: Smart App Banner with deep link handoff and dismissal persistence
+        const SMART_BANNER_DISMISS_KEY = 'trackme_smart_banner_dismissed_at';
+        const SMART_BANNER_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
         // Initialize social metadata from query parameters immediately
         updateSocialMetadata(null, false);
 
@@ -734,13 +723,6 @@
             viewerId = Math.random().toString(36).substring(2, 15);
             sessionStorage.setItem('viewerId', viewerId);
         }
-
-        // Detect viewer platform to highlight and promote native store badge
-        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-        const isAndroid = /Android/i.test(navigator.userAgent);
-        const viewerOS = isIOS ? 'ios' : (isAndroid ? 'android' : 'desktop');
-        if (isIOS) document.body.classList.add('is-ios');
-        else if (isAndroid) document.body.classList.add('is-android');
 
         // Telemetry helper (keepalive=true survives app-switch / store redirects)
         function emitTelemetry(event, properties) {
@@ -810,9 +792,9 @@
                 btn.href = `intent://trackme.shvms.in${pathWithQuery}#Intent;scheme=https;package=in.shvms.trackme;S.browser_fallback_url=${encodeURIComponent(playFallback)};end`;
             } else if (isIOS) {
                 if (isWatcherInvite) {
-                    const inviterUid = queryParams.get('inviterUid') || '';
+                    const code = queryParams.get('code') || '';
                     const inviterName = queryParams.get('inviterName') || '';
-                    btn.href = `trackme://live/watcher?inviterUid=${encodeURIComponent(inviterUid)}&inviterName=${encodeURIComponent(inviterName)}`;
+                    btn.href = `trackme://live/watcher?code=${encodeURIComponent(code)}&inviterName=${encodeURIComponent(inviterName)}`;
                 } else {
                     const cleanName = sanitizeRiderNameClient(queryParams.get('name'));
                     const nameParam = cleanName ? `?name=${encodeURIComponent(cleanName)}` : '';
@@ -843,10 +825,6 @@
             });
         }
         configureOpenInAppButton();
-
-        // CIE-033: Smart App Banner with deep link handoff and dismissal persistence
-        const SMART_BANNER_DISMISS_KEY = 'trackme_smart_banner_dismissed_at';
-        const SMART_BANNER_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
         function configureSmartAppBanner(riderName) {
             if (!isIOS && !isAndroid) return;
@@ -882,9 +860,9 @@
                 deepLink = `intent://trackme.shvms.in${pathWithQuery}#Intent;scheme=https;package=in.shvms.trackme;S.browser_fallback_url=${encodeURIComponent(playFallback)};end`;
             } else if (isIOS) {
                 if (isWatcherInvite) {
-                    const inviterUid = queryParams.get('inviterUid') || '';
+                    const code = queryParams.get('code') || '';
                     const inviterName = queryParams.get('inviterName') || '';
-                    deepLink = `trackme://live/watcher?inviterUid=${encodeURIComponent(inviterUid)}&inviterName=${encodeURIComponent(inviterName)}`;
+                    deepLink = `trackme://live/watcher?code=${encodeURIComponent(code)}&inviterName=${encodeURIComponent(inviterName)}`;
                 } else {
                     const nameParam = cleanName ? `?name=${encodeURIComponent(cleanName)}` : '';
                     deepLink = `trackme://live/${encodeURIComponent(sessionId)}${nameParam}`;
@@ -1023,26 +1001,29 @@
             });
         });
 
-        // Handle /live/watcher?inviterUid=...&inviterName=... cleanly without polling /api/track/watcher/location
+        // Handle /live/watcher?code=...&inviterName=... cleanly without polling /api/track/watcher/location
         if (isWatcherInvite) {
-            const inviterUid = (queryParams.get('inviterUid') || '').trim();
-            const inviterName = (queryParams.get('inviterName') || 'A TrackMe rider').trim();
+            const inviteCode = (queryParams.get('code') || '').trim();
+            const hasLegacyInviterUid = Boolean((queryParams.get('inviterUid') || '').trim());
+            const inviterName = sanitizeRiderNameClient(queryParams.get('inviterName')) || 'A TrackMe rider';
             const statusEl = document.getElementById('statusText');
             const nameEl = document.getElementById('userNameText');
             const detailsEl = document.getElementById('detailsText');
 
-            if (!inviterUid) {
-                statusEl.innerText = 'Invalid Invite';
+            if (!inviteCode) {
+                statusEl.innerText = hasLegacyInviterUid ? 'Invite Outdated' : 'Invalid Invite';
                 statusEl.className = 'status offline';
                 nameEl.innerText = 'Trusted Watcher Invite';
-                detailsEl.innerText = 'This invite link is missing the rider identifier.';
+                detailsEl.innerText = hasLegacyInviterUid
+                    ? 'This legacy watcher invite link has expired. Ask the rider to send a fresh single-use Trusted Watcher invite.'
+                    : 'This invite link is missing a valid invite code.';
             } else {
                 statusEl.innerText = 'Trusted Watcher Invite';
                 statusEl.className = 'status active';
                 nameEl.innerText = `${inviterName} wants to add you as a Trusted Watcher`;
                 detailsEl.innerText = 'Accept in the TrackMe app to get instant live location alerts whenever they start sharing — zero phone contacts permission required.';
             }
-            emitTelemetry('trusted_watcher_invite_viewed', { hasInviterUid: Boolean(inviterUid) });
+            emitTelemetry('trusted_watcher_invite_viewed', { hasInviteCode: Boolean(inviteCode) });
             revealGetApp(false);
         } else {
             // Standard Live Session Tracking flow
@@ -1059,94 +1040,18 @@
             }
 
             // CIE-011: Format elapsed or total trip duration
-            function formatElapsedDuration(startedAt, endedAt) {
-                if (!startedAt) return null;
-                const startMs = typeof startedAt === 'number' ? startedAt : new Date(startedAt).getTime();
-                if (!Number.isFinite(startMs) || startMs <= 0) return null;
-                const endMs = endedAt ? (typeof endedAt === 'number' ? endedAt : new Date(endedAt).getTime()) : Date.now();
-                const diffMs = Math.max(0, (Number.isFinite(endMs) ? endMs : Date.now()) - startMs);
-                const totalMinutes = Math.floor(diffMs / 60000);
-                if (totalMinutes < 1) return '< 1m';
-                const hours = Math.floor(totalMinutes / 60);
-                const minutes = totalMinutes % 60;
-                if (hours === 0) return `${minutes}m`;
-                return minutes === 0 ? `${hours}h` : `${hours}h ${minutes}m`;
-            }
+            const formatElapsedDuration = TrackCore.formatElapsedDuration;
 
             // CIE-024: Accumulated path distance computation & formatting
-            function computePathDistanceMeters(rawPath) {
-                if (!Array.isArray(rawPath) || rawPath.length < 2) return 0;
-                let totalMeters = 0;
-                let prev = null;
-                const toRad = (deg) => (deg * Math.PI) / 180;
-                for (let i = 0; i < rawPath.length; i++) {
-                    const pt = rawPath[i];
-                    let lat = null, lng = null;
-                    if (Array.isArray(pt) && pt.length >= 2) {
-                        lat = typeof pt[0] === 'number' ? pt[0] : parseFloat(pt[0]);
-                        lng = typeof pt[1] === 'number' ? pt[1] : parseFloat(pt[1]);
-                    } else if (pt && typeof pt === 'object') {
-                        lat = typeof pt.lat === 'number' ? pt.lat : (typeof pt.latitude === 'number' ? pt.latitude : parseFloat(pt.lat || pt.latitude));
-                        lng = typeof pt.lng === 'number' ? pt.lng : (typeof pt.longitude === 'number' ? pt.longitude : parseFloat(pt.lng || pt.longitude));
-                    }
-                    if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180 || (Math.abs(lat) < 0.0001 && Math.abs(lng) < 0.0001)) {
-                        continue;
-                    }
-                    if (prev) {
-                        const dLat = toRad(lat - prev.lat);
-                        const dLng = toRad(lng - prev.lng);
-                        const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-                            Math.cos(toRad(prev.lat)) * Math.cos(toRad(lat)) *
-                            Math.sin(dLng / 2) * Math.sin(dLng / 2);
-                        const d = 2 * 6371000 * Math.atan2(Math.sqrt(a), Math.sqrt(Math.max(0, 1 - a)));
-                        if (d >= 2 && d <= 50000) {
-                            totalMeters += d;
-                            prev = { lat, lng };
-                        }
-                    } else {
-                        prev = { lat, lng };
-                    }
-                }
-                return Math.round(totalMeters);
-            }
-
-            function formatViewerDistance(meters, useMiles) {
-                if (!Number.isFinite(meters) || meters <= 0) return useMiles ? '0.0 mi' : '0.0 km';
-                if (useMiles) {
-                    return `${(meters / 1609.344).toFixed(1)} mi`;
-                }
-                return `${(meters / 1000).toFixed(1)} km`;
-            }
+            const computePathDistanceMeters = TrackCore.computePathDistanceMeters;
+            const formatViewerDistance = TrackCore.formatViewerDistance;
 
             // CIE-039: Concluded trip average speed computation and formatting
-            function computeAverageSpeed(distanceMeters, durationSeconds, useMiles) {
-                if (!Number.isFinite(distanceMeters) || distanceMeters < 0) return null;
-                if (!Number.isFinite(durationSeconds) || durationSeconds < 5) return null;
-                if (distanceMeters === 0) return 0;
-                const speedKmh = (distanceMeters / 1000) / (durationSeconds / 3600);
-                if (!Number.isFinite(speedKmh) || speedKmh > 200) return null;
-                const speed = useMiles ? speedKmh * 0.621371 : speedKmh;
-                return Math.round(speed * 10) / 10;
-            }
-
-            function formatAverageSpeed(avgSpeed, useMiles) {
-                if (!Number.isFinite(avgSpeed) || avgSpeed < 0) return null;
-                return `${avgSpeed.toFixed(1)} ${useMiles ? 'mph' : 'km/h'}`;
-            }
+            const computeAverageSpeed = TrackCore.computeAverageSpeed;
+            const formatAverageSpeed = TrackCore.formatAverageSpeed;
 
             // CIE-025: Scheduled ETA / Deadline display and overdue evaluation
-            function formatDeadlineStatus(deadlineRaw, isStopped) {
-                if (isStopped || !deadlineRaw) return null;
-                const deadlineMs = typeof deadlineRaw === 'number' ? deadlineRaw : new Date(deadlineRaw).getTime();
-                if (!Number.isFinite(deadlineMs) || deadlineMs <= 0) return null;
-                const nowMs = Date.now();
-                const isOverdue = nowMs > deadlineMs;
-                const timeString = new Date(deadlineMs).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-                return {
-                    isOverdue: isOverdue,
-                    displayText: isOverdue ? `Overdue · Expected by ${timeString}` : `Expected by ${timeString}`
-                };
-            }
+            const formatDeadlineStatus = TrackCore.formatDeadlineStatus;
 
             function updateDeadlineBadge(deadlineRaw, isStopped) {
                 const deadlineBadge = document.getElementById('deadlineBadge');
@@ -1301,61 +1206,11 @@
             }
 
             // CIE-037: Low Battery Throttle & Power-Save Mode Parity
-            function clampBatteryLevel(batteryLevel) {
-                if (typeof batteryLevel !== 'number' || !Number.isFinite(batteryLevel)) return null;
-                if (batteryLevel < 0 || batteryLevel > 100) return null;
-                return Math.min(100, Math.max(0, Math.round(batteryLevel)));
-            }
-
-            function shouldAnnounceLowBattery(previousBattery, newBattery) {
-                const prev = clampBatteryLevel(previousBattery);
-                const curr = clampBatteryLevel(newBattery);
-                if (curr === null) return false;
-                if (curr <= 15 && (prev === null || prev > 15)) return true;
-                if (curr <= 5 && prev !== null && prev > 5) return true;
-                return false;
-            }
+            const clampBatteryLevel = TrackCore.clampBatteryLevel;
+            const shouldAnnounceLowBattery = TrackCore.shouldAnnounceLowBattery;
 
             // CIE-044: Spectator Battery Optimization & Dynamic Map Render Throttling
-            function evaluateSpectatorThrottleState(isTripEnded, isDocumentHidden, lastInteractionEpochMs, nowEpochMs, riderPowerSave, riderBatteryLevel, basePollDelayMs = 5000, inactivityThresholdMs = 300000) {
-                if (isTripEnded) {
-                    return { isInactive: false, isThrottled: false, pollDelayMs: basePollDelayMs, shouldAnimateMap: false, noticeText: null };
-                }
-                if (isDocumentHidden) {
-                    return { isInactive: false, isThrottled: true, pollDelayMs: 30000, shouldAnimateMap: false, noticeText: null };
-                }
-                const elapsed = lastInteractionEpochMs !== null && Number.isFinite(lastInteractionEpochMs)
-                    ? Math.max(0, nowEpochMs - lastInteractionEpochMs)
-                    : 0;
-                const isInactive = lastInteractionEpochMs !== null && elapsed >= inactivityThresholdMs;
-                if (isInactive) {
-                    return {
-                        isInactive: true,
-                        isThrottled: true,
-                        pollDelayMs: 15000,
-                        shouldAnimateMap: false,
-                        noticeText: 'Viewer idle · Updates slowed to save battery'
-                    };
-                }
-                const clampedBat = clampBatteryLevel(riderBatteryLevel);
-                const isEffectivePowerSave = Boolean(riderPowerSave) || (clampedBat !== null && clampedBat <= 15);
-                if (isEffectivePowerSave) {
-                    return {
-                        isInactive: false,
-                        isThrottled: true,
-                        pollDelayMs: 12000,
-                        shouldAnimateMap: true,
-                        noticeText: 'Power save active · Location updates every ~15s'
-                    };
-                }
-                return {
-                    isInactive: false,
-                    isThrottled: false,
-                    pollDelayMs: basePollDelayMs,
-                    shouldAnimateMap: true,
-                    noticeText: null
-                };
-            }
+            const evaluateSpectatorThrottleState = TrackCore.evaluateSpectatorThrottleState;
 
             function computeViewerAdaptivePollMs(isPowerSaveMode, batteryLevel, basePollMs = 5000) {
                 const throttle = evaluateSpectatorThrottleState(
@@ -1371,65 +1226,11 @@
                 return throttle.pollDelayMs;
             }
 
-            function formatPowerSaveCadenceNotice(isPowerSaveMode, batteryLevel) {
-                const clampedBat = clampBatteryLevel(batteryLevel);
-                const isEffectivePowerSave = Boolean(isPowerSaveMode) || (clampedBat !== null && clampedBat <= 15);
-                if (!isEffectivePowerSave) return null;
-                return 'Power save active · Location updates every ~15s';
-            }
+            const formatPowerSaveCadenceNotice = TrackCore.formatPowerSaveCadenceNotice;
 
             // CIE-038: Polyline Decimation & Memory Compaction for Extended Rides
-            function computePerpendicularDistanceMeters(p, a, b) {
-                const latRad = (a[0] * Math.PI) / 180.0;
-                const cosLat = Math.cos(latRad);
-                const mPerDegLat = 111320;
-                const mPerDegLng = 111320 * cosLat;
-                const dxAB = (b[1] - a[1]) * mPerDegLng;
-                const dyAB = (b[0] - a[0]) * mPerDegLat;
-                const dxAP = (p[1] - a[1]) * mPerDegLng;
-                const dyAP = (p[0] - a[0]) * mPerDegLat;
-                const segmentLenSq = dxAB * dxAB + dyAB * dyAB;
-                if (segmentLenSq === 0) {
-                    return Math.sqrt(dxAP * dxAP + dyAP * dyAP);
-                }
-                const crossProduct = Math.abs(dxAB * dyAP - dyAB * dxAP);
-                return crossProduct / Math.sqrt(segmentLenSq);
-            }
-
-            function decimatePolyline(points, epsilonMeters = 3.5, minPointsThreshold = 200) {
-                if (!Array.isArray(points) || points.length <= 2) return points || [];
-                if (minPointsThreshold > 0 && points.length <= minPointsThreshold) return points;
-
-                function rdp(pts, startIndex, endIndex, epsilon, keepIndices) {
-                    let maxDist = 0;
-                    let maxIndex = startIndex;
-                    const first = pts[startIndex];
-                    const last = pts[endIndex];
-                    for (let i = startIndex + 1; i < endIndex; i++) {
-                        const dist = computePerpendicularDistanceMeters(pts[i], first, last);
-                        if (dist > maxDist) {
-                            maxDist = dist;
-                            maxIndex = i;
-                        }
-                    }
-                    if (maxDist > epsilon) {
-                        keepIndices.add(maxIndex);
-                        rdp(pts, startIndex, maxIndex, epsilon, keepIndices);
-                        rdp(pts, maxIndex, endIndex, epsilon, keepIndices);
-                    }
-                }
-
-                const keepIndices = new Set();
-                keepIndices.add(0);
-                keepIndices.add(points.length - 1);
-                rdp(points, 0, points.length - 1, epsilonMeters, keepIndices);
-
-                const result = [];
-                for (let i = 0; i < points.length; i++) {
-                    if (keepIndices.has(i)) result.push(points[i]);
-                }
-                return result;
-            }
+            const computePerpendicularDistanceMeters = TrackCore.computePerpendicularDistanceMeters;
+            const decimatePolyline = TrackCore.decimatePolyline;
 
             function copyTextWithFallback(text, successMessage) {
                 const feedback = successMessage || 'Link copied to clipboard!';
@@ -1553,11 +1354,7 @@
             });
 
             function computeViewerBackoffMs(failures) {
-                if (failures <= 0) return 5000;
-                const increments = [1000, 3000, 6000, 10000];
-                const step = increments[Math.min(failures - 1, increments.length - 1)];
-                const jitter = Math.floor(Math.random() * 500);
-                return Math.min(15000, 5000 + step + jitter);
+                return TrackCore.computeBackoffDelay(failures);
             }
 
             function scheduleNextFetch(delayMs) {
@@ -2182,42 +1979,11 @@
             window.lastRiderPos = null;
             window.lastUserInteractionEpochMs = Date.now();
 
-            function computeOffCenterDistanceMeters(lat1, lon1, lat2, lon2) {
-                if (!Number.isFinite(lat1) || !Number.isFinite(lon1) || !Number.isFinite(lat2) || !Number.isFinite(lon2)) return 0;
-                const R = 6371000;
-                const dLat = ((lat2 - lat1) * Math.PI) / 180.0;
-                const dLon = ((lon2 - lon1) * Math.PI) / 180.0;
-                const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-                    Math.cos((lat1 * Math.PI) / 180.0) * Math.cos((lat2 * Math.PI) / 180.0) *
-                    Math.sin(dLon / 2) * Math.sin(dLon / 2);
-                return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(Math.max(0, 1 - a)));
-            }
-
-            function formatOffCenterDistance(distanceMeters, useMiles = false, thresholdMeters = 250) {
-                if (!Number.isFinite(distanceMeters) || distanceMeters < thresholdMeters) return null;
-                if (useMiles) {
-                    const miles = distanceMeters / 1609.344;
-                    return miles.toFixed(1) + ' mi';
-                }
-                const km = distanceMeters / 1000.0;
-                return km.toFixed(1) + ' km';
-            }
-
-            function formatRecenterButtonLabel(distanceMeters, useMiles = false, thresholdMeters = 250, baseLabel = 'Follow') {
-                const distStr = formatOffCenterDistance(distanceMeters, useMiles, thresholdMeters);
-                return distStr ? `${baseLabel} · ${distStr}` : baseLabel;
-            }
-
-            function formatRecenterAccessibilityLabel(distanceMeters, useMiles = false, thresholdMeters = 250, baseLabel = 'Follow rider') {
-                const distStr = formatOffCenterDistance(distanceMeters, useMiles, thresholdMeters);
-                return distStr ? `${baseLabel}, ${distStr} away` : baseLabel;
-            }
-
-            function shouldResumeFollowMode(isFollowing, isEnded, lastInteractionEpochMs, nowEpochMs = Date.now(), timeoutMs = 20000) {
-                if (isFollowing || isEnded) return false;
-                if (!lastInteractionEpochMs || !Number.isFinite(lastInteractionEpochMs) || lastInteractionEpochMs <= 0) return false;
-                return (nowEpochMs - lastInteractionEpochMs) >= timeoutMs;
-            }
+            const computeOffCenterDistanceMeters = TrackCore.computeOffCenterDistanceMeters;
+            const formatOffCenterDistance = TrackCore.formatOffCenterDistance;
+            const formatRecenterButtonLabel = TrackCore.formatRecenterButtonLabel;
+            const formatRecenterAccessibilityLabel = TrackCore.formatRecenterAccessibilityLabel;
+            const shouldResumeFollowMode = TrackCore.shouldResumeFollowMode;
 
             function updateFollowButtonState() {
                 const followBtn = document.getElementById('followBtn');
