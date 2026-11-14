@@ -50,6 +50,7 @@ import {
     serializeViewerCachePayload,
     deserializeViewerCachePayload,
     buildDirectionsUrl,
+    evaluateSpectatorThrottleState,
 } from '../lib/track/network';
 
 describe('Live Viewer Network Resilience & Tile Fallback (CIE-007)', () => {
@@ -1286,6 +1287,53 @@ describe('Live Viewer Network Resilience & Tile Fallback (CIE-007)', () => {
                 const text2 = formatLiveShareText('   ', 'https://trackme.shvms.in/live/session-123');
                 assert.equal(text2, 'Track my live ride on TrackMe: https://trackme.shvms.in/live/session-123');
             });
+        });
+    });
+
+    describe('Spectator Battery Optimization & Dynamic Map Render Throttling (CIE-044)', () => {
+        const now = 10000000;
+        const threshold = 300000; // 5 min
+
+        it('returns standard unthrottled parameters for active foreground session with recent interaction', () => {
+            const result = evaluateSpectatorThrottleState(false, false, now - 10000, now, false, null, 5000, threshold);
+            assert.equal(result.isInactive, false);
+            assert.equal(result.isThrottled, false);
+            assert.equal(result.pollDelayMs, 5000);
+            assert.equal(result.shouldAnimateMap, true);
+            assert.equal(result.noticeText, null);
+        });
+
+        it('throttles polling and pauses map animation when spectator is idle for > 5 minutes', () => {
+            const result = evaluateSpectatorThrottleState(false, false, now - 301000, now, false, null, 5000, threshold);
+            assert.equal(result.isInactive, true);
+            assert.equal(result.isThrottled, true);
+            assert.equal(result.pollDelayMs, 15000);
+            assert.equal(result.shouldAnimateMap, false);
+            assert.equal(result.noticeText, 'Viewer idle · Updates slowed to save battery');
+        });
+
+        it('disables animation and steps down polling when tab/document is hidden', () => {
+            const result = evaluateSpectatorThrottleState(false, true, now - 1000, now, false, null, 5000, threshold);
+            assert.equal(result.isThrottled, true);
+            assert.equal(result.pollDelayMs, 30000);
+            assert.equal(result.shouldAnimateMap, false);
+        });
+
+        it('relaxes polling to 12s when rider is in power-save mode or low battery (<=15%)', () => {
+            const result = evaluateSpectatorThrottleState(false, false, now - 1000, now, true, 12, 5000, threshold);
+            assert.equal(result.isInactive, false);
+            assert.equal(result.isThrottled, true);
+            assert.equal(result.pollDelayMs, 12000);
+            assert.equal(result.shouldAnimateMap, true);
+            assert.equal(result.noticeText, 'Power save active · Location updates every ~15s');
+        });
+
+        it('disables animation and returns base delay with no notice when trip has ended', () => {
+            const result = evaluateSpectatorThrottleState(true, false, now - 500000, now, false, null, 5000, threshold);
+            assert.equal(result.isInactive, false);
+            assert.equal(result.isThrottled, false);
+            assert.equal(result.shouldAnimateMap, false);
+            assert.equal(result.noticeText, null);
         });
     });
 });
