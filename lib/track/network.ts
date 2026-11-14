@@ -310,6 +310,26 @@ export function buildMapsUrls(lat: number, lon: number): { googleMapsUrl: string
 }
 
 /**
+ * Constructs direct navigation URL to destination/rider coordinate.
+ * Clamps and validates latitude (-90..90) and longitude (-180..180).
+ */
+export function buildDirectionsUrl(
+    lat: number,
+    lon: number,
+    provider: 'google_maps' | 'apple_maps' = 'google_maps'
+): string | null {
+    const safeLat = Number(lat);
+    const safeLon = Number(lon);
+    if (!Number.isFinite(safeLat) || !Number.isFinite(safeLon)) return null;
+    if (safeLat < -90 || safeLat > 90 || safeLon < -180 || safeLon > 180) return null;
+
+    if (provider === 'apple_maps') {
+        return `https://maps.apple.com/?daddr=${safeLat},${safeLon}`;
+    }
+    return `https://maps.google.com/?daddr=${safeLat},${safeLon}`;
+}
+
+/**
  * Formats a clean, standard live share message text matching iOS & Android formats.
  *
  * @param username Optional username of the rider
