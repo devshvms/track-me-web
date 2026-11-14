@@ -1659,9 +1659,18 @@
                     return;
                 }
                 isFetchInProgress = true;
+                const pollStartMs = Date.now();
                 try {
                     const response = await fetch(`/api/track/${sessionId}/location`);
+                    const pollLatencyMs = Math.max(0, Math.round(Date.now() - pollStartMs));
                     if (!response.ok) {
+                        const errCode = response.status === 404 ? 'not_found_or_expired' : (response.status === 429 ? 'rate_limited' : (response.status >= 500 ? 'server_error' : 'unknown'));
+                        if (consecutiveFetchErrors === 0) {
+                            emitTelemetry('live_share_viewer_error_logged', {
+                                error_code: errCode,
+                                status_code: response.status,
+                            });
+                        }
                         if (response.status === 404) {
                             document.getElementById('statusText').innerText = 'Session Expired';
                             document.getElementById('statusText').className = 'status offline';
@@ -1690,6 +1699,18 @@
                     if (retryBtn) {
                         retryBtn.innerText = 'Retry';
                         retryBtn.style.display = 'none';
+                    }
+
+                    // CIE-041: Sample 1% of successful polls for viewer health diagnostics ($0/mo cost mandate)
+                    if (Math.random() < 0.01) {
+                        emitTelemetry('live_share_viewer_health_sampled', {
+                            poll_latency_ms: pollLatencyMs,
+                            status_code: response.status,
+                            is_active: data.status !== 'stopped' && data.status !== 'ended',
+                            has_location: Boolean(data.lastLocation),
+                            battery_level: typeof data.lastLocation?.batteryLevel === 'number' ? Math.round(data.lastLocation.batteryLevel) : null,
+                            point_count: Array.isArray(data.path) ? data.path.length : 0,
+                        });
                     }
 
                     if (data.initialDuration) {
@@ -2039,6 +2060,16 @@
                     }
                 } catch (err) {
                     console.error('Location fetch error:', err);
+                    if (consecutiveFetchErrors === 0) {
+                        const errMsg = (err && (err.message || err.name || String(err))) || '';
+                        const errCode = (errMsg.toLowerCase().includes('syntax') || errMsg.toLowerCase().includes('json'))
+                            ? 'malformed_response'
+                            : 'offline_network';
+                        emitTelemetry('live_share_viewer_error_logged', {
+                            error_code: errCode,
+                            status_code: 0,
+                        });
+                    }
                     consecutiveFetchErrors++;
                     // Defensive UX: Do not destroy the existing rider marker or map context on transient cellular glitches.
                     // If we have previously rendered the rider, show a non-blocking "Connecting..." indicator.
