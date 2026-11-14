@@ -1224,6 +1224,100 @@ export function deserializeViewerCachePayload(jsonStr: unknown): ViewerCachePayl
     }
 }
 
+export interface SpectatorThrottleEvaluation {
+    readonly isInactive: boolean;
+    readonly isThrottled: boolean;
+    readonly pollDelayMs: number;
+    readonly shouldAnimateMap: boolean;
+    readonly noticeText: string | null;
+}
+
+/**
+ * CIE-044: Evaluates spectator idle inactivity and render throttling state across Web & Mobile.
+ *
+ * Rules:
+ * 1. If trip has ended, disable animations and return base delay with no notice.
+ * 2. If tab/app is in the background or obscured (isDocumentHidden=true):
+ *    - Throttled = true, shouldAnimateMap = false (prevent useless GPU/DOM re-paints while invisible).
+ *    - pollDelayMs = 30,000ms.
+ * 3. If spectator has not interacted for >= inactivityThresholdMs (default: 300,000ms / 5 min):
+ *    - isInactive = true, isThrottled = true.
+ *    - pollDelayMs = 15,000ms (relaxed from 5,000ms, saving 66% network/CPU).
+ *    - shouldAnimateMap = false (avoid battery-draining continuous pan/rotate animation).
+ *    - noticeText = 'Viewer idle · Updates slowed to save battery'.
+ * 4. If rider is in power-save mode or low battery (<= 15%):
+ *    - isThrottled = true, pollDelayMs = 12,000ms.
+ *    - shouldAnimateMap = true.
+ *    - noticeText = 'Power save active · Location updates every ~15s'.
+ * 5. Active foreground with recent interaction:
+ *    - isInactive = false, isThrottled = false, pollDelayMs = basePollDelayMs (5,000ms), shouldAnimateMap = true.
+ */
+export function evaluateSpectatorThrottleState(
+    isTripEnded: boolean,
+    isDocumentHidden: boolean = false,
+    lastInteractionEpochMs: number | null = null,
+    nowEpochMs: number = Date.now(),
+    riderPowerSave: boolean = false,
+    riderBatteryLevel: number | null = null,
+    basePollDelayMs: number = 5000,
+    inactivityThresholdMs: number = 300000 // 5 minutes
+): SpectatorThrottleEvaluation {
+    if (isTripEnded) {
+        return {
+            isInactive: false,
+            isThrottled: false,
+            pollDelayMs: basePollDelayMs,
+            shouldAnimateMap: false,
+            noticeText: null,
+        };
+    }
+
+    if (isDocumentHidden) {
+        return {
+            isInactive: false,
+            isThrottled: true,
+            pollDelayMs: 30000,
+            shouldAnimateMap: false,
+            noticeText: null,
+        };
+    }
+
+    const elapsed = lastInteractionEpochMs !== null && Number.isFinite(lastInteractionEpochMs)
+        ? Math.max(0, nowEpochMs - lastInteractionEpochMs)
+        : 0;
+
+    const isInactive = lastInteractionEpochMs !== null && elapsed >= inactivityThresholdMs;
+
+    if (isInactive) {
+        return {
+            isInactive: true,
+            isThrottled: true,
+            pollDelayMs: 15000,
+            shouldAnimateMap: false,
+            noticeText: 'Viewer idle · Updates slowed to save battery',
+        };
+    }
+
+    const isEffectivePowerSave = riderPowerSave || (riderBatteryLevel !== null && Number.isFinite(riderBatteryLevel) && riderBatteryLevel <= 15);
+    if (isEffectivePowerSave) {
+        return {
+            isInactive: false,
+            isThrottled: true,
+            pollDelayMs: 12000,
+            shouldAnimateMap: true,
+            noticeText: 'Power save active · Location updates every ~15s',
+        };
+    }
+
+    return {
+        isInactive: false,
+        isThrottled: false,
+        pollDelayMs: basePollDelayMs,
+        shouldAnimateMap: true,
+        noticeText: null,
+    };
+}
+
 
 
 

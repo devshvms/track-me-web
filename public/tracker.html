@@ -1315,10 +1315,59 @@
                 return false;
             }
 
+            // CIE-044: Spectator Battery Optimization & Dynamic Map Render Throttling
+            function evaluateSpectatorThrottleState(isTripEnded, isDocumentHidden, lastInteractionEpochMs, nowEpochMs, riderPowerSave, riderBatteryLevel, basePollDelayMs = 5000, inactivityThresholdMs = 300000) {
+                if (isTripEnded) {
+                    return { isInactive: false, isThrottled: false, pollDelayMs: basePollDelayMs, shouldAnimateMap: false, noticeText: null };
+                }
+                if (isDocumentHidden) {
+                    return { isInactive: false, isThrottled: true, pollDelayMs: 30000, shouldAnimateMap: false, noticeText: null };
+                }
+                const elapsed = lastInteractionEpochMs !== null && Number.isFinite(lastInteractionEpochMs)
+                    ? Math.max(0, nowEpochMs - lastInteractionEpochMs)
+                    : 0;
+                const isInactive = lastInteractionEpochMs !== null && elapsed >= inactivityThresholdMs;
+                if (isInactive) {
+                    return {
+                        isInactive: true,
+                        isThrottled: true,
+                        pollDelayMs: 15000,
+                        shouldAnimateMap: false,
+                        noticeText: 'Viewer idle · Updates slowed to save battery'
+                    };
+                }
+                const clampedBat = clampBatteryLevel(riderBatteryLevel);
+                const isEffectivePowerSave = Boolean(riderPowerSave) || (clampedBat !== null && clampedBat <= 15);
+                if (isEffectivePowerSave) {
+                    return {
+                        isInactive: false,
+                        isThrottled: true,
+                        pollDelayMs: 12000,
+                        shouldAnimateMap: true,
+                        noticeText: 'Power save active · Location updates every ~15s'
+                    };
+                }
+                return {
+                    isInactive: false,
+                    isThrottled: false,
+                    pollDelayMs: basePollDelayMs,
+                    shouldAnimateMap: true,
+                    noticeText: null
+                };
+            }
+
             function computeViewerAdaptivePollMs(isPowerSaveMode, batteryLevel, basePollMs = 5000) {
-                const clampedBat = clampBatteryLevel(batteryLevel);
-                const isEffectivePowerSave = Boolean(isPowerSaveMode) || (clampedBat !== null && clampedBat <= 15);
-                return isEffectivePowerSave ? 12000 : basePollMs;
+                const throttle = evaluateSpectatorThrottleState(
+                    isTripEnded,
+                    document.hidden,
+                    window.lastUserInteractionEpochMs,
+                    Date.now(),
+                    Boolean(isPowerSaveMode),
+                    batteryLevel,
+                    basePollMs,
+                    300000
+                );
+                return throttle.pollDelayMs;
             }
 
             function formatPowerSaveCadenceNotice(isPowerSaveMode, batteryLevel) {
@@ -1884,10 +1933,20 @@
                                 isStopped,
                             });
                         } else if (!isStopped && window.isFollowingRider) {
-                            // CIE-032 / CIE-036: Throttle camera panning when rider is stationary or within GPS jitter radius (< 3m)
+                            // CIE-032 / CIE-036 / CIE-044: Throttle camera panning when rider is stationary or spectator is idle
+                            const throttle = evaluateSpectatorThrottleState(
+                                isTripEnded,
+                                document.hidden,
+                                window.lastUserInteractionEpochMs,
+                                Date.now(),
+                                Boolean(powerSaveMode),
+                                batteryLevel,
+                                5000,
+                                300000
+                            );
                             const distMeters = window.lastRiderPos ? map.distance(window.lastRiderPos, pos) : 999;
                             if (distMeters >= 3.0) {
-                                map.panTo(pos, { animate: !isReducedMotionPreferred() });
+                                map.panTo(pos, { animate: !isReducedMotionPreferred() && throttle.shouldAnimateMap });
                             }
                         }
 
@@ -2243,6 +2302,13 @@
                     provider: isAppleDevice ? 'apple_maps' : 'google_maps'
                 });
                 window.open(navUrl, '_blank', 'noopener,noreferrer');
+            });
+
+            // CIE-044: Track spectator interaction across touch, pointer, and keyboard events
+            ['pointerdown', 'keydown', 'wheel', 'touchstart'].forEach((evt) => {
+                window.addEventListener(evt, () => {
+                    window.lastUserInteractionEpochMs = Date.now();
+                }, { passive: true });
             });
 
             // CIE-040: Auto-resume follow mode after 20s inactivity during an active trip
