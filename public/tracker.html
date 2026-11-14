@@ -1284,8 +1284,9 @@
                 }
             };
 
-            // CIE-003: Adaptive jittered backoff & concurrency controls to prevent Redis stampedes ($0/mo cost mandate)
+            // CIE-003 / CIE-046: Adaptive jittered backoff & concurrency controls to prevent Redis stampedes ($0/mo cost mandate)
             let consecutiveFetchErrors = 0;
+            let consecutivePingErrors = 0;
             let isFetchInProgress = false;
             let fetchTimeoutId = null;
             let pingTimeoutId = null;
@@ -1306,6 +1307,7 @@
                 if (staleBtn) staleBtn.innerText = 'Refreshing...';
                 if (retryBtn) retryBtn.innerText = 'Retrying...';
                 consecutiveFetchErrors = 0;
+                consecutivePingErrors = 0;
                 stopPollingTimers();
                 fetchLocation();
                 pingPresence();
@@ -1314,6 +1316,7 @@
             window.addEventListener('online', function() {
                 isViewerOnline = true;
                 consecutiveFetchErrors = 0;
+                consecutivePingErrors = 0;
                 const statusEl = document.getElementById('statusText');
                 if (statusEl && statusEl.innerText.includes('Offline')) {
                     statusEl.innerText = 'Reconnecting...';
@@ -1357,13 +1360,31 @@
                 return TrackCore.computeBackoffDelay(failures);
             }
 
+            function getViewerPingDelayMs() {
+                const throttle = evaluateSpectatorThrottleState(
+                    isTripEnded,
+                    document.hidden,
+                    window.lastUserInteractionEpochMs,
+                    Date.now(),
+                    false,
+                    null,
+                    5000,
+                    300000
+                );
+                return TrackCore.computeViewerPingDelay(consecutivePingErrors, {
+                    isLowDataMode: Boolean(window.isLowDataMode),
+                    isBackground: Boolean(document.hidden),
+                    isViewerIdle: Boolean(throttle && throttle.isInactive),
+                });
+            }
+
             function scheduleNextFetch(delayMs) {
                 if (isTripEnded) return;
                 if (fetchTimeoutId) clearTimeout(fetchTimeoutId);
                 fetchTimeoutId = setTimeout(fetchLocation, delayMs);
             }
 
-            function scheduleNextPing(delayMs = 15000) {
+            function scheduleNextPing(delayMs = getViewerPingDelayMs()) {
                 if (isTripEnded) return;
                 if (pingTimeoutId) clearTimeout(pingTimeoutId);
                 pingTimeoutId = setTimeout(pingPresence, delayMs);
@@ -1377,10 +1398,11 @@
             async function pingPresence() {
                 if (isTripEnded) return;
                 // Suppress presence pinging if viewer is offline or connectivity is unstable ($0/mo cost mandate)
-                if (!isViewerOnline || consecutiveFetchErrors >= 2) {
-                    scheduleNextPing(15000);
+                if (TrackCore.shouldSkipPresencePing(consecutiveFetchErrors, isViewerOnline)) {
+                    scheduleNextPing(getViewerPingDelayMs());
                     return;
                 }
+                let terminalPingState = false;
                 try {
                     const response = await fetch(`/api/track/${sessionId}/ping`, {
                         method: 'POST',
@@ -1388,8 +1410,12 @@
                         body: JSON.stringify({ viewerId })
                     });
 
-                    if (!response.ok) {
+                    if (response.ok) {
+                        consecutivePingErrors = 0;
+                    } else {
                         if (response.status === 404) {
+                            terminalPingState = true;
+                            isTripEnded = true;
                             document.getElementById('statusText').innerText = 'Session Expired';
                             document.getElementById('statusText').className = 'status offline';
                             const timeStr = window.lastKnownDuration ? `Location was shared for ${window.lastKnownDuration} minutes and time elapsed.` : 'Location sharing time elapsed or session ended.';
@@ -1399,6 +1425,7 @@
                             return;
                         }
                         if (response.status === 429) {
+                            terminalPingState = true;
                             document.getElementById('statusText').innerText = 'Session Full';
                             document.getElementById('statusText').className = 'status offline';
                             document.getElementById('detailsText').innerText = 'Maximum number of viewers reached. Try again later.';
@@ -1406,11 +1433,15 @@
                             revealGetApp(true);
                             return;
                         }
+                        consecutivePingErrors++;
                     }
                 } catch (err) {
+                    consecutivePingErrors++;
                     console.error('Ping failed:', err);
                 } finally {
-                    scheduleNextPing(15000);
+                    if (!isTripEnded && !terminalPingState) {
+                        scheduleNextPing(getViewerPingDelayMs());
+                    }
                 }
             }
 
@@ -2100,10 +2131,16 @@
                     });
                     if (window.isLowDataMode) {
                         announceA11y('Low data mode enabled. Updates slowed to 30 seconds.');
+                        if (!isTripEnded) {
+                            scheduleNextPing(getViewerPingDelayMs());
+                        }
                     } else {
                         announceA11y('Low data mode disabled. Regular updates restored.');
-                        if (!isTripEnded && !isFetchInProgress) {
-                            fetchLocation();
+                        if (!isTripEnded) {
+                            scheduleNextPing(getViewerPingDelayMs());
+                            if (!isFetchInProgress) {
+                                fetchLocation();
+                            }
                         }
                     }
                 });
@@ -2187,6 +2224,7 @@
                         isViewerOnline = navigator.onLine;
                     }
                     consecutiveFetchErrors = 0;
+                    consecutivePingErrors = 0;
                     isFetchInProgress = false;
                     stopPollingTimers();
                     const statusEl = document.getElementById('statusText');
