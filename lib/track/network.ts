@@ -1045,6 +1045,165 @@ export function buildViewerHealthTelemetryPayload(params: {
     };
 }
 
+/**
+ * CIE-042: Live Share Viewer Reconnection State Memory & Seamless Resynchronization Parity.
+ */
+export interface ViewerCachePayload {
+    readonly sessionId: string;
+    readonly username?: string;
+    readonly status: string;
+    readonly lastLocation: {
+        readonly lat: number;
+        readonly lng: number;
+        readonly speed?: number | null;
+        readonly heading?: number | null;
+        readonly batteryLevel?: number | null;
+        readonly timestamp?: number | string | null;
+        readonly powerSaveMode?: boolean;
+    } | null;
+    readonly path: Array<[number, number]>;
+    readonly cachedAtEpochMs: number;
+}
+
+export interface ReconnectionResyncEvaluation {
+    readonly shouldFetchImmediately: boolean;
+    readonly shouldUseCachedState: boolean;
+    readonly resetConsecutiveErrors: boolean;
+    readonly statusMessage: string | null;
+}
+
+/**
+ * Evaluates whether map viewport, breadcrumb route, and marker should be preserved during network dropouts.
+ * Prevents disruptive map resets or clearing when entering offline dead zones.
+ */
+export function shouldPreserveViewerState(
+    hasRenderedLocation: boolean,
+    isOffline: boolean
+): boolean {
+    return hasRenderedLocation;
+}
+
+/**
+ * Evaluates offline-to-online reconnection resynchronization logic.
+ */
+export function evaluateReconnectionResync(params: {
+    isOnline: boolean;
+    wasOffline: boolean;
+    hasCachedSnapshot: boolean;
+    isTripEnded: boolean;
+    isFetchInProgress?: boolean;
+}): ReconnectionResyncEvaluation {
+    if (params.isTripEnded) {
+        return {
+            shouldFetchImmediately: false,
+            shouldUseCachedState: params.hasCachedSnapshot,
+            resetConsecutiveErrors: false,
+            statusMessage: null,
+        };
+    }
+
+    if (!params.isOnline) {
+        return {
+            shouldFetchImmediately: false,
+            shouldUseCachedState: params.hasCachedSnapshot,
+            resetConsecutiveErrors: false,
+            statusMessage: 'Viewer Offline',
+        };
+    }
+
+    if (params.isOnline && params.wasOffline) {
+        return {
+            shouldFetchImmediately: !params.isFetchInProgress,
+            shouldUseCachedState: params.hasCachedSnapshot,
+            resetConsecutiveErrors: true,
+            statusMessage: 'Reconnecting...',
+        };
+    }
+
+    return {
+        shouldFetchImmediately: false,
+        shouldUseCachedState: params.hasCachedSnapshot,
+        resetConsecutiveErrors: false,
+        statusMessage: null,
+    };
+}
+
+/**
+ * Serializes and sanitizes a viewer snapshot into a compact JSON string for safe local/session cache.
+ * Strips any sensitive tokens, clamps coordinates, and bounds path size to max 500 points.
+ */
+export function serializeViewerCachePayload(
+    snapshot: any,
+    nowEpochMs: number = Date.now()
+): string | null {
+    if (!snapshot || typeof snapshot !== 'object') return null;
+    const cleanId = typeof snapshot.sessionId === 'string'
+        ? snapshot.sessionId.trim().replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64)
+        : '';
+    if (!cleanId) return null;
+
+    let sanitizedLoc: ViewerCachePayload['lastLocation'] = null;
+    if (snapshot.lastLocation && typeof snapshot.lastLocation === 'object') {
+        const rawLat = Number(snapshot.lastLocation.lat);
+        const rawLng = Number(snapshot.lastLocation.lng !== undefined ? snapshot.lastLocation.lng : snapshot.lastLocation.lon);
+        if (Number.isFinite(rawLat) && Number.isFinite(rawLng) && rawLat >= -90 && rawLat <= 90 && rawLng >= -180 && rawLng <= 180) {
+            sanitizedLoc = {
+                lat: rawLat,
+                lng: rawLng,
+                speed: typeof snapshot.lastLocation.speed === 'number' && Number.isFinite(snapshot.lastLocation.speed) ? Math.max(0, snapshot.lastLocation.speed) : null,
+                heading: typeof snapshot.lastLocation.heading === 'number' && Number.isFinite(snapshot.lastLocation.heading) ? snapshot.lastLocation.heading : null,
+                batteryLevel: clampBatteryLevel(snapshot.lastLocation.batteryLevel),
+                timestamp: snapshot.lastLocation.timestamp || null,
+                powerSaveMode: Boolean(snapshot.lastLocation.powerSaveMode),
+            };
+        }
+    }
+
+    const rawPath = Array.isArray(snapshot.path) ? snapshot.path : [];
+    const sanitizedPath: Array<[number, number]> = [];
+    for (const pt of rawPath) {
+        if (Array.isArray(pt) && pt.length >= 2) {
+            const pLat = Number(pt[0]);
+            const pLng = Number(pt[1]);
+            if (Number.isFinite(pLat) && Number.isFinite(pLng) && pLat >= -90 && pLat <= 90 && pLng >= -180 && pLng <= 180) {
+                sanitizedPath.push([pLat, pLng]);
+            }
+        }
+    }
+    // Cap path to latest 500 points to keep storage minimal
+    const boundedPath = sanitizedPath.length > 500 ? sanitizedPath.slice(-500) : sanitizedPath;
+
+    const payload: ViewerCachePayload = {
+        sessionId: cleanId,
+        username: typeof snapshot.username === 'string' ? snapshot.username.trim().slice(0, 60) : undefined,
+        status: typeof snapshot.status === 'string' ? snapshot.status : 'active',
+        lastLocation: sanitizedLoc,
+        path: boundedPath,
+        cachedAtEpochMs: Number.isFinite(nowEpochMs) ? nowEpochMs : Date.now(),
+    };
+
+    try {
+        return JSON.stringify(payload);
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Safely parses and validates a cached viewer snapshot from JSON string.
+ */
+export function deserializeViewerCachePayload(jsonStr: unknown): ViewerCachePayload | null {
+    if (typeof jsonStr !== 'string' || !jsonStr.trim()) return null;
+    try {
+        const parsed = JSON.parse(jsonStr);
+        if (!parsed || typeof parsed !== 'object') return null;
+        if (typeof parsed.sessionId !== 'string' || !parsed.sessionId.trim()) return null;
+        return parsed as ViewerCachePayload;
+    } catch {
+        return null;
+    }
+}
+
 
 
 

@@ -1717,6 +1717,21 @@
                         window.lastKnownDuration = data.initialDuration;
                     }
 
+                    // CIE-042: Save valid snapshot to sessionStorage for seamless offline rehydration
+                    try {
+                        if (window.sessionStorage && sessionId && data && data.lastLocation) {
+                            const cachePayload = {
+                                sessionId: sessionId,
+                                username: data.username,
+                                status: data.status,
+                                lastLocation: data.lastLocation,
+                                path: Array.isArray(data.path) ? (data.path.length > 500 ? data.path.slice(-500) : data.path) : [],
+                                cachedAtEpochMs: Date.now()
+                            };
+                            sessionStorage.setItem('trackme_viewer_cache_' + sessionId, JSON.stringify(cachePayload));
+                        }
+                    } catch (_) {}
+
                     const isStopped = data.status === 'stopped' || data.status === 'ended';
 
                     if (data.lastLocation) {
@@ -2273,6 +2288,107 @@
                     }
                 }
             });
+
+            // CIE-042: Seamless offline-to-online reconnection & cache rehydration
+            function hydrateViewerFromCache() {
+                try {
+                    if (!window.sessionStorage || !sessionId || !isValidSession) return;
+                    const cachedStr = sessionStorage.getItem('trackme_viewer_cache_' + sessionId);
+                    if (!cachedStr) return;
+                    const cached = JSON.parse(cachedStr);
+                    if (!cached || cached.sessionId !== sessionId || !cached.lastLocation) return;
+
+                    const lat = Number(cached.lastLocation.lat);
+                    const lon = Number(cached.lastLocation.lng !== undefined ? cached.lastLocation.lng : cached.lastLocation.lon);
+                    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+
+                    const pos = [lat, lon];
+                    const username = cached.username || 'Anonymous';
+                    window.lastKnownUserName = cached.username || '';
+
+                    const trailPoints = Array.isArray(cached.path)
+                        ? cached.path.filter(p => Array.isArray(p) && p.length >= 2 && Number.isFinite(p[0]) && Number.isFinite(p[1]))
+                        : [];
+                    if (trailPoints.length === 0) {
+                        trailPoints.push(pos);
+                    }
+                    window.lastTrailPoints = trailPoints;
+                    window.lastRiderPos = pos;
+
+                    // Render start pin
+                    const startPos = trailPoints[0];
+                    if (!startMarker) {
+                        const startIcon = L.divIcon({
+                            className: 'start-pin-icon',
+                            html: '<div class="start-pin" title="Trip start"></div>',
+                            iconSize: [22, 22],
+                            iconAnchor: [11, 11],
+                        });
+                        startMarker = L.marker(startPos, { icon: startIcon, interactive: false }).addTo(map);
+                    }
+
+                    // Render polyline trail
+                    if (trailPoints.length >= 2) {
+                        const renderPoints = decimatePolyline(trailPoints, 3.5, 200);
+                        if (!trailCasing) {
+                            trailCasing = L.polyline(renderPoints, {
+                                color: '#0a2540',
+                                weight: 7,
+                                opacity: 0.78,
+                                lineCap: 'round',
+                                lineJoin: 'round',
+                            }).addTo(map);
+                            trailLine = L.polyline(renderPoints, {
+                                color: '#00e5ff',
+                                weight: 4,
+                                opacity: 0.95,
+                                lineCap: 'round',
+                                lineJoin: 'round',
+                            }).addTo(map);
+                        }
+                    }
+
+                    // Render marker
+                    if (!marker) {
+                        const humanIcon = L.divIcon({
+                            className: 'custom-div-icon',
+                            html: '<div class="rider-pin-root"><div class="human-marker"></div><div class="heading-cone-wrap"></div></div>',
+                            iconSize: [140, 68],
+                            iconAnchor: [70, 46]
+                        });
+                        marker = L.marker(pos, { icon: humanIcon }).addTo(map);
+                    }
+                    const markerEl = marker.getElement();
+                    if (markerEl) {
+                        const nameBadge = markerEl.querySelector('.human-marker');
+                        if (nameBadge) nameBadge.textContent = username;
+                    }
+
+                    if (isFirstLoad) {
+                        isFirstLoad = false;
+                        if (trailPoints.length >= 2) {
+                            map.fitBounds(L.latLngBounds(trailPoints), { padding: [70, 70], maxZoom: 16 });
+                        } else {
+                            map.setView(pos, 15);
+                        }
+                    }
+
+                    const statusEl = document.getElementById('statusText');
+                    if (statusEl) {
+                        statusEl.innerText = 'Updating...';
+                        statusEl.className = 'status delayed';
+                    }
+                    const userNameEl = document.getElementById('userNameText');
+                    if (userNameEl) {
+                        userNameEl.innerText = `${username}'s Live Location`;
+                    }
+                } catch (_) {}
+            }
+
+            // Restore cached snapshot immediately to eliminate blank map jump on reload or transient dead zones
+            if (sessionId && isValidSession) {
+                hydrateViewerFromCache();
+            }
 
             // Fetch immediately, then poll adaptively while tab is visible
             if (sessionId && isValidSession) {
