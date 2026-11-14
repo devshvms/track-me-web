@@ -45,6 +45,10 @@ import {
     shouldSampleViewerHealth,
     classifyViewerError,
     buildViewerHealthTelemetryPayload,
+    shouldPreserveViewerState,
+    evaluateReconnectionResync,
+    serializeViewerCachePayload,
+    deserializeViewerCachePayload,
 } from '../lib/track/network';
 
 describe('Live Viewer Network Resilience & Tile Fallback (CIE-007)', () => {
@@ -1074,6 +1078,176 @@ describe('Live Viewer Network Resilience & Tile Fallback (CIE-007)', () => {
                 assert.equal(payload.batteryLevel, null);
                 assert.equal(payload.pointCount, 0);
                 assert.equal(payload.isStale, false);
+            });
+        });
+    });
+
+    describe('Live Share Viewer Reconnection State Memory & Cache Resync (CIE-042)', () => {
+        describe('shouldPreserveViewerState', () => {
+            it('preserves map state when location was previously rendered even during offline dead zones', () => {
+                assert.equal(shouldPreserveViewerState(true, true), true);
+                assert.equal(shouldPreserveViewerState(true, false), true);
+            });
+
+            it('returns false if no location has been rendered yet', () => {
+                assert.equal(shouldPreserveViewerState(false, true), false);
+                assert.equal(shouldPreserveViewerState(false, false), false);
+            });
+        });
+
+        describe('evaluateReconnectionResync', () => {
+            it('does not trigger fetch if trip has ended', () => {
+                const res = evaluateReconnectionResync({
+                    isOnline: true,
+                    wasOffline: true,
+                    hasCachedSnapshot: true,
+                    isTripEnded: true,
+                });
+                assert.equal(res.shouldFetchImmediately, false);
+                assert.equal(res.shouldUseCachedState, true);
+                assert.equal(res.resetConsecutiveErrors, false);
+                assert.equal(res.statusMessage, null);
+            });
+
+            it('returns offline state when viewer disconnects', () => {
+                const res = evaluateReconnectionResync({
+                    isOnline: false,
+                    wasOffline: false,
+                    hasCachedSnapshot: true,
+                    isTripEnded: false,
+                });
+                assert.equal(res.shouldFetchImmediately, false);
+                assert.equal(res.shouldUseCachedState, true);
+                assert.equal(res.resetConsecutiveErrors, false);
+                assert.equal(res.statusMessage, 'Viewer Offline');
+            });
+
+            it('triggers immediate fetch and resets errors upon reconnecting after offline', () => {
+                const res = evaluateReconnectionResync({
+                    isOnline: true,
+                    wasOffline: true,
+                    hasCachedSnapshot: true,
+                    isTripEnded: false,
+                    isFetchInProgress: false,
+                });
+                assert.equal(res.shouldFetchImmediately, true);
+                assert.equal(res.shouldUseCachedState, true);
+                assert.equal(res.resetConsecutiveErrors, true);
+                assert.equal(res.statusMessage, 'Reconnecting...');
+            });
+
+            it('suppresses immediate fetch if another fetch is already in flight during reconnection', () => {
+                const res = evaluateReconnectionResync({
+                    isOnline: true,
+                    wasOffline: true,
+                    hasCachedSnapshot: true,
+                    isTripEnded: false,
+                    isFetchInProgress: true,
+                });
+                assert.equal(res.shouldFetchImmediately, false);
+                assert.equal(res.shouldUseCachedState, true);
+                assert.equal(res.resetConsecutiveErrors, true);
+                assert.equal(res.statusMessage, 'Reconnecting...');
+            });
+
+            it('maintains steady state when online without reconnection event', () => {
+                const res = evaluateReconnectionResync({
+                    isOnline: true,
+                    wasOffline: false,
+                    hasCachedSnapshot: true,
+                    isTripEnded: false,
+                });
+                assert.equal(res.shouldFetchImmediately, false);
+                assert.equal(res.shouldUseCachedState, true);
+                assert.equal(res.resetConsecutiveErrors, false);
+                assert.equal(res.statusMessage, null);
+            });
+        });
+
+        describe('serializeViewerCachePayload & deserializeViewerCachePayload', () => {
+            it('serializes and deserializes a valid viewer snapshot cleanly', () => {
+                const snapshot = {
+                    sessionId: 'session-alpha-42',
+                    username: 'Priya S.',
+                    status: 'active',
+                    lastLocation: {
+                        lat: 37.7749,
+                        lng: -122.4194,
+                        speed: 4.8,
+                        heading: 180,
+                        batteryLevel: 82,
+                        timestamp: 1700000000000,
+                        powerSaveMode: false,
+                    },
+                    path: [
+                        [37.7740, -122.4190],
+                        [37.7745, -122.4192],
+                        [37.7749, -122.4194],
+                    ],
+                };
+
+                const serialized = serializeViewerCachePayload(snapshot, 1700000005000);
+                assert.ok(typeof serialized === 'string');
+
+                const parsed = deserializeViewerCachePayload(serialized);
+                assert.ok(parsed !== null);
+                assert.equal(parsed?.sessionId, 'session-alpha-42');
+                assert.equal(parsed?.username, 'Priya S.');
+                assert.equal(parsed?.status, 'active');
+                assert.equal(parsed?.lastLocation?.lat, 37.7749);
+                assert.equal(parsed?.lastLocation?.lng, -122.4194);
+                assert.equal(parsed?.lastLocation?.batteryLevel, 82);
+                assert.equal(parsed?.path.length, 3);
+                assert.equal(parsed?.cachedAtEpochMs, 1700000005000);
+            });
+
+            it('returns null on invalid input or empty session ID', () => {
+                assert.equal(serializeViewerCachePayload(null), null);
+                assert.equal(serializeViewerCachePayload({}), null);
+                assert.equal(serializeViewerCachePayload({ sessionId: '   ' }), null);
+                assert.equal(deserializeViewerCachePayload(''), null);
+                assert.equal(deserializeViewerCachePayload('{ invalid json }'), null);
+                assert.equal(deserializeViewerCachePayload(JSON.stringify({ notSession: 'test' })), null);
+            });
+
+            it('bounds path coordinates to maximum 500 points to preserve memory/storage', () => {
+                const longPath: Array<[number, number]> = [];
+                for (let i = 0; i < 600; i++) {
+                    longPath.push([37.0 + (i * 0.0001), -122.0]);
+                }
+                const snapshot = {
+                    sessionId: 'session_long_path',
+                    status: 'active',
+                    lastLocation: { lat: 37.06, lng: -122.0 },
+                    path: longPath,
+                };
+
+                const serialized = serializeViewerCachePayload(snapshot);
+                assert.ok(serialized !== null);
+                const parsed = deserializeViewerCachePayload(serialized);
+                assert.equal(parsed?.path.length, 500);
+            });
+
+            it('sanitizes malformed latitude, longitude, and battery values', () => {
+                const snapshot = {
+                    sessionId: 'session_malformed',
+                    status: 'active',
+                    lastLocation: {
+                        lat: 1000, // Invalid latitude
+                        lng: -122.0,
+                        batteryLevel: 250, // Invalid battery
+                    },
+                    path: [
+                        [999, 999], // Invalid point
+                        [37.77, -122.41], // Valid point
+                    ],
+                };
+
+                const serialized = serializeViewerCachePayload(snapshot);
+                const parsed = deserializeViewerCachePayload(serialized);
+                assert.equal(parsed?.lastLocation, null);
+                assert.equal(parsed?.path.length, 1);
+                assert.deepEqual(parsed?.path[0], [37.77, -122.41]);
             });
         });
     });
