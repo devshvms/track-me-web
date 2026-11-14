@@ -945,5 +945,106 @@ export function shouldResumeFollowMode(
     return (nowEpochMs - lastInteractionEpochMs) >= timeoutMs;
 }
 
+/**
+ * CIE-041: Live Share Viewer Session Health Telemetry & Diagnostics Parity.
+ */
+export type ViewerErrorCode =
+    | 'not_found_or_expired'
+    | 'rate_limited'
+    | 'offline_network'
+    | 'server_error'
+    | 'malformed_response'
+    | 'unknown';
+
+export interface ViewerHealthTelemetryPayload {
+    readonly sessionId: string;
+    readonly pollLatencyMs: number;
+    readonly statusCode: number;
+    readonly isActive: boolean;
+    readonly hasLocation: boolean;
+    readonly batteryLevel: number | null;
+    readonly pointCount: number;
+    readonly isStale: boolean;
+}
+
+export function computePollLatencyMs(startTimeMs: number, endTimeMs: number): number {
+    if (!Number.isFinite(startTimeMs) || !Number.isFinite(endTimeMs)) return 0;
+    return Math.max(0, Math.round(endTimeMs - startTimeMs));
+}
+
+export function shouldSampleViewerHealth(
+    sampleRate: number = 0.01,
+    randomFn: () => number = Math.random
+): boolean {
+    const rate = Math.max(0, Math.min(1, Number.isFinite(sampleRate) ? sampleRate : 0.01));
+    return randomFn() < rate;
+}
+
+export function classifyViewerError(
+    statusCode: number | null | undefined,
+    errorMessage?: string | null
+): ViewerErrorCode {
+    if (statusCode === 404 || statusCode === 410) {
+        return 'not_found_or_expired';
+    }
+    if (statusCode === 429) {
+        return 'rate_limited';
+    }
+    if (typeof statusCode === 'number' && statusCode >= 500 && statusCode < 600) {
+        return 'server_error';
+    }
+    const msg = (errorMessage || '').toLowerCase();
+    if (
+        msg.includes('syntaxerror') ||
+        msg.includes('json') ||
+        msg.includes('unexpected token') ||
+        msg.includes('malformed')
+    ) {
+        return 'malformed_response';
+    }
+    if (
+        statusCode === 0 ||
+        msg.includes('network') ||
+        msg.includes('offline') ||
+        msg.includes('failed to fetch') ||
+        msg.includes('timeout') ||
+        msg.includes('aborterror')
+    ) {
+        return 'offline_network';
+    }
+    return 'unknown';
+}
+
+export function buildViewerHealthTelemetryPayload(params: {
+    sessionId: string;
+    pollLatencyMs: number;
+    statusCode: number;
+    isActive: boolean;
+    hasLocation: boolean;
+    batteryLevel?: number | null;
+    pointCount?: number;
+    isStale?: boolean;
+}): ViewerHealthTelemetryPayload {
+    const cleanSessionId = (params.sessionId || '').trim().replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64);
+    const latency = computePollLatencyMs(0, params.pollLatencyMs);
+    const status = Number.isFinite(params.statusCode) ? Math.round(params.statusCode) : 200;
+    const pointCount = typeof params.pointCount === 'number' && Number.isFinite(params.pointCount)
+        ? Math.max(0, Math.round(params.pointCount))
+        : 0;
+    const clampedBattery = clampBatteryLevel(params.batteryLevel);
+
+    return {
+        sessionId: cleanSessionId,
+        pollLatencyMs: latency,
+        statusCode: status,
+        isActive: !!params.isActive,
+        hasLocation: !!params.hasLocation,
+        batteryLevel: clampedBattery,
+        pointCount,
+        isStale: !!params.isStale,
+    };
+}
+
+
 
 

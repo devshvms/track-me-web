@@ -41,6 +41,10 @@ import {
     formatRecenterButtonLabel,
     formatRecenterAccessibilityLabel,
     shouldResumeFollowMode,
+    computePollLatencyMs,
+    shouldSampleViewerHealth,
+    classifyViewerError,
+    buildViewerHealthTelemetryPayload,
 } from '../lib/track/network';
 
 describe('Live Viewer Network Resilience & Tile Fallback (CIE-007)', () => {
@@ -962,6 +966,114 @@ describe('Live Viewer Network Resilience & Tile Fallback (CIE-007)', () => {
                 assert.equal(shouldResumeFollowMode(false, false, 0, 1700000000000, 20000), false);
                 assert.equal(shouldResumeFollowMode(false, false, null, 1700000000000, 20000), false);
                 assert.equal(shouldResumeFollowMode(false, false, -100, 1700000000000, 20000), false);
+            });
+        });
+
+        describe('computePollLatencyMs', () => {
+            it('computes positive round latency between start and end ms', () => {
+                assert.equal(computePollLatencyMs(1000, 1245), 245);
+                assert.equal(computePollLatencyMs(1000.2, 1245.8), 246);
+            });
+
+            it('clamps negative durations to 0', () => {
+                assert.equal(computePollLatencyMs(2000, 1000), 0);
+            });
+
+            it('handles non-finite values safely returning 0', () => {
+                assert.equal(computePollLatencyMs(NaN, 1000), 0);
+                assert.equal(computePollLatencyMs(1000, Infinity), 0);
+            });
+        });
+
+        describe('shouldSampleViewerHealth', () => {
+            it('samples at default 1% (0.01) rate', () => {
+                assert.equal(shouldSampleViewerHealth(0.01, () => 0.005), true);
+                assert.equal(shouldSampleViewerHealth(0.01, () => 0.015), false);
+            });
+
+            it('respects custom rates and clamps bounds', () => {
+                assert.equal(shouldSampleViewerHealth(-0.5, () => 0.0001), false);
+                assert.equal(shouldSampleViewerHealth(1.5, () => 0.999), true);
+            });
+        });
+
+        describe('classifyViewerError', () => {
+            it('classifies 404 and 410 as not_found_or_expired', () => {
+                assert.equal(classifyViewerError(404), 'not_found_or_expired');
+                assert.equal(classifyViewerError(410), 'not_found_or_expired');
+            });
+
+            it('classifies 429 as rate_limited', () => {
+                assert.equal(classifyViewerError(429), 'rate_limited');
+            });
+
+            it('classifies 5xx as server_error', () => {
+                assert.equal(classifyViewerError(500), 'server_error');
+                assert.equal(classifyViewerError(502), 'server_error');
+                assert.equal(classifyViewerError(503), 'server_error');
+            });
+
+            it('classifies malformed or JSON syntax errors as malformed_response', () => {
+                assert.equal(classifyViewerError(null, 'SyntaxError: Unexpected token < in JSON at position 0'), 'malformed_response');
+                assert.equal(classifyViewerError(200, 'Malformed response payload'), 'malformed_response');
+            });
+
+            it('classifies network, offline, or status 0 as offline_network', () => {
+                assert.equal(classifyViewerError(0), 'offline_network');
+                assert.equal(classifyViewerError(null, 'TypeError: Failed to fetch'), 'offline_network');
+                assert.equal(classifyViewerError(null, 'AbortError: The operation was aborted'), 'offline_network');
+                assert.equal(classifyViewerError(null, 'Network request timed out'), 'offline_network');
+            });
+
+            it('classifies unhandled errors as unknown', () => {
+                assert.equal(classifyViewerError(400), 'unknown');
+                assert.equal(classifyViewerError(null, 'Something unexpected happened'), 'unknown');
+            });
+        });
+
+        describe('buildViewerHealthTelemetryPayload', () => {
+            it('builds sanitized, privacy-safe telemetry payload without raw coordinates or PII', () => {
+                const payload = buildViewerHealthTelemetryPayload({
+                    sessionId: 'session_xyz-123!@#',
+                    pollLatencyMs: 184,
+                    statusCode: 200,
+                    isActive: true,
+                    hasLocation: true,
+                    batteryLevel: 88,
+                    pointCount: 12,
+                    isStale: false,
+                });
+
+                assert.equal(payload.sessionId, 'session_xyz-123');
+                assert.equal(payload.pollLatencyMs, 184);
+                assert.equal(payload.statusCode, 200);
+                assert.equal(payload.isActive, true);
+                assert.equal(payload.hasLocation, true);
+                assert.equal(payload.batteryLevel, 88);
+                assert.equal(payload.pointCount, 12);
+                assert.equal(payload.isStale, false);
+
+                // Zero GPS coordinates or tokens in payload
+                assert.equal((payload as any).lat, undefined);
+                assert.equal((payload as any).lng, undefined);
+                assert.equal((payload as any).token, undefined);
+            });
+
+            it('clamps battery levels and missing values gracefully', () => {
+                const payload = buildViewerHealthTelemetryPayload({
+                    sessionId: 'sess_1',
+                    pollLatencyMs: -50,
+                    statusCode: 500,
+                    isActive: false,
+                    hasLocation: false,
+                    batteryLevel: 150,
+                    pointCount: -4,
+                });
+
+                assert.equal(payload.pollLatencyMs, 0);
+                assert.equal(payload.batteryLevel, null);
+                assert.equal(payload.pointCount, 0);
+                assert.equal(payload.isStale, false);
             });
         });
     });
