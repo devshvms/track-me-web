@@ -22,7 +22,12 @@ function extractInlineTrackerScript(html: string): string {
   return inline[2];
 }
 
-function runTrackerInSandbox(options: { pathname: string; search: string; userAgent?: string }) {
+function runTrackerInSandbox(options: {
+  pathname: string;
+  search: string;
+  userAgent?: string;
+  share?: (payload: { title?: string; text?: string; url?: string }) => Promise<void>;
+}) {
   const html = fs.readFileSync(path.resolve(__dirname, '../public/tracker.html'), 'utf8');
   const scriptSrc = extractInlineTrackerScript(html);
 
@@ -108,6 +113,8 @@ function runTrackerInSandbox(options: { pathname: string; search: string; userAg
     parseFloat,
     setTimeout: () => 1,
     clearTimeout: () => {},
+    setInterval: () => 1,
+    clearInterval: () => {},
     console,
     window: sandboxWindow,
     navigator: {
@@ -116,6 +123,7 @@ function runTrackerInSandbox(options: { pathname: string; search: string; userAg
       maxTouchPoints: 5,
       languages: ['en-US'],
       language: 'en-US',
+      ...(options.share ? { share: options.share } : {}),
     },
     localStorage: {
       getItem: () => null,
@@ -132,6 +140,8 @@ function runTrackerInSandbox(options: { pathname: string; search: string; userAg
       map() {
         return {
           setView() { return this; },
+          on() { return this; },
+          getZoom() { return 15; },
           removeLayer() {},
           invalidateSize() {},
         };
@@ -243,6 +253,46 @@ test('tracker.html inline script renders /live/watcher?code=... with valid iOS d
     search: '?inviterUid=static-uid-1&inviterName=Alice',
   });
   assert.strictEqual(legacy.elements.get('statusText').innerText, 'Invite Outdated');
+});
+
+test('shareBtn passes separate caption and url to navigator.share without duplicating the URL', async () => {
+  const sharedPayloads: Array<{ title?: string; text?: string; url?: string }> = [];
+  const res = runTrackerInSandbox({
+    pathname: '/live/604a0cf8-2a66-47b6-addf-0714789fda2d',
+    search: '?name=Black%20White',
+    share: async (payload) => {
+      sharedPayloads.push(payload);
+    },
+  });
+  const shareListeners = res.elements.get('shareBtn')?.listeners?.click || [];
+  assert.ok(shareListeners.length >= 1, 'shareBtn should register a click handler');
+  await shareListeners[0]();
+  assert.strictEqual(sharedPayloads.length, 1);
+  const payload = sharedPayloads[0];
+  assert.strictEqual(
+    payload.url,
+    'https://trackme.shvms.in/live/604a0cf8-2a66-47b6-addf-0714789fda2d?name=Black%20White',
+  );
+  assert.strictEqual(payload.text, "Track Black White's live ride on TrackMe");
+  assert.ok(!payload.text?.includes('https://'), 'share caption must not embed a second URL alongside navigator.share url');
+});
+
+test('dismissing #getApp hides banner and tapping #openAppBtn on desktop reveals it again', () => {
+  const desktop = runTrackerInSandbox({
+    pathname: '/live/604a0cf8-2a66-47b6-addf-0714789fda2d',
+    search: '?name=Black%20White',
+    userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/537.36',
+  });
+  const closeListeners = desktop.elements.get('getAppClose')?.listeners?.click || [];
+  const openAppListeners = desktop.elements.get('openAppBtn')?.listeners?.click || [];
+  assert.ok(closeListeners.length >= 1, 'getAppClose should register a click handler');
+  assert.ok(openAppListeners.length >= 1, 'openAppBtn should register a click handler');
+
+  closeListeners[0]();
+  assert.strictEqual(desktop.elements.get('getApp').hidden, true);
+
+  openAppListeners[0]({ preventDefault() {} });
+  assert.strictEqual(desktop.elements.get('getApp').hidden, false);
 });
 
 async function main() {

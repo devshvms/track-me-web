@@ -18,27 +18,87 @@
     <title id="pageTitle">TrackMe Live Ride Tracking · Real-Time GPS Sharing</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
-        #map { height: 100vh; width: 100vw; }
-        /* TASK-294. The map keeps the whole viewport until a rider is actually on screen. Once the
-           session renders we give back a strip so the whole band — the line AND both badges — is
-           visible at the bottom edge rather than hidden below the fold. Visible, but never over the
-           map. The strip is taller on narrow screens because the line wraps to two there; a badge
-           the viewer has to scroll to find is a badge that does not exist. Leaflet needs
-           invalidateSize() after the container resizes, which revealGetApp() calls. */
-        :root { --getapp-strip: 122px; }
-        @media (max-width: 520px) { :root { --getapp-strip: 152px; } }
-        body.has-getapp #map { height: calc(100vh - var(--getapp-strip)); }
-        #getApp {
-            box-sizing: border-box; width: 100vw; background: #0b1320; color: #e8eef6;
-            padding: 18px 20px 26px; text-align: center;
+        :root {
+            --getapp-strip: 96px;
+            --hud-bg: rgba(255, 255, 255, 0.96);
+            --hud-surface-subtle: #f1f5f9;
+            --hud-text: #0f172a;
+            --hud-muted: #475569;
+            --hud-border: rgba(15, 23, 42, 0.12);
+            --hud-shadow: 0 6px 20px rgba(15, 23, 42, 0.16);
+            --hud-chip-bg: #f1f5f9;
+            --hud-chip-border: #cbd5e1;
+            --hud-chip-text: #0f172a;
+            --ctrl-bg: rgba(11, 19, 32, 0.92);
+            --ctrl-text: #f1f5f9;
+            --ctrl-border: rgba(255, 255, 255, 0.16);
         }
-        #getApp p { margin: 0 0 14px; font-size: 0.95em; line-height: 1.45; color: #b8c6d9; }
-        #getApp .getapp-badges { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+        html, body {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            overflow: hidden;
+        }
+        body {
+            display: flex;
+            flex-direction: column;
+            height: 100dvh;
+            width: 100vw;
+        }
+        #map {
+            position: relative;
+            flex: 1 1 auto;
+            min-height: 200px;
+            width: 100%;
+        }
+        /* TASK-294. Map flexes dynamically above #getApp so store badges never clip even at large OS font scales. */
+        #getApp {
+            position: relative;
+            flex: 0 0 auto;
+            box-sizing: border-box;
+            width: 100%;
+            background: #0b1320;
+            color: #e8eef6;
+            padding: 10px 36px 12px 16px;
+            text-align: center;
+            border-top: 1px solid rgba(255, 255, 255, 0.12);
+        }
+        #getApp[hidden] { display: none; }
+        #getAppClose {
+            position: absolute;
+            top: 6px;
+            right: 8px;
+            width: 32px;
+            height: 32px;
+            border: none;
+            background: transparent;
+            color: #94a3b8;
+            border-radius: 999px;
+            font-size: 20px;
+            line-height: 1;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+        }
+        #getAppClose:hover { background: rgba(255, 255, 255, 0.1); color: #f8fafc; }
+        #getApp p {
+            margin: 0 0 8px;
+            font-size: 0.85em;
+            line-height: 1.35;
+            color: #cbd5e1;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+        #getApp .getapp-badges { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
         #getApp a {
-            display: inline-flex; align-items: center; gap: 8px; text-decoration: none;
+            display: inline-flex; align-items: center; gap: 7px; text-decoration: none;
             background: #16202f; border: 1px solid #26364d; border-radius: 8px;
-            padding: 10px 14px; color: #e8eef6; font-size: 0.9em; font-weight: 600;
+            padding: 8px 12px; color: #e8eef6; font-size: 0.86em; font-weight: 600;
         }
         #getApp a:hover, #getApp a:focus-visible { background: #1d2a3d; border-color: #3a5170; }
         body.is-ios #getApp a[data-download-platform="ios"],
@@ -47,62 +107,161 @@
             color: #0b1320;
             font-weight: 700;
             border-color: #00e5ff;
-            box-shadow: 0 0 12px rgba(0, 229, 255, 0.45);
+            box-shadow: 0 0 10px rgba(0, 229, 255, 0.35);
             order: -1;
         }
         body.is-ios #getApp a[data-download-platform="ios"] img,
         body.is-android #getApp a[data-download-platform="android"] img {
             filter: brightness(0.2);
         }
-        /* Two badges must share one row on a phone. Stacked, the second falls past the fold and a
-           badge below the fold is a badge that does not exist. Short labels, not shrunk text. */
         #getApp .lbl-short { display: none; }
         @media (max-width: 520px) {
-            #getApp { padding: 14px 12px 20px; }
-            #getApp p { font-size: 0.9em; margin-bottom: 12px; }
-            #getApp a { padding: 9px 12px; font-size: 0.85em; }
+            #getApp { padding: 9px 32px 11px 12px; }
+            #getApp p { font-size: 0.8em; margin-bottom: 7px; }
+            #getApp a { padding: 7px 11px; font-size: 0.82em; }
             #getApp .lbl-long { display: none; }
             #getApp .lbl-short { display: inline; }
         }
         #overlay {
             position: absolute;
-            top: 16px;
+            top: 10px;
             left: 50%;
             transform: translateX(-50%);
-            background: rgba(255, 255, 255, 0.96);
-            padding: 10px 18px;
-            border-radius: 12px;
-            box-shadow: 0 4px 14px rgba(0,0,0,0.16);
+            width: min(400px, calc(100vw - 24px));
+            max-height: min(48%, 330px);
+            overflow-y: auto;
+            box-sizing: border-box;
+            background: var(--hud-bg);
+            color: var(--hud-text);
+            border: 1px solid var(--hud-border);
+            padding: 10px 14px;
+            border-radius: 14px;
+            box-shadow: var(--hud-shadow);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
             z-index: 1000;
-            text-align: center;
-            max-width: calc(100vw - 32px);
+            text-align: left;
+        }
+        #overlay.is-collapsed {
+            width: auto;
+            min-width: min(260px, calc(100vw - 24px));
+            max-width: calc(100vw - 24px);
+            padding: 7px 12px;
+            border-radius: 999px;
+            overflow: visible;
+        }
+        .overlay-header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 8px;
+        }
+        #overlay.is-collapsed .overlay-header {
+            align-items: center;
+        }
+        .overlay-header-main {
+            flex: 1 1 auto;
+            min-width: 0;
+        }
+        #overlay.is-collapsed .overlay-header-main {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .overlay-header-actions {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            flex-shrink: 0;
+        }
+        .overlay-icon-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--hud-chip-bg);
+            color: var(--hud-chip-text);
+            border: 1px solid var(--hud-chip-border);
+            border-radius: 999px;
+            min-height: 30px;
+            min-width: 30px;
+            padding: 4px 10px;
+            font-size: 0.78em;
+            font-weight: 700;
+            cursor: pointer;
+            line-height: 1;
+        }
+        .overlay-icon-btn.icon-only {
+            padding: 0;
+            width: 30px;
+            height: 30px;
+        }
+        .overlay-icon-btn:hover, .overlay-icon-btn:focus-visible {
+            filter: brightness(0.95);
+        }
+        #overlay.is-collapsed #overlayBody {
+            display: none;
+        }
+        #overlayToggleBtn svg {
+            transition: transform 0.2s ease;
+        }
+        #overlay.is-collapsed #overlayToggleBtn svg {
+            transform: rotate(180deg);
         }
         .status-row {
             display: inline-flex;
             align-items: center;
-            justify-content: center;
-            gap: 8px;
+            gap: 6px;
             flex-wrap: wrap;
         }
-        .status { font-weight: bold; }
-        .active { color: green; }
-        .offline { color: red; }
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #22c55e;
+            flex-shrink: 0;
+        }
+        .status.offline ~ .status-dot,
+        .status-row:has(.status.offline) .status-dot { background: #ef4444; }
+        .status-row:has(.status.delayed) .status-dot { background: #f59e0b; }
+        .status { font-weight: 700; font-size: 0.84em; }
+        .active { color: #16a34a; }
+        .offline { color: #dc2626; }
         .status.delayed { color: #d97706; }
-        .user-name { font-size: 1.05em; font-weight: bold; margin-top: 4px; color: #111827; }
+        .user-name {
+            font-size: 1em;
+            font-weight: 700;
+            margin-top: 2px;
+            color: var(--hud-text);
+            line-height: 1.25;
+            word-break: break-word;
+        }
+        #overlay.is-collapsed .user-name {
+            margin-top: 0;
+            font-size: 0.88em;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 44vw;
+        }
+        .overlay-badges {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 6px;
+        }
+        .overlay-badges:empty { display: none; }
         .destination-badge {
             display: inline-flex;
             align-items: center;
-            justify-content: center;
             gap: 5px;
             background: #e0f2fe;
             color: #0369a1;
             border: 1px solid #7dd3fc;
             border-radius: 999px;
             padding: 3px 10px;
-            font-size: 0.82em;
+            font-size: 0.78em;
             font-weight: 600;
-            margin-top: 5px;
-            max-width: 90%;
+            max-width: 100%;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
@@ -130,36 +289,85 @@
             color: #b45309;
             border-color: #fcd34d;
         }
-        .details { font-size: 0.88em; color: #4b5563; margin-top: 4px; }
-        .power-save-badge { display: inline-flex; align-items: center; justify-content: center; gap: 4px; background: #fef3c7; color: #92400e; border: 1px solid #f59e0b; padding: 4px 10px; border-radius: 6px; font-size: 0.82em; font-weight: bold; margin-top: 8px; }
-        .power-save-banner { margin-top: 6px; padding: 6px 10px; background: #fffbeb; border: 1px solid #fde68a; border-radius: 6px; color: #78350f; font-size: 0.8em; line-height: 1.35; max-width: 320px; text-align: left; }
+        .details {
+            font-size: 0.84em;
+            color: var(--hud-muted);
+            margin-top: 8px;
+            line-height: 1.4;
+        }
+        .telemetry-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 6px 10px;
+            margin-top: 8px;
+            padding: 8px 10px;
+            background: var(--hud-surface-subtle);
+            border: 1px solid var(--hud-border);
+            border-radius: 10px;
+        }
+        .telemetry-cell {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            min-width: 0;
+            font-size: 0.84em;
+            color: var(--hud-text);
+            font-weight: 600;
+        }
+        .telemetry-cell svg {
+            width: 14px;
+            height: 14px;
+            flex-shrink: 0;
+            color: #0284c7;
+        }
+        .telemetry-cell.is-warn,
+        .telemetry-cell.is-warn svg {
+            color: #dc2626;
+        }
+        .telemetry-val {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .telemetry-meta {
+            grid-column: 1 / -1;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            font-size: 0.78em;
+            color: var(--hud-muted);
+            font-weight: 500;
+            border-top: 1px solid var(--hud-border);
+            padding-top: 5px;
+            margin-top: 1px;
+        }
+        .power-save-badge { display: inline-flex; align-items: center; gap: 5px; background: #fef3c7; color: #92400e; border: 1px solid #f59e0b; padding: 4px 9px; border-radius: 8px; font-size: 0.78em; font-weight: 700; margin-top: 8px; }
+        .power-save-banner { margin-top: 5px; padding: 6px 10px; background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; color: #78350f; font-size: 0.78em; line-height: 1.35; text-align: left; }
         .stale-signal-banner {
             margin-top: 8px;
-            padding: 6px 12px;
+            padding: 6px 10px;
             background: #fef2f2;
             border: 1px solid #fecaca;
             border-radius: 8px;
             color: #991b1b;
-            font-size: 0.82em;
-            display: inline-flex;
+            font-size: 0.78em;
+            display: flex;
             align-items: center;
             justify-content: space-between;
-            gap: 10px;
-            max-width: 340px;
+            gap: 8px;
         }
         .low-battery-banner {
             margin-top: 8px;
-            padding: 6px 12px;
+            padding: 6px 10px;
             background: #fff1f2;
             border: 1px solid #fecdd3;
             border-radius: 8px;
             color: #9f1239;
-            font-size: 0.82em;
-            display: inline-flex;
+            font-size: 0.78em;
+            display: flex;
             align-items: center;
-            justify-content: center;
             gap: 6px;
-            max-width: 340px;
             font-weight: 500;
         }
         .stale-refresh-btn, .retry-btn {
@@ -167,7 +375,7 @@
             color: #991b1b;
             border: 1px solid #fca5a5;
             border-radius: 999px;
-            padding: 3px 10px;
+            padding: 3px 9px;
             font-size: 0.8em;
             font-weight: 700;
             cursor: pointer;
@@ -193,20 +401,25 @@
             margin-top: 8px;
             display: flex;
             align-items: center;
-            justify-content: center;
+            justify-content: flex-start;
             gap: 8px;
             flex-wrap: wrap;
+        }
+        .open-app-row:empty,
+        body.has-smart-banner:not(.is-watcher-invite) .open-app-row {
+            display: none;
         }
         .open-app-btn {
             display: inline-flex;
             align-items: center;
+            justify-content: center;
             gap: 6px;
             background: #0a2540;
             color: #00e5ff;
             border: 1px solid #00e5ff;
             border-radius: 999px;
             padding: 6px 14px;
-            font-size: 0.84em;
+            font-size: 0.82em;
             font-weight: 700;
             text-decoration: none;
             cursor: pointer;
@@ -245,9 +458,12 @@
             margin-bottom: 2px;
         }
         .human-marker::before {
-            content: "👤";
+            content: "";
+            width: 14px;
+            height: 14px;
             margin-right: 5px;
-            font-size: 14px;
+            flex-shrink: 0;
+            background: no-repeat center / contain url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23007bff' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2'/%3E%3Ccircle cx='12' cy='7' r='4'/%3E%3C/svg%3E");
         }
         .start-pin {
             width: 16px;
@@ -258,43 +474,78 @@
             box-shadow: 0 2px 6px rgba(0,0,0,0.4);
         }
         .finish-pin {
-            width: 16px;
-            height: 16px;
+            width: 18px;
+            height: 18px;
             border-radius: 50%;
-            background: #ff1744;
+            background: #ef4444;
             border: 3px solid #0a2540;
             box-shadow: 0 2px 6px rgba(0,0,0,0.4);
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 9px;
-            line-height: 1;
+        }
+        .finish-pin::after {
+            content: "";
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: #ffffff;
+        }
+        .map-stage {
+            position: relative;
+            flex: 1 1 auto;
+            min-height: 200px;
+            width: 100%;
+            overflow: hidden;
+        }
+        #map {
+            height: 100%;
+            width: 100%;
+        }
+        .leaflet-top.leaflet-left {
+            top: auto;
+            bottom: 28px;
+            left: 10px;
+            z-index: 900;
+        }
+        .leaflet-control-attribution {
+            font-size: 11px !important;
+            line-height: 1.25 !important;
+            max-width: calc(100vw - 12px);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
         .map-controls {
-            position: fixed;
-            right: 14px;
-            bottom: 20px;
-            z-index: 950;
+            position: absolute;
+            right: 12px;
+            bottom: 32px;
+            z-index: 1050;
             display: flex;
             flex-direction: column;
-            gap: 8px;
-        }
-        body.has-getapp .map-controls {
-            bottom: calc(var(--getapp-strip) + 16px);
+            align-items: flex-end;
+            gap: 6px;
         }
         .map-ctrl-btn {
-            background: rgba(11, 19, 32, 0.9);
-            color: #e8eef6;
-            border: 1px solid #26364d;
+            background: var(--ctrl-bg);
+            color: var(--ctrl-text);
+            border: 1px solid var(--ctrl-border);
             border-radius: 999px;
-            padding: 8px 13px;
-            font-size: 0.8em;
+            padding: 7px 12px;
+            font-size: clamp(12px, 0.78em, 15px);
             font-weight: 600;
             cursor: pointer;
             box-shadow: 0 3px 10px rgba(0,0,0,0.28);
             display: inline-flex;
             align-items: center;
             gap: 5px;
+            line-height: 1.2;
+        }
+        .map-ctrl-btn[hidden] { display: none; }
+        .map-ctrl-btn svg {
+            width: 14px;
+            height: 14px;
+            flex-shrink: 0;
         }
         .map-ctrl-btn.active {
             border-color: #00e5ff;
@@ -335,19 +586,19 @@
             color: #34d399;
             border: 1px solid rgba(52, 211, 153, 0.45);
         }
-        /* CIE-033: Mobile Smart App Banner */
+        /* CIE-033: Mobile Smart App Banner (flex child so it never overlaps map HUD or zoom controls) */
         #smartBanner {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 56px;
+            position: relative;
+            flex: 0 0 auto;
+            width: 100%;
+            box-sizing: border-box;
+            min-height: 54px;
             background: #0f172a;
             color: #f8fafc;
             display: flex;
             align-items: center;
-            padding: 0 12px;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+            padding: 6px 12px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
             z-index: 2000;
             font-size: 13px;
         }
@@ -362,8 +613,8 @@
             margin-right: 2px;
         }
         #smartBanner .smart-banner-icon {
-            width: 38px;
-            height: 38px;
+            width: 36px;
+            height: 36px;
             border-radius: 9px;
             margin-right: 10px;
             flex-shrink: 0;
@@ -404,35 +655,44 @@
             flex-shrink: 0;
             box-shadow: 0 0 8px rgba(0, 229, 255, 0.35);
         }
-        body.has-smart-banner #overlay {
-            top: 68px;
-        }
 
         /* CIE-035: Smooth, Flash-Free Dark/Light Theme Switching */
         @media (prefers-color-scheme: dark) {
             :root {
                 color-scheme: dark;
+                --hud-bg: rgba(15, 23, 42, 0.94);
+                --hud-surface-subtle: rgba(30, 41, 59, 0.82);
+                --hud-text: #f8fafc;
+                --hud-muted: #94a3b8;
+                --hud-border: rgba(255, 255, 255, 0.14);
+                --hud-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+                --hud-chip-bg: rgba(30, 41, 59, 0.92);
+                --hud-chip-border: rgba(148, 163, 184, 0.32);
+                --hud-chip-text: #f1f5f9;
+                --ctrl-bg: rgba(15, 23, 42, 0.92);
+                --ctrl-text: #f1f5f9;
+                --ctrl-border: rgba(255, 255, 255, 0.16);
             }
             body {
                 background: #0f172a;
                 color: #f1f5f9;
             }
-            .status-card {
-                background: rgba(15, 23, 42, 0.94);
-                color: #f1f5f9;
-                border: 1px solid rgba(255, 255, 255, 0.12);
-                box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+            #overlay, .status-card {
+                background: var(--hud-bg);
+                color: var(--hud-text);
+                border: 1px solid var(--hud-border);
+                box-shadow: var(--hud-shadow);
             }
-            .user-name {
-                color: #f8fafc;
-            }
-            .details {
-                color: #94a3b8;
-            }
+            .active { color: #4ade80; }
+            .offline { color: #f87171; }
+            .status.delayed { color: #fbbf24; }
+            .telemetry-cell svg { color: #38bdf8; }
+            .telemetry-cell.is-warn,
+            .telemetry-cell.is-warn svg { color: #f87171; }
             .map-ctrl-btn {
-                background: rgba(15, 23, 42, 0.92);
-                color: #f1f5f9;
-                border: 1px solid rgba(255, 255, 255, 0.15);
+                background: var(--ctrl-bg);
+                color: var(--ctrl-text);
+                border: 1px solid var(--ctrl-border);
                 box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
             }
             .map-ctrl-btn:hover {
@@ -538,47 +798,79 @@
         </div>
         <a href="#" class="smart-banner-cta" id="smartBannerCta">OPEN</a>
     </div>
-    <div id="overlay">
-        <div class="status-row">
-            <span class="status" id="statusText">Connecting...</span>
-            <button type="button" id="connectionRetryBtn" class="retry-btn" style="display: none;" title="Retry connection" aria-label="Retry connection">Retry</button>
-        </div>
-        <div class="user-name" id="userNameText"></div>
-        <div class="destination-badge" id="destinationBadge" style="display: none;">
-            <span>🏁</span> <span id="destinationText"></span>
-        </div>
-        <div class="deadline-badge" id="deadlineBadge" style="display: none;">
-            <span id="deadlineIcon">🕒</span> <span id="deadlineText"></span>
-        </div>
-        <div class="details" id="detailsText">Waiting for location data</div>
-        <div class="open-app-row" id="openAppRow">
-            <a href="#getApp" id="openAppBtn" class="open-app-btn">Open in TrackMe App</a>
-            <button type="button" id="shareLiveSessionBtn" class="open-app-btn" style="background: rgba(0, 229, 255, 0.15); border: 1px solid rgba(0, 229, 255, 0.35); color: #00e5ff; margin-left: 6px; cursor: pointer;" aria-label="Share live ride tracking link" title="Share live ride tracking link">🔗 Share Ride</button>
-            <button type="button" id="unitToggleBtn" class="open-app-btn" style="background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.22); color: #f1f5f9; margin-left: 6px; cursor: pointer; min-width: 48px; text-align: center;" aria-label="Toggle units between metric and imperial" title="Toggle units (km/h vs mph)">km/h</button>
-        </div>
-        <div id="powerSaveContainer" style="display: none;">
-            <div class="power-save-badge">⚠️ Device in Power Saving Mode</div>
-            <div class="power-save-banner">Location updates arrive at longer intervals while Power Saving Mode is active, and live speed readings may be delayed or inaccurate.</div>
-        </div>
-        <div id="staleSignalContainer" style="display: none;">
-            <div class="stale-signal-banner">
-                <span id="staleSignalText">⚠️ Signal paused · Waiting for rider GPS</span>
-                <button type="button" id="staleRefreshBtn" class="stale-refresh-btn" title="Refresh live location">🔄 Refresh</button>
+    <div class="map-stage">
+        <div id="map"></div>
+        <div id="overlay">
+            <div class="overlay-header">
+                <div class="overlay-header-main">
+                    <div class="status-row">
+                        <span class="status-dot" aria-hidden="true"></span>
+                        <span class="status" id="statusText">Connecting...</span>
+                        <button type="button" id="connectionRetryBtn" class="retry-btn" style="display: none;" title="Retry connection" aria-label="Retry connection">Retry</button>
+                    </div>
+                    <div class="user-name" id="userNameText"></div>
+                </div>
+                <div class="overlay-header-actions">
+                    <button type="button" id="unitToggleBtn" class="overlay-icon-btn" aria-label="Toggle units between metric and imperial" title="Toggle units (km/h vs mph)">km/h</button>
+                    <button type="button" id="overlayToggleBtn" class="overlay-icon-btn icon-only" aria-label="Collapse trip details" aria-expanded="true" title="Collapse or expand details">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg>
+                    </button>
+                </div>
+            </div>
+            <div id="overlayBody">
+                <div class="overlay-badges" id="overlayBadges">
+                    <div class="destination-badge" id="destinationBadge" style="display: none;">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
+                        <span id="destinationText"></span>
+                    </div>
+                    <div class="deadline-badge" id="deadlineBadge" style="display: none;">
+                        <span id="deadlineIcon" aria-hidden="true"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></span>
+                        <span id="deadlineText"></span>
+                    </div>
+                </div>
+                <div class="details" id="detailsText">Waiting for location data</div>
+                <div class="open-app-row" id="openAppRow">
+                    <a href="#getApp" id="openAppBtn" class="open-app-btn">Open in TrackMe App</a>
+                </div>
+                <div id="powerSaveContainer" style="display: none;">
+                    <div class="power-save-badge">Device in Power Saving Mode</div>
+                    <div class="power-save-banner">Location updates arrive at longer intervals while Power Saving Mode is active, and live speed readings may be delayed or inaccurate.</div>
+                </div>
+                <div id="staleSignalContainer" style="display: none;">
+                    <div class="stale-signal-banner">
+                        <span id="staleSignalText">Signal paused · Waiting for rider GPS</span>
+                        <button type="button" id="staleRefreshBtn" class="stale-refresh-btn" title="Refresh live location">Refresh</button>
+                    </div>
+                </div>
+                <div id="lowBatteryContainer" style="display: none;">
+                    <div class="low-battery-banner">
+                        <span id="lowBatteryText">Rider battery low (&lt;15%) · Signal may pause if phone powers off</span>
+                    </div>
+                </div>
             </div>
         </div>
-        <div id="lowBatteryContainer" style="display: none;">
-            <div class="low-battery-banner">
-                <span id="lowBatteryText">🪫 Rider battery low (<15%) · Signal may pause if phone powers off</span>
-            </div>
+        <div class="map-controls" id="mapControls" hidden>
+            <button type="button" id="shareBtn" class="map-ctrl-btn" aria-label="Share live ride link">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+                <span>Share</span>
+            </button>
+            <button type="button" id="directionsBtn" class="map-ctrl-btn" aria-label="Get directions to rider" hidden>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>
+                <span>Directions</span>
+            </button>
+            <button type="button" id="lowDataBtn" class="map-ctrl-btn" aria-label="Toggle low data mode" aria-pressed="false" title="Reduce cellular data by polling every 30s">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>
+                <span>Low Data</span>
+            </button>
+            <button type="button" id="followBtn" class="map-ctrl-btn active" hidden>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8"/><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/></svg>
+                <span id="followBtnLabel">Follow</span>
+            </button>
+            <button type="button" id="fitRouteBtn" class="map-ctrl-btn" hidden>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+                <span>Fit Route</span>
+            </button>
         </div>
-    </div>
-    <div id="map"></div>
-    <div class="map-controls" id="mapControls" hidden>
-        <button type="button" id="shareBtn" class="map-ctrl-btn" aria-label="Share live ride link">🔗 Share</button>
-        <button type="button" id="directionsBtn" class="map-ctrl-btn" aria-label="Get directions to rider" hidden>🧭 Directions</button>
-        <button type="button" id="lowDataBtn" class="map-ctrl-btn" aria-label="Toggle low data mode" aria-pressed="false" title="Reduce cellular data by polling every 30s">📶 Low Data</button>
-        <button type="button" id="followBtn" class="map-ctrl-btn active" hidden>🎯 Follow</button>
-        <button type="button" id="fitRouteBtn" class="map-ctrl-btn" hidden>🗺️ Fit Route</button>
     </div>
 
     <!--
@@ -592,7 +884,8 @@
         first, and a viewer who ignores this can keep watching indefinitely.
     -->
     <section id="getApp" hidden aria-label="Get TrackMe">
-        <p id="getAppCopy">📍 Live via TrackMe — Free offline GPS speedometer & live location sharing · Zero account needed to record</p>
+        <button type="button" id="getAppClose" aria-label="Dismiss TrackMe download banner">&times;</button>
+        <p id="getAppCopy">Live via TrackMe — Free offline GPS speedometer &amp; live location sharing · Zero account needed to record</p>
         <div class="getapp-badges">
             <a href="https://play.google.com/store/apps/details?id=in.shvms.trackme&referrer=utm_source%3Dlive_share_viewer%26utm_medium%3Dweb%26utm_campaign%3Dlive_tracker"
                target="_blank" rel="noopener noreferrer" data-download-platform="android">
@@ -622,6 +915,7 @@
         const sessionId = parsedLivePath.sessionId;
         const queryParams = new URLSearchParams(window.location.search);
         const isWatcherInvite = sessionId === 'watcher';
+        document.body?.classList?.toggle?.('is-watcher-invite', isWatcherInvite);
         const isValidSession = parsedLivePath.isValid;
 
         // CIE-030: Persistent interactive unit preference resolution
@@ -819,7 +1113,7 @@
                     }, { once: true });
                 } else if (!isAndroid) {
                     event.preventDefault();
-                    revealGetApp(false);
+                    revealGetApp(false, true);
                     document.getElementById('getApp')?.scrollIntoView({ behavior: 'smooth' });
                 }
             });
@@ -974,24 +1268,45 @@
 
         // TASK-294 / TASK-342 / TASK-360. Idempotent: called from the first render and from every terminal state.
         let getAppShown = false;
+        let getAppDismissed = false;
         let isTripEnded = false;
-        function revealGetApp(ended = false) {
+        function revealGetApp(ended = false, forceShow = false) {
             if (ended) {
                 isTripEnded = true;
+                getAppDismissed = false;
                 const copyEl = document.getElementById('getAppCopy');
-                if (copyEl) copyEl.innerText = '🏁 This trip has ended. Track your own rides and share live location free with TrackMe.';
+                if (copyEl) copyEl.innerText = 'This trip has ended. Track your own rides and share live location free with TrackMe.';
+            } else if (forceShow) {
+                getAppDismissed = false;
             }
+            if (getAppDismissed && !ended) return;
+            const getAppEl = document.getElementById('getApp');
+            if (getAppEl) getAppEl.hidden = false;
+            document.body?.classList?.add('has-getapp');
+            map?.invalidateSize?.();
             if (getAppShown) return;
             getAppShown = true;
-            document.getElementById('getApp').hidden = false;
-            document.body.classList.add('has-getapp');
-            // The map container just changed height; Leaflet must be told or the tiles and the
-            // marker position go stale.
-            map.invalidateSize();
 
             // TASK-360: Banner impression telemetry
             emitTelemetry('download_cta_shown', { state: isTripEnded ? 'ended' : 'live' });
         }
+        document.getElementById('getAppClose')?.addEventListener('click', () => {
+            getAppDismissed = true;
+            const getAppEl = document.getElementById('getApp');
+            if (getAppEl) getAppEl.hidden = true;
+            document.body?.classList?.remove('has-getapp');
+            map?.invalidateSize?.();
+            emitTelemetry('download_cta_dismissed', { state: isTripEnded ? 'ended' : 'live' });
+        });
+        document.getElementById('overlayToggleBtn')?.addEventListener('click', () => {
+            const overlayEl = document.getElementById('overlay');
+            const toggleBtn = document.getElementById('overlayToggleBtn');
+            if (!overlayEl || !toggleBtn) return;
+            const collapsed = overlayEl.classList.toggle('is-collapsed');
+            toggleBtn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+            toggleBtn.setAttribute('aria-label', collapsed ? 'Expand trip details' : 'Collapse trip details');
+            toggleBtn.title = collapsed ? 'Expand trip details' : 'Collapse trip details';
+        });
         document.querySelectorAll('#getApp a[data-download-platform]').forEach((link) => {
             link.addEventListener('click', () => {
                 emitTelemetry('download_cta_clicked', {
@@ -1056,17 +1371,14 @@
             function updateDeadlineBadge(deadlineRaw, isStopped) {
                 const deadlineBadge = document.getElementById('deadlineBadge');
                 const deadlineTextEl = document.getElementById('deadlineText');
-                const deadlineIconEl = document.getElementById('deadlineIcon');
                 if (!deadlineBadge || !deadlineTextEl) return;
                 const status = formatDeadlineStatus(deadlineRaw, isStopped);
                 if (status) {
                     deadlineTextEl.textContent = status.displayText;
                     if (status.isOverdue) {
                         deadlineBadge.classList.add('overdue');
-                        if (deadlineIconEl) deadlineIconEl.textContent = '⚠️';
                     } else {
                         deadlineBadge.classList.remove('overdue');
-                        if (deadlineIconEl) deadlineIconEl.textContent = '🕒';
                     }
                     deadlineBadge.style.display = 'inline-flex';
                 } else {
@@ -1156,7 +1468,7 @@
             function showNetworkOfflineToast() {
                 const toast = document.getElementById('webToast');
                 if (!toast) return;
-                toast.textContent = '⚡ Network offline · Retrying automatically';
+                toast.textContent = 'Network offline · Retrying automatically';
                 toast.classList.remove('reconnected');
                 toast.classList.add('offline', 'show');
                 if (toastTimeout) {
@@ -1168,7 +1480,7 @@
             function showNetworkReconnectedToast() {
                 const toast = document.getElementById('webToast');
                 if (!toast) return;
-                toast.textContent = '✓ Reconnected · Updating location…';
+                toast.textContent = 'Reconnected · Updating location…';
                 toast.classList.remove('offline');
                 toast.classList.add('reconnected', 'show');
                 if (toastTimeout) clearTimeout(toastTimeout);
@@ -1236,7 +1548,7 @@
                 const feedback = successMessage || 'Link copied to clipboard!';
                 if (navigator.clipboard && window.isSecureContext) {
                     navigator.clipboard.writeText(text).then(() => {
-                        showWebToast(`📋 ${feedback}`);
+                        showWebToast(feedback);
                     }).catch(() => {
                         execCommandFallback(text, feedback);
                     });
@@ -1258,12 +1570,12 @@
                     const successful = document.execCommand('copy');
                     document.body.removeChild(textarea);
                     if (successful) {
-                        showWebToast(`📋 ${feedback}`);
+                        showWebToast(feedback);
                     } else {
-                        showWebToast('⚠️ Unable to copy link');
+                        showWebToast('Unable to copy link');
                     }
                 } catch (e) {
-                    showWebToast('⚠️ Copy failed');
+                    showWebToast('Copy failed');
                 }
             }
 
@@ -1445,6 +1757,71 @@
                 }
             }
 
+            function createTelemetrySvg(kind) {
+                const ns = 'http://www.w3.org/2000/svg';
+                const svg = document.createElementNS(ns, 'svg');
+                svg.setAttribute('viewBox', '0 0 24 24');
+                svg.setAttribute('fill', 'none');
+                svg.setAttribute('stroke', 'currentColor');
+                svg.setAttribute('stroke-width', '2');
+                svg.setAttribute('stroke-linecap', 'round');
+                svg.setAttribute('stroke-linejoin', 'round');
+                svg.setAttribute('aria-hidden', 'true');
+                const add = (tag, attrs) => {
+                    const el = document.createElementNS(ns, tag);
+                    Object.entries(attrs).forEach(([k, v]) => el.setAttribute(k, v));
+                    svg.appendChild(el);
+                };
+                if (kind === 'speed') {
+                    add('path', { d: 'M12 12l4-4' });
+                    add('path', { d: 'M3.34 19a10 10 0 1 1 17.32 0' });
+                } else if (kind === 'duration') {
+                    add('circle', { cx: '12', cy: '12', r: '9' });
+                    add('polyline', { points: '12 7 12 12 15 14' });
+                } else if (kind === 'distance') {
+                    add('path', { d: 'M3 17l6-6 4 4 8-8' });
+                    add('path', { d: 'M17 7h4v4' });
+                } else if (kind === 'battery') {
+                    add('rect', { x: '2', y: '7', width: '18', height: '10', rx: '2' });
+                    add('line', { x1: '22', y1: '11', x2: '22', y2: '13' });
+                }
+                return svg;
+            }
+
+            function renderTelemetryGrid(detailsEl, cells, metaLeft, metaRight, fallbackText) {
+                if (typeof document.createElement !== 'function' || typeof detailsEl.replaceChildren !== 'function') {
+                    detailsEl.innerText = fallbackText;
+                    return;
+                }
+                const grid = document.createElement('div');
+                grid.className = 'telemetry-grid';
+                cells.forEach(({ icon, label, value, warn }) => {
+                    const cell = document.createElement('div');
+                    cell.className = warn ? 'telemetry-cell is-warn' : 'telemetry-cell';
+                    cell.setAttribute('title', label);
+                    cell.appendChild(createTelemetrySvg(icon));
+                    const valEl = document.createElement('span');
+                    valEl.className = 'telemetry-val';
+                    valEl.textContent = value;
+                    cell.appendChild(valEl);
+                    grid.appendChild(cell);
+                });
+                if (metaLeft || metaRight) {
+                    const meta = document.createElement('div');
+                    meta.className = 'telemetry-meta';
+                    const leftSpan = document.createElement('span');
+                    leftSpan.textContent = metaLeft || '';
+                    meta.appendChild(leftSpan);
+                    if (metaRight) {
+                        const rightSpan = document.createElement('span');
+                        rightSpan.textContent = metaRight;
+                        meta.appendChild(rightSpan);
+                    }
+                    grid.appendChild(meta);
+                }
+                detailsEl.replaceChildren(grid);
+            }
+
             function renderTelemetryDetails(data) {
                 if (!data) return;
                 const detailsEl = document.getElementById('detailsText');
@@ -1465,15 +1842,17 @@
                     const isDelayed = Boolean(powerSaveMode) || timeAgo >= 45;
 
                     let batteryDisplay = 'N/A';
+                    let isBatteryWarn = false;
                     if (typeof batteryLevel === 'number' && Number.isFinite(batteryLevel) && batteryLevel >= 0 && batteryLevel <= 100) {
                         const roundedBat = Math.round(batteryLevel);
-                        batteryDisplay = roundedBat <= 15 ? `🪫 ${roundedBat}% (Low)` : `🔋 ${roundedBat}%`;
+                        isBatteryWarn = roundedBat <= 15;
+                        batteryDisplay = isBatteryWarn ? `${roundedBat}% Low` : `${roundedBat}%`;
                     }
 
                     const pts = (window.lastTrailPoints && window.lastTrailPoints.length > 0) ? window.lastTrailPoints : data.path;
                     const totalDistanceMeters = computePathDistanceMeters(pts);
                     const distanceStr = formatViewerDistance(totalDistanceMeters, useMiles);
-                    const distancePart = totalDistanceMeters > 0 ? ` | Distance: ${distanceStr}` : '';
+                    const distancePart = ` | Distance: ${distanceStr}`;
 
                     if (isStopped) {
                         const stopText = data.stopReason || data.endReason || 'The rider has ended this live trip.';
@@ -1487,9 +1866,22 @@
                         const avgSpeedStr = formatAverageSpeed(avgSpeed, useMiles);
                         const avgSpeedLabel = avgSpeedStr ? ` · Avg Speed: ${avgSpeedStr}` : '';
 
-                        detailsEl.innerText = endedTimeStr
+                        const fallbackEndedText = endedTimeStr
                             ? `${stopText} at ${endedTimeStr}${durationLabel}${distanceLabel}${avgSpeedLabel} · Final location shown`
                             : `${stopText}${durationLabel}${distanceLabel}${avgSpeedLabel} · Final location shown`;
+                        const endedCells = [];
+                        if (durationStr) endedCells.push({ icon: 'duration', label: 'Duration', value: durationStr });
+                        endedCells.push({ icon: 'distance', label: 'Distance', value: distanceStr });
+                        if (avgSpeedStr) endedCells.push({ icon: 'speed', label: 'Average speed', value: `Avg ${avgSpeedStr}` });
+                        if (batteryDisplay !== 'N/A') endedCells.push({ icon: 'battery', label: 'Battery', value: batteryDisplay, warn: isBatteryWarn });
+
+                        renderTelemetryGrid(
+                            detailsEl,
+                            endedCells,
+                            endedTimeStr ? `${stopText} · ${endedTimeStr}` : stopText,
+                            'Final location',
+                            fallbackEndedText
+                        );
 
                         if (!window.hasAnnouncedTripEnded) {
                             window.hasAnnouncedTripEnded = true;
@@ -1498,37 +1890,47 @@
                         return;
                     }
 
-                    const locTimeMs = (typeof timestamp === 'number' ? timestamp : new Date(timestamp).getTime());
                     const nowMs = Date.now();
-                    let speedDisplay = '0 km/h';
+                    const unit = useMiles ? 'mph' : 'km/h';
+                    let speedDisplay = `0 ${unit}`;
                     if (speedKmh !== null && speedKmh >= 3.0) {
                         const rawVal = useMiles ? (speedKmh * 0.621371) : speedKmh;
                         const roundedSpeed = Math.round(rawVal);
-                        const unit = useMiles ? 'mph' : 'km/h';
-                        speedDisplay = isDelayed ? `~${roundedSpeed} ${unit} ⚠️ (delayed)` : `${roundedSpeed} ${unit}`;
+                        speedDisplay = isDelayed ? `~${roundedSpeed} ${unit}` : `${roundedSpeed} ${unit}`;
                     } else if (window.lastStoppedSinceMs) {
                         const stoppedMinutes = Math.floor(Math.max(0, nowMs - window.lastStoppedSinceMs) / 60000);
                         if (stoppedMinutes >= 1) {
                             const stoppedDur = formatElapsedDuration(window.lastStoppedSinceMs, nowMs) || `${stoppedMinutes}m`;
                             speedDisplay = `Stopped · ${stoppedDur}`;
-                        } else {
-                            const unit = useMiles ? 'mph' : 'km/h';
-                            speedDisplay = `0 ${unit}`;
                         }
-                    } else {
-                        const unit = useMiles ? 'mph' : 'km/h';
-                        speedDisplay = `0 ${unit}`;
                     }
 
-                    const staleNote = isStale ? ' ⚠️ (waiting for GPS)' : '';
-                    detailsEl.innerText = `Updated: ${timeAgoStr}${staleNote} | Battery: ${batteryDisplay} | Speed: ${speedDisplay}${durationPart}${distancePart}`;
+                    const staleNote = isStale ? ' (waiting for GPS)' : (isDelayed ? ' (delayed)' : '');
+                    const fallbackLiveText = `Updated: ${timeAgoStr}${staleNote} | Battery: ${batteryDisplay} | Speed: ${speedDisplay}${durationPart}${distancePart}`;
+                    const liveCells = [
+                        { icon: 'speed', label: 'Speed', value: speedDisplay, warn: isDelayed },
+                        { icon: 'duration', label: 'Duration', value: durationStr || '0m' },
+                        { icon: 'distance', label: 'Distance', value: distanceStr },
+                        { icon: 'battery', label: 'Battery', value: batteryDisplay, warn: isBatteryWarn },
+                    ];
+                    renderTelemetryGrid(
+                        detailsEl,
+                        liveCells,
+                        `Updated ${timeAgoStr}`,
+                        isStale ? 'Waiting for GPS' : (isDelayed ? 'Delayed updates' : 'Live GPS'),
+                        fallbackLiveText
+                    );
                 } else if (isStopped) {
                     const stoppedDurationStr = formatElapsedDuration(data.startedAt, data.endedAt);
                     const stoppedDurationLabel = stoppedDurationStr ? ` · Duration: ${stoppedDurationStr}` : '';
                     const stoppedDistMeters = computePathDistanceMeters(data.path);
                     const stoppedDistStr = formatViewerDistance(stoppedDistMeters, useMiles);
                     const stoppedDistLabel = stoppedDistMeters > 0 ? ` · Distance: ${stoppedDistStr}` : '';
-                    detailsEl.innerText = `${data.stopReason || data.endReason || 'The rider has ended this live trip.'}${stoppedDurationLabel}${stoppedDistLabel}`;
+                    const stopMsg = data.stopReason || data.endReason || 'The rider has ended this live trip.';
+                    const cells = [];
+                    if (stoppedDurationStr) cells.push({ icon: 'duration', label: 'Duration', value: stoppedDurationStr });
+                    cells.push({ icon: 'distance', label: 'Distance', value: stoppedDistStr });
+                    renderTelemetryGrid(detailsEl, cells, stopMsg, null, `${stopMsg}${stoppedDurationLabel}${stoppedDistLabel}`);
                 }
             }
 
@@ -1810,11 +2212,11 @@
                         const lowBatteryContainer = document.getElementById('lowBatteryContainer');
                         const lowBatteryTextEl = document.getElementById('lowBatteryText');
                         if (clampedBat !== null) {
-                            batteryDisplay = clampedBat <= 15 ? `🪫 ${clampedBat}% (Low)` : `🔋 ${clampedBat}%`;
+                            batteryDisplay = clampedBat <= 15 ? `${clampedBat}% (Low)` : `${clampedBat}%`;
                         }
                         if (lowBatteryContainer && lowBatteryTextEl) {
                             if (isLowBattery) {
-                                lowBatteryTextEl.innerText = `🪫 Rider battery low (${clampedBat}%) · Location updates every ~15s · Signal may pause if phone powers off`;
+                                lowBatteryTextEl.innerText = `Rider battery low (${clampedBat}%) · Location updates every ~15s · Signal may pause if phone powers off`;
                                 lowBatteryContainer.style.display = 'block';
 
                                 // Deduplicated screen reader announcement (CIE-037)
@@ -1856,7 +2258,7 @@
                                 if (!finishMarker) {
                                     const finishIcon = L.divIcon({
                                         className: 'finish-pin-icon',
-                                        html: '<div class="finish-pin" title="Trip arrival point">🏁</div>',
+                                        html: '<div class="finish-pin" title="Trip arrival point"></div>',
                                         iconSize: [22, 22],
                                         iconAnchor: [11, 11],
                                     });
@@ -1889,9 +2291,9 @@
                             const staleBtn = document.getElementById('staleRefreshBtn');
                             if (staleContainer && staleText) {
                                 const mins = Math.floor(timeAgo / 60);
-                                staleText.innerText = mins >= 1 ? `⚠️ Signal paused · Waiting for rider GPS (${mins}m ago)` : '⚠️ Signal paused · Waiting for rider GPS';
+                                staleText.innerText = mins >= 1 ? `Signal paused · Waiting for rider GPS (${mins}m ago)` : 'Signal paused · Waiting for rider GPS';
                                 staleContainer.style.display = 'block';
-                                if (staleBtn) staleBtn.innerText = '🔄 Refresh';
+                                if (staleBtn) staleBtn.innerText = 'Refresh';
                             }
                         } else {
                             const staleContainer = document.getElementById('staleSignalContainer');
@@ -2019,16 +2421,25 @@
             function updateFollowButtonState() {
                 const followBtn = document.getElementById('followBtn');
                 if (!followBtn) return;
+                const followLabelEl = document.getElementById('followBtnLabel');
+                const setFollowText = (text) => {
+                    if (followLabelEl) {
+                        followLabelEl.textContent = text;
+                    } else {
+                        followBtn.textContent = text;
+                    }
+                };
                 followBtn.classList.toggle('active', Boolean(window.isFollowingRider));
                 if (window.isFollowingRider || !window.lastRiderPos) {
-                    followBtn.textContent = '🎯 Follow';
+                    setFollowText('Follow');
                     followBtn.setAttribute('aria-label', 'Follow rider');
                 } else {
                     const center = map.getCenter();
                     const distMeters = computeOffCenterDistanceMeters(center.lat, center.lng, window.lastRiderPos[0], window.lastRiderPos[1]);
-                    const label = formatRecenterButtonLabel(distMeters, false, 250, 'Follow');
-                    const a11y = formatRecenterAccessibilityLabel(distMeters, false, 250, 'Follow rider');
-                    followBtn.textContent = '🎯 ' + label;
+                    const isImperial = activeUnitSystem === 'imperial';
+                    const label = formatRecenterButtonLabel(distMeters, isImperial, 250, 'Follow');
+                    const a11y = formatRecenterAccessibilityLabel(distMeters, isImperial, 250, 'Follow rider');
+                    setFollowText(label);
                     followBtn.setAttribute('aria-label', a11y);
                 }
             }
@@ -2067,24 +2478,24 @@
 
             // CIE-043: Share ride button & native maps directions handoff
             document.getElementById('shareBtn')?.addEventListener('click', () => {
-                const username = window.lastKnownUserName;
+                const username = sanitizeRiderNameClient(window.lastKnownUserName) || sanitizeRiderNameClient(queryParams.get('name'));
                 const liveUrl = window.location.href;
-                const text = username
-                    ? `Track ${username}'s live ride on TrackMe: ${liveUrl}`
-                    : `Track my live ride on TrackMe: ${liveUrl}`;
+                const caption = username
+                    ? `Track ${username}'s live ride on TrackMe`
+                    : 'Track my live ride on TrackMe';
 
                 emitTelemetry('live_share_forward_clicked', { sessionId, surface: 'map_controls' });
 
                 if (navigator.share) {
                     navigator.share({
                         title: username ? `${username}'s Live Ride` : 'TrackMe Live Ride',
-                        text: text,
+                        text: caption,
                         url: liveUrl
                     }).catch(() => {
                         copyTextWithFallback(liveUrl, 'Live ride link copied!');
                     });
                 } else {
-                    copyTextWithFallback(liveUrl, 'Live ride link copied!');
+                    copyTextWithFallback(`${caption}: ${liveUrl}`, 'Live ride link copied!');
                 }
             });
 
@@ -2186,22 +2597,6 @@
 
             document.getElementById('staleRefreshBtn')?.addEventListener('click', () => manualRefresh('stale_banner'));
             document.getElementById('connectionRetryBtn')?.addEventListener('click', () => manualRefresh('connection_retry'));
-            document.getElementById('shareLiveSessionBtn')?.addEventListener('click', () => {
-                const user = sanitizeRiderNameClient(window.lastKnownUserName) || sanitizeRiderNameClient(queryParams.get('name'));
-                const origin = window.location.origin;
-                const shareUrl = sessionId
-                    ? `${origin}/live/${encodeURIComponent(sessionId)}${user ? `?name=${encodeURIComponent(user)}` : ''}`
-                    : window.location.href;
-                const shareText = user ? `Track ${user}'s live ride on TrackMe: ${shareUrl}` : `Track this live ride on TrackMe: ${shareUrl}`;
-                emitTelemetry('live_share_viewer_share_clicked', { sessionId });
-                if (navigator.share) {
-                    navigator.share({ title: 'TrackMe Live Ride', text: shareText, url: shareUrl }).catch(() => {
-                        copyTextWithFallback(shareUrl, 'Live ride link copied!');
-                    });
-                } else {
-                    copyTextWithFallback(shareUrl, 'Live ride link copied!');
-                }
-            });
 
             document.getElementById('unitToggleBtn')?.addEventListener('click', () => {
                 activeUnitSystem = activeUnitSystem === 'imperial' ? 'metric' : 'imperial';
@@ -2214,6 +2609,7 @@
                 if (window.lastReceivedSnapshot) {
                     renderTelemetryDetails(window.lastReceivedSnapshot);
                 }
+                updateFollowButtonState();
             });
 
             document.addEventListener('visibilitychange', () => {
@@ -2348,7 +2744,7 @@
             } else {
                 revealGetApp(false);
                 const copyEl = document.getElementById('getAppCopy');
-                if (copyEl) copyEl.innerText = '📍 No active session found. Download TrackMe to record rides and share your live location free.';
+                if (copyEl) copyEl.innerText = 'No active session found. Download TrackMe to record rides and share your live location free.';
             }
         }
     </script>
