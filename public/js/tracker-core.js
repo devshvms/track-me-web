@@ -300,15 +300,32 @@
     return `trackme://live/${cleanSession}`;
   }
 
-  function buildAndroidIntentUrl(sessionId, riderName, fallbackUrl) {
+  const MIN_WATCHER_INVITE_APP_VERSION = '1.9.3';
+
+  function buildAndroidIntentUrl(sessionId, riderName, fallbackUrl, watcherCode) {
     const fb = fallbackUrl !== undefined ? fallbackUrl : STORE_URLS.android;
     const isWatcher = sessionId === 'watcher';
     if (!isWatcher && !isValidSessionId(sessionId)) return fb;
     const cleanSession = encodeURIComponent(sessionId.trim());
     const cleanName = (riderName || '').trim().slice(0, 60);
+    if (isWatcher && watcherCode !== undefined && watcherCode !== null) {
+      const codeParam = encodeURIComponent(String(watcherCode).trim());
+      const path = `/live/watcher?code=${codeParam}&inviterName=${encodeURIComponent(cleanName)}`;
+      return `intent://trackme.shvms.in${path}#Intent;scheme=https;package=in.shvms.trackme;S.browser_fallback_url=${encodeURIComponent(fb)};end`;
+    }
     const query = cleanName ? `?name=${encodeURIComponent(cleanName)}` : '';
     const path = `/live/${cleanSession}${query}`;
     return `intent://trackme.shvms.in${path}#Intent;scheme=https;package=in.shvms.trackme;S.browser_fallback_url=${encodeURIComponent(fb)};end`;
+  }
+
+  function buildWatcherVersionNotice(inviterName) {
+    const cleanInviter = sanitizeRiderName(inviterName) || 'this rider';
+    return {
+      minVersion: MIN_WATCHER_INVITE_APP_VERSION,
+      badgeText: `Requires TrackMe v${MIN_WATCHER_INVITE_APP_VERSION} or newer`,
+      message: `Trusted Contact invites require TrackMe v${MIN_WATCHER_INVITE_APP_VERSION}+. If opening in the app does not show ${cleanInviter}'s invite prompt (or says session expired/not found), your installed app is older than v${MIN_WATCHER_INVITE_APP_VERSION} — please update TrackMe on Google Play or the App Store first, then reopen this link.`,
+      getAppCopy: `Trusted Contact invites require TrackMe v${MIN_WATCHER_INVITE_APP_VERSION} or newer — update or install the app below, then tap 'Accept Invite in TrackMe App'.`,
+    };
   }
 
   function buildStoreUrl(platform) {
@@ -328,14 +345,19 @@
   function resolveSmartBannerData(options) {
     const platform = detectPlatform(options.userAgent);
     const dismissed = isBannerDismissed(options.dismissedTimestamp, options.nowEpochMs);
-    const isValid = isValidSessionId(options.sessionId) || options.sessionId === 'watcher';
+    const isWatcher = options.sessionId === 'watcher';
+    const isValid = isValidSessionId(options.sessionId) || isWatcher;
     const deepLinkUrl = platform === 'android'
-      ? buildAndroidIntentUrl(options.sessionId, options.riderName)
-      : buildNativeDeepLink(options.sessionId, options.riderName);
+      ? buildAndroidIntentUrl(options.sessionId, options.riderName, undefined, options.watcherCode)
+      : buildNativeDeepLink(options.sessionId, options.riderName, options.watcherCode);
     const storeUrl = buildStoreUrl(platform);
     const riderClean = (options.riderName || '').trim();
-    const title = riderClean ? `Track ${riderClean}'s Ride` : 'TrackMe: Live GPS Rides';
-    const subtitle = 'Open in TrackMe app for live turn & arrival alerts';
+    const title = isWatcher
+      ? (riderClean ? `${riderClean}'s Trusted Watcher Invite` : 'Trusted Watcher Invite · TrackMe')
+      : (riderClean ? `Track ${riderClean}'s Ride` : 'TrackMe: Live GPS Rides');
+    const subtitle = isWatcher
+      ? `Requires TrackMe v${MIN_WATCHER_INVITE_APP_VERSION}+ · Update app if invite doesn't open`
+      : 'Open in TrackMe app for live turn & arrival alerts';
     const ctaText = 'OPEN';
     const shouldShow = (platform === 'ios' || platform === 'android') && !dismissed && isValid;
     return { shouldShow, platform, deepLinkUrl, storeUrl, title, subtitle, ctaText };
@@ -684,8 +706,10 @@
     parseLiveSessionPath,
     isValidSessionId,
     detectPlatform,
+    MIN_WATCHER_INVITE_APP_VERSION,
     buildNativeDeepLink,
     buildAndroidIntentUrl,
+    buildWatcherVersionNotice,
     buildStoreUrl,
     isBannerDismissed,
     resolveSmartBannerData,

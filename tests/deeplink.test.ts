@@ -202,5 +202,26 @@ describe('Deep Link Path Resolution & Session Validation (CIE-004 & CIE-033)', (
             });
             assert.equal(dismissedRes.shouldShow, false);
         });
+
+        it('resolves smart banner and version requirement notice for trusted watcher invite (v1.9.3+)', () => {
+            const androidWatcher = resolveSmartBannerData({
+                userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 8) Mobile',
+                sessionId: 'watcher',
+                riderName: 'Priya',
+                watcherCode: 'ABC12345',
+            });
+            assert.equal(androidWatcher.shouldShow, true);
+            assert.equal(androidWatcher.title, "Priya's Trusted Watcher Invite");
+            assert.ok(androidWatcher.subtitle.includes('1.9.3'));
+            assert.ok(androidWatcher.deepLinkUrl.includes('/live/watcher?code=ABC12345&inviterName=Priya'));
+
+            const iosWatcher = resolveSmartBannerData({
+                userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)',
+                sessionId: 'watcher',
+                riderName: 'Priya',
+                watcherCode: 'ABC12345',
+            });
+            assert.equal(iosWatcher.deepLinkUrl, 'trackme://live/watcher?code=ABC12345&inviterName=Priya');
+        });
     });
 });

@@ -32,6 +32,8 @@ export function detectPlatform(userAgent: string): 'ios' | 'android' | 'desktop'
     return TrackCore.detectPlatform(userAgent);
 }
 
+export const MIN_WATCHER_INVITE_APP_VERSION: string = TrackCore.MIN_WATCHER_INVITE_APP_VERSION;
+
 export function buildNativeDeepLink(sessionId: string, riderName?: string | null, watcherCode?: string | null): string {
     return TrackCore.buildNativeDeepLink(sessionId, riderName, watcherCode);
 }
@@ -39,9 +41,21 @@ export function buildNativeDeepLink(sessionId: string, riderName?: string | null
 export function buildAndroidIntentUrl(
     sessionId: string,
     riderName?: string | null,
-    fallbackUrl: string = TrackCore.STORE_URLS.android
+    fallbackUrl: string = TrackCore.STORE_URLS.android,
+    watcherCode?: string | null
 ): string {
-    return TrackCore.buildAndroidIntentUrl(sessionId, riderName, fallbackUrl);
+    return TrackCore.buildAndroidIntentUrl(sessionId, riderName, fallbackUrl, watcherCode);
+}
+
+export interface WatcherVersionNotice {
+    minVersion: string;
+    badgeText: string;
+    message: string;
+    getAppCopy: string;
+}
+
+export function buildWatcherVersionNotice(inviterName?: string | null): WatcherVersionNotice {
+    return TrackCore.buildWatcherVersionNotice(inviterName);
 }
 
 export const STORE_URLS = TrackCore.STORE_URLS;
@@ -74,6 +88,7 @@ export function resolveSmartBannerData(options: {
     userAgent: string;
     sessionId: string;
     riderName?: string | null;
+    watcherCode?: string | null;
     dismissedTimestamp?: number | null;
     nowEpochMs?: number;
 }): SmartBannerData {

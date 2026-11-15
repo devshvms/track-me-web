@@ -385,6 +385,51 @@
             gap: 6px;
             font-weight: 500;
         }
+        .watcher-version-notice {
+            margin-top: 10px;
+            padding: 8px 10px;
+            background: #fffbeb;
+            border: 1px solid #f59e0b;
+            border-radius: 10px;
+            color: #78350f;
+            font-size: 0.78em;
+            line-height: 1.4;
+            text-align: left;
+        }
+        .watcher-version-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            background: #fef3c7;
+            color: #92400e;
+            border: 1px solid #fbbf24;
+            padding: 2px 8px;
+            border-radius: 999px;
+            font-size: 0.92em;
+            font-weight: 700;
+            margin-bottom: 5px;
+        }
+        .watcher-version-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 7px;
+        }
+        .watcher-update-link {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 4px 10px;
+            border-radius: 999px;
+            background: #92400e;
+            color: #ffffff;
+            text-decoration: none;
+            font-weight: 700;
+            font-size: 0.92em;
+        }
+        .watcher-update-link:hover {
+            opacity: 0.92;
+        }
         .stale-refresh-btn, .retry-btn {
             background: #ffffff;
             color: #991b1b;
@@ -764,6 +809,20 @@
                 border-color: rgba(148, 163, 184, 0.45);
                 color: #e2e8f0;
             }
+            .watcher-version-notice {
+                background: rgba(120, 53, 15, 0.25);
+                border-color: rgba(245, 158, 11, 0.45);
+                color: #fef3c7;
+            }
+            .watcher-version-badge {
+                background: rgba(245, 158, 11, 0.2);
+                color: #fde68a;
+                border-color: rgba(251, 191, 36, 0.45);
+            }
+            .watcher-update-link {
+                background: #f59e0b;
+                color: #0f172a;
+            }
             .get-app-strip {
                 background: rgba(15, 23, 42, 0.96);
                 border-top: 1px solid rgba(255, 255, 255, 0.12);
@@ -862,6 +921,14 @@
                 <div class="details" id="detailsText">Waiting for location data</div>
                 <div class="open-app-row" id="openAppRow">
                     <a href="#getApp" id="openAppBtn" class="open-app-btn">Open in TrackMe App</a>
+                </div>
+                <div id="watcherVersionContainer" class="watcher-version-notice" style="display: none;" role="note" aria-live="polite">
+                    <div class="watcher-version-badge" id="watcherVersionBadge">Requires TrackMe v1.9.3 or newer</div>
+                    <div class="watcher-version-text" id="watcherVersionText">Trusted Contact invites require TrackMe v1.9.3+. If opening in the app does not show the invite prompt (or says session expired/not found), please update TrackMe on Google Play or the App Store first, then reopen this link.</div>
+                    <div class="watcher-version-actions">
+                        <a href="https://play.google.com/store/apps/details?id=in.shvms.trackme&referrer=utm_source%3Dwatcher_invite_update%26utm_medium%3Dweb%26utm_campaign%3Dlive_watcher_v193" target="_blank" rel="noopener noreferrer" class="watcher-update-link" data-watcher-update="android">Update on Google Play</a>
+                        <a href="https://apps.apple.com/app/id6800161248?pt=128001612&ct=watcher_invite_update&mt=8" target="_blank" rel="noopener noreferrer" class="watcher-update-link" data-watcher-update="ios">Update on App Store</a>
+                    </div>
                 </div>
                 <div id="powerSaveContainer" style="display: none;">
                     <div class="power-save-badge">Device in Power Saving Mode</div>
@@ -1173,11 +1240,19 @@
             const bannerEl = document.getElementById('smartBanner');
             const closeBtn = document.getElementById('smartBannerClose');
             const titleEl = document.getElementById('smartBannerTitle');
+            const subEl = document.getElementById('smartBannerSub');
             const ctaBtn = document.getElementById('smartBannerCta');
             if (!bannerEl || !closeBtn || !ctaBtn) return;
 
-            const cleanName = sanitizeRiderNameClient(riderName) || sanitizeRiderNameClient(queryParams.get('name'));
-            if (cleanName && titleEl) {
+            const cleanName = sanitizeRiderNameClient(riderName) || sanitizeRiderNameClient(queryParams.get('name')) || sanitizeRiderNameClient(queryParams.get('inviterName'));
+            if (isWatcherInvite) {
+                if (titleEl) {
+                    titleEl.textContent = cleanName ? `${cleanName}'s Trusted Watcher Invite` : 'Trusted Watcher Invite · TrackMe';
+                }
+                if (subEl) {
+                    subEl.textContent = `Requires TrackMe v${TrackCore.MIN_WATCHER_INVITE_APP_VERSION || '1.9.3'}+ · Update app if invite doesn't open`;
+                }
+            } else if (cleanName && titleEl) {
                 titleEl.textContent = `Track ${cleanName}'s Live Ride`;
             }
 
@@ -1360,6 +1435,14 @@
             const statusEl = document.getElementById('statusText');
             const nameEl = document.getElementById('userNameText');
             const detailsEl = document.getElementById('detailsText');
+            const versionNotice = TrackCore.buildWatcherVersionNotice
+                ? TrackCore.buildWatcherVersionNotice(inviterName)
+                : {
+                    minVersion: '1.9.3',
+                    badgeText: 'Requires TrackMe v1.9.3 or newer',
+                    message: 'Trusted Contact invites require TrackMe v1.9.3+. If opening in the app does not show the invite prompt (or says session expired/not found), please update TrackMe on Google Play or the App Store first, then reopen this link.',
+                    getAppCopy: "Trusted Contact invites require TrackMe v1.9.3 or newer — update or install the app below, then tap 'Accept Invite in TrackMe App'.",
+                };
 
             if (!inviteCode) {
                 statusEl.innerText = hasLegacyInviterUid ? 'Invite Outdated' : 'Invalid Invite';
@@ -1374,7 +1457,29 @@
                 nameEl.innerText = `${inviterName} wants to add you as a Trusted Watcher`;
                 detailsEl.innerText = 'Accept in the TrackMe app to get instant live location alerts whenever they start sharing — zero phone contacts permission required.';
             }
-            emitTelemetry('trusted_watcher_invite_viewed', { hasInviteCode: Boolean(inviteCode) });
+
+            const versionContainerEl = document.getElementById('watcherVersionContainer');
+            const versionBadgeEl = document.getElementById('watcherVersionBadge');
+            const versionTextEl = document.getElementById('watcherVersionText');
+            if (versionContainerEl) {
+                versionContainerEl.style.display = 'block';
+                if (versionBadgeEl) versionBadgeEl.innerText = versionNotice.badgeText;
+                if (versionTextEl) versionTextEl.innerText = versionNotice.message;
+            }
+            const getAppCopyEl = document.getElementById('getAppCopy');
+            if (getAppCopyEl) {
+                getAppCopyEl.innerText = versionNotice.getAppCopy;
+            }
+            document.querySelectorAll('[data-watcher-update]').forEach((link) => {
+                link.addEventListener('click', () => {
+                    emitTelemetry('watcher_invite_update_store_clicked', {
+                        platform: link.getAttribute('data-watcher-update'),
+                        minVersion: versionNotice.minVersion,
+                    });
+                });
+            });
+
+            emitTelemetry('trusted_watcher_invite_viewed', { hasInviteCode: Boolean(inviteCode), minAppVersion: versionNotice.minVersion });
             revealGetApp(false);
         } else {
             // Standard Live Session Tracking flow
