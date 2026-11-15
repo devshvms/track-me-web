@@ -828,6 +828,112 @@ test('computeShortestArcDelta and computeContinuousAngle handle north boundary c
   assert.strictEqual(computeContinuousAngle(-15, 350), -10);
 });
 
+test('locationHandler suppresses zig-zag path points and freezes coordinates while paused, then resumes cleanly', async () => {
+  const sessionId = 'pause-anchor-test';
+  const redis = await getRedisClient();
+  const startTime = new Date(Date.now() - 120000).toISOString();
+  await redis.set(`session:${sessionId}`, JSON.stringify({
+    ownerUid: 'user-owner-123',
+    username: 'Rider',
+    status: 'active',
+    initialDuration: 60,
+    startedAt: startTime,
+    expiresAt: new Date(Date.now() + 3600000).toISOString(),
+    path: [[12.9716, 77.5946], [12.9720, 77.5946]],
+    lastLocation: {
+      lat: 12.9720,
+      lng: 77.5946,
+      timestamp: startTime,
+      batteryLevel: 82,
+      speed: 18.0,
+      heading: 90,
+    },
+  }));
+
+  // Auto-paused heartbeat arrives with 55m GPS multipath drift and residual speed/heading
+  const pauseRes = fakeResponse();
+  await locationHandler({
+    method: 'POST',
+    query: { sessionId },
+    headers: { authorization: 'Bearer valid-owner-token' },
+    body: {
+      lat: 12.9725,
+      lng: 77.5951,
+      batteryLevel: 79,
+      powerSaveMode: true,
+      speed: 4.2,
+      heading: 135,
+      isPaused: true,
+      pauseReason: 'auto',
+    },
+  } as any, pauseRes as any);
+
+  assert.strictEqual(pauseRes.captured.statusCode, 200);
+  const pausedJson = JSON.parse((await redis.get(`session:${sessionId}`))!);
+  assert.strictEqual(pausedJson.isPaused, true);
+  assert.strictEqual(pausedJson.pauseReason, 'auto');
+  // Path must NOT append the drifted point while paused
+  assert.strictEqual(pausedJson.path.length, 2);
+  // Coordinates remain anchored at pre-pause position; speed zeroed; heading cleared; battery updated
+  assert.strictEqual(pausedJson.lastLocation.lat, 12.9720);
+  assert.strictEqual(pausedJson.lastLocation.lng, 77.5946);
+  assert.strictEqual(pausedJson.lastLocation.speed, 0);
+  assert.strictEqual(pausedJson.lastLocation.heading, null);
+  assert.strictEqual(pausedJson.lastLocation.batteryLevel, 79);
+  assert.strictEqual(pausedJson.lastLocation.powerSaveMode, true);
+  assert.strictEqual(pausedJson.lastLocation.isPaused, true);
+  assert.strictEqual(pausedJson.lastLocation.pauseReason, 'auto');
+
+  // Public GET exposes isPaused and pauseReason cleanly without leaking private fields
+  const getPausedRes = fakeResponse();
+  await locationHandler({
+    method: 'GET',
+    query: { sessionId },
+    headers: {},
+  } as any, getPausedRes as any);
+  assert.strictEqual(getPausedRes.captured.statusCode, 200);
+  const viewerPaused = getPausedRes.captured.body as any;
+  assert.strictEqual(viewerPaused.isPaused, true);
+  assert.strictEqual(viewerPaused.pauseReason, 'auto');
+  assert.strictEqual(viewerPaused.path.length, 2);
+  assert.strictEqual(viewerPaused.lastLocation.lat, 12.9720);
+  assert.strictEqual(viewerPaused.ownerUid, undefined);
+
+  // Resume movement 45m north: isPaused clears and breadcrumb path resumes appending
+  const resumeRes = fakeResponse();
+  await locationHandler({
+    method: 'POST',
+    query: { sessionId },
+    headers: { authorization: 'Bearer valid-owner-token' },
+    body: {
+      lat: 12.9724,
+      lng: 77.5946,
+      batteryLevel: 78,
+      speed: 22.0,
+      heading: 0,
+      isPaused: false,
+    },
+  } as any, resumeRes as any);
+  assert.strictEqual(resumeRes.captured.statusCode, 200);
+
+  const getResumedRes = fakeResponse();
+  await locationHandler({
+    method: 'GET',
+    query: { sessionId },
+    headers: {},
+  } as any, getResumedRes as any);
+  assert.strictEqual(getResumedRes.captured.statusCode, 200);
+  const viewerResumed = getResumedRes.captured.body as any;
+  assert.strictEqual(viewerResumed.isPaused, false);
+  assert.strictEqual(viewerResumed.pauseReason, null);
+  assert.strictEqual(viewerResumed.path.length, 3);
+  assert.strictEqual(viewerResumed.lastLocation.lat, 12.9724);
+  assert.strictEqual(viewerResumed.lastLocation.speed, 22.0);
+  assert.strictEqual(viewerResumed.lastLocation.heading, 0);
+
+  await redis.del(`session:${sessionId}`);
+});
+
 
 async function main() {
   let passed = 0;

@@ -223,10 +223,12 @@
         .status.offline ~ .status-dot,
         .status-row:has(.status.offline) .status-dot { background: #ef4444; }
         .status-row:has(.status.delayed) .status-dot { background: #f59e0b; }
+        .status-row:has(.status.paused) .status-dot { background: #64748b; }
         .status { font-weight: 700; font-size: 0.84em; }
         .active { color: #16a34a; }
         .offline { color: #dc2626; }
         .status.delayed { color: #d97706; }
+        .status.paused { color: #475569; }
         .user-name {
             font-size: 1em;
             font-weight: 700;
@@ -370,6 +372,19 @@
             gap: 6px;
             font-weight: 500;
         }
+        .paused-status-banner {
+            margin-top: 8px;
+            padding: 6px 10px;
+            background: #f1f5f9;
+            border: 1px solid #cbd5e1;
+            border-radius: 8px;
+            color: #334155;
+            font-size: 0.78em;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-weight: 500;
+        }
         .stale-refresh-btn, .retry-btn {
             background: #ffffff;
             color: #991b1b;
@@ -464,6 +479,16 @@
             margin-right: 5px;
             flex-shrink: 0;
             background: no-repeat center / contain url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23007bff' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2'/%3E%3Ccircle cx='12' cy='7' r='4'/%3E%3C/svg%3E");
+        }
+        .rider-pin-root.is-paused .human-marker {
+            background-color: #f1f5f9;
+            border-color: #94a3b8;
+            color: #475569;
+            box-shadow: 0 2px 5px rgba(15, 23, 42, 0.22);
+        }
+        .rider-pin-root.is-paused .human-marker::before {
+            filter: grayscale(1);
+            opacity: 0.65;
         }
         .start-pin {
             width: 16px;
@@ -686,6 +711,7 @@
             .active { color: #4ade80; }
             .offline { color: #f87171; }
             .status.delayed { color: #fbbf24; }
+            .status.paused { color: #cbd5e1; }
             .telemetry-cell svg { color: #38bdf8; }
             .telemetry-cell.is-warn,
             .telemetry-cell.is-warn svg { color: #f87171; }
@@ -732,6 +758,11 @@
                 background: rgba(159, 18, 57, 0.25);
                 border-color: rgba(244, 63, 94, 0.4);
                 color: #fecdd3;
+            }
+            .paused-status-banner {
+                background: rgba(51, 65, 85, 0.55);
+                border-color: rgba(148, 163, 184, 0.45);
+                color: #e2e8f0;
             }
             .get-app-strip {
                 background: rgba(15, 23, 42, 0.96);
@@ -840,6 +871,11 @@
                     <div class="stale-signal-banner">
                         <span id="staleSignalText">Signal paused · Waiting for rider GPS</span>
                         <button type="button" id="staleRefreshBtn" class="stale-refresh-btn" title="Refresh live location">Refresh</button>
+                    </div>
+                </div>
+                <div id="pausedStatusContainer" style="display: none;">
+                    <div class="paused-status-banner">
+                        <span id="pausedStatusText">Rider is auto-paused while stationary · Live route will resume on movement</span>
                     </div>
                 </div>
                 <div id="lowBatteryContainer" style="display: none;">
@@ -1386,7 +1422,17 @@
                 }
             }
 
-            function buildHeadingConeSvg(hasHeading) {
+            function evaluateLivePauseState(data) {
+                return TrackCore.evaluateLivePauseState(data);
+            }
+
+            function buildHeadingConeSvg(hasHeading, isPaused = false) {
+                if (isPaused) {
+                    return `<svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true">
+                        <circle cx="13" cy="13" r="10" fill="rgba(148, 163, 184, 0.28)"/>
+                        <circle cx="13" cy="13" r="6" fill="#94a3b8" stroke="#475569" stroke-width="2.5"/>
+                    </svg>`;
+                }
                 if (!hasHeading) {
                     return `<svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true">
                         <circle cx="13" cy="13" r="10" fill="rgba(0, 229, 255, 0.25)"/>
@@ -1828,6 +1874,8 @@
                 if (!detailsEl) return;
 
                 const isStopped = data.status === 'stopped' || data.status === 'ended';
+                const pauseState = evaluateLivePauseState(data);
+                const isRiderPaused = pauseState.isPaused;
                 const useMiles = activeUnitSystem === 'imperial';
                 const durationStr = formatElapsedDuration(data.startedAt, data.endedAt);
                 const durationPart = durationStr ? ` | Duration: ${durationStr}` : '';
@@ -1839,7 +1887,7 @@
                     const timeAgo = Math.max(0, Number.isFinite(rawTimeAgo) ? rawTimeAgo : 0);
                     const timeAgoStr = timeAgo < 60 ? `${timeAgo}s ago` : `${Math.round(timeAgo/60)}m ago`;
                     const isStale = !isStopped && (timeAgo >= 180);
-                    const isDelayed = Boolean(powerSaveMode) || timeAgo >= 45;
+                    const isDelayed = !isRiderPaused && (Boolean(powerSaveMode) || timeAgo >= 45);
 
                     let batteryDisplay = 'N/A';
                     let isBatteryWarn = false;
@@ -1893,7 +1941,9 @@
                     const nowMs = Date.now();
                     const unit = useMiles ? 'mph' : 'km/h';
                     let speedDisplay = `0 ${unit}`;
-                    if (speedKmh !== null && speedKmh >= 3.0) {
+                    if (isRiderPaused) {
+                        speedDisplay = pauseState.speedLabel;
+                    } else if (speedKmh !== null && speedKmh >= 3.0) {
                         const rawVal = useMiles ? (speedKmh * 0.621371) : speedKmh;
                         const roundedSpeed = Math.round(rawVal);
                         speedDisplay = isDelayed ? `~${roundedSpeed} ${unit}` : `${roundedSpeed} ${unit}`;
@@ -1905,19 +1955,24 @@
                         }
                     }
 
-                    const staleNote = isStale ? ' (waiting for GPS)' : (isDelayed ? ' (delayed)' : '');
+                    const staleNote = isStale
+                        ? ' (waiting for GPS)'
+                        : (isRiderPaused ? ` (${pauseState.speedLabel.toLowerCase()})` : (isDelayed ? ' (delayed)' : ''));
                     const fallbackLiveText = `Updated: ${timeAgoStr}${staleNote} | Battery: ${batteryDisplay} | Speed: ${speedDisplay}${durationPart}${distancePart}`;
                     const liveCells = [
-                        { icon: 'speed', label: 'Speed', value: speedDisplay, warn: isDelayed },
+                        { icon: 'speed', label: 'Speed', value: speedDisplay, warn: !isRiderPaused && isDelayed },
                         { icon: 'duration', label: 'Duration', value: durationStr || '0m' },
                         { icon: 'distance', label: 'Distance', value: distanceStr },
                         { icon: 'battery', label: 'Battery', value: batteryDisplay, warn: isBatteryWarn },
                     ];
+                    const liveStatusSummary = isStale
+                        ? 'Waiting for GPS'
+                        : (isRiderPaused ? pauseState.metaLabel : (isDelayed ? 'Delayed updates' : 'Live GPS'));
                     renderTelemetryGrid(
                         detailsEl,
                         liveCells,
                         `Updated ${timeAgoStr}`,
-                        isStale ? 'Waiting for GPS' : (isDelayed ? 'Delayed updates' : 'Live GPS'),
+                        liveStatusSummary,
                         fallbackLiveText
                     );
                 } else if (isStopped) {
@@ -2006,6 +2061,8 @@
                                 sessionId: sessionId,
                                 username: data.username,
                                 status: data.status,
+                                isPaused: Boolean(data.isPaused),
+                                pauseReason: data.pauseReason || null,
                                 lastLocation: data.lastLocation,
                                 path: Array.isArray(data.path) ? (data.path.length > 500 ? data.path.slice(-500) : data.path) : [],
                                 cachedAtEpochMs: Date.now()
@@ -2015,6 +2072,8 @@
                     } catch (_) {}
 
                     const isStopped = data.status === 'stopped' || data.status === 'ended';
+                    const pauseState = evaluateLivePauseState(data);
+                    const isRiderPaused = pauseState.isPaused;
 
                     if (data.lastLocation) {
                         const { lat, batteryLevel, speed, timestamp, powerSaveMode, heading } = data.lastLocation;
@@ -2043,7 +2102,7 @@
 
                         if (trailPoints.length === 0) {
                             trailPoints.push(pos);
-                        } else {
+                        } else if (!isRiderPaused) {
                             const lastTrailPt = trailPoints[trailPoints.length - 1];
                             if (Math.abs(lastTrailPt[0] - lat) > 1e-5 || Math.abs(lastTrailPt[1] - lon) > 1e-5) {
                                 trailPoints.push(pos);
@@ -2092,8 +2151,8 @@
                         }
 
                         // Heading cone direction: explicit GPS heading -> fallback bearing from previous trail point
-                        let headingDeg = typeof heading === 'number' && Number.isFinite(heading) && heading >= 0 ? heading : null;
-                        if (headingDeg === null && trailPoints.length >= 2) {
+                        let headingDeg = !isRiderPaused && typeof heading === 'number' && Number.isFinite(heading) && heading >= 0 ? heading : null;
+                        if (!isRiderPaused && headingDeg === null && trailPoints.length >= 2) {
                             const prev = trailPoints[trailPoints.length - 2];
                             headingDeg = computeBearingDeg(prev[0], prev[1], lat, lon);
                         }
@@ -2116,15 +2175,20 @@
                         const speedVal = data.lastLocation ? data.lastLocation.speed : null;
                         const speedKmh = typeof speedVal === 'number' && Number.isFinite(speedVal) ? Math.max(0, speedVal) : null;
                         const isStationary = speedKmh === null || speedKmh < 3.0;
-                        const hasHeading = headingDeg !== null && !isStopped && !isStationary;
+                        const hasHeading = !isRiderPaused && headingDeg !== null && !isStopped && !isStationary;
+                        const showPausedMarker = isRiderPaused && !isStopped;
 
                         const markerEl = marker.getElement();
                         if (markerEl) {
+                            const pinRoot = typeof markerEl.querySelector === 'function' ? markerEl.querySelector('.rider-pin-root') : null;
+                            if (pinRoot && pinRoot.classList && typeof pinRoot.classList.toggle === 'function') {
+                                pinRoot.classList.toggle('is-paused', showPausedMarker);
+                            }
                             const nameBadge = markerEl.querySelector('.human-marker');
                             if (nameBadge) nameBadge.textContent = username;
                             const coneWrap = markerEl.querySelector('.heading-cone-wrap');
                             if (coneWrap) {
-                                coneWrap.innerHTML = buildHeadingConeSvg(hasHeading);
+                                coneWrap.innerHTML = buildHeadingConeSvg(hasHeading, showPausedMarker);
                                 if (hasHeading) {
                                     if (window.lastContinuousHeading === undefined || window.lastContinuousHeading === null) {
                                         window.lastContinuousHeading = headingDeg;
@@ -2176,7 +2240,7 @@
                                 300000
                             );
                             const distMeters = window.lastRiderPos ? map.distance(window.lastRiderPos, pos) : 999;
-                            if (distMeters >= 3.0) {
+                            if (!isRiderPaused && distMeters >= 3.0) {
                                 map.panTo(pos, { animate: !isReducedMotionPreferred() && throttle.shouldAnimateMap });
                             }
                         }
@@ -2199,7 +2263,7 @@
                         const timeAgo = Math.max(0, Number.isFinite(rawTimeAgo) ? rawTimeAgo : 0);
                         const timeAgoStr = timeAgo < 60 ? `${timeAgo}s ago` : `${Math.round(timeAgo/60)}m ago`;
                         const isStale = !isStopped && (timeAgo >= 180);
-                        const isDelayed = Boolean(powerSaveMode) || timeAgo >= 45;
+                        const isDelayed = !isRiderPaused && (Boolean(powerSaveMode) || timeAgo >= 45);
 
                         const powerSaveContainer = document.getElementById('powerSaveContainer');
                         if (powerSaveContainer) {
@@ -2274,6 +2338,9 @@
                             renderTelemetryDetails(data);
                             const staleContainer = document.getElementById('staleSignalContainer');
                             if (staleContainer) staleContainer.style.display = 'none';
+                            const pausedContainer = document.getElementById('pausedStatusContainer');
+                            if (pausedContainer) pausedContainer.style.display = 'none';
+                            window.lastPauseAnnouncementKey = null;
                             if (lowBatteryContainer) lowBatteryContainer.style.display = 'none';
                             updateDeadlineBadge(null, true);
                             const retryBtn = document.getElementById('connectionRetryBtn');
@@ -2283,10 +2350,18 @@
                             return;
                         }
 
+                        const statusEl = document.getElementById('statusText');
+                        const staleContainer = document.getElementById('staleSignalContainer');
+                        const pausedContainer = document.getElementById('pausedStatusContainer');
+                        const pausedText = document.getElementById('pausedStatusText');
+
                         if (isStale) {
-                            document.getElementById('statusText').innerText = 'Signal Paused';
-                            document.getElementById('statusText').className = 'status delayed';
-                            const staleContainer = document.getElementById('staleSignalContainer');
+                            if (statusEl) {
+                                statusEl.innerText = 'Signal Paused';
+                                statusEl.className = 'status delayed';
+                            }
+                            if (pausedContainer) pausedContainer.style.display = 'none';
+                            window.lastPauseAnnouncementKey = null;
                             const staleText = document.getElementById('staleSignalText');
                             const staleBtn = document.getElementById('staleRefreshBtn');
                             if (staleContainer && staleText) {
@@ -2296,21 +2371,40 @@
                                 if (staleBtn) staleBtn.innerText = 'Refresh';
                             }
                         } else {
-                            const staleContainer = document.getElementById('staleSignalContainer');
                             if (staleContainer) staleContainer.style.display = 'none';
-                            if (isDelayed) {
-                                document.getElementById('statusText').innerText = 'Delayed Updates';
-                                document.getElementById('statusText').className = 'status delayed';
+                            if (isRiderPaused) {
+                                if (statusEl) {
+                                    statusEl.innerText = pauseState.statusLabel;
+                                    statusEl.className = 'status paused';
+                                }
+                                if (pausedContainer && pausedText) {
+                                    pausedText.innerText = pauseState.bannerText;
+                                    pausedContainer.style.display = 'block';
+                                }
+                                const pauseAnnounceKey = pauseState.pauseReason || 'paused';
+                                if (window.lastPauseAnnouncementKey !== pauseAnnounceKey) {
+                                    window.lastPauseAnnouncementKey = pauseAnnounceKey;
+                                    announceA11y(pauseState.a11ySummary);
+                                }
                             } else {
-                                document.getElementById('statusText').innerText = 'Live';
-                                document.getElementById('statusText').className = 'status active';
+                                if (pausedContainer) pausedContainer.style.display = 'none';
+                                window.lastPauseAnnouncementKey = null;
+                                if (isDelayed) {
+                                    if (statusEl) {
+                                        statusEl.innerText = 'Delayed Updates';
+                                        statusEl.className = 'status delayed';
+                                    }
+                                } else if (statusEl) {
+                                    statusEl.innerText = 'Live';
+                                    statusEl.className = 'status active';
+                                }
                             }
                         }
 
                         const locTimeMs = (typeof timestamp === 'number' ? timestamp : new Date(timestamp).getTime());
                         const nowMs = Date.now();
 
-                        if (speedKmh !== null && speedKmh >= 3.0) {
+                        if (!isRiderPaused && speedKmh !== null && speedKmh >= 3.0) {
                             window.lastStoppedSinceMs = null;
                         } else {
                             if (!window.lastStoppedSinceMs) {
@@ -2337,6 +2431,9 @@
                         renderTelemetryDetails(data);
                         const staleContainer = document.getElementById('staleSignalContainer');
                         if (staleContainer) staleContainer.style.display = 'none';
+                        const pausedContainer = document.getElementById('pausedStatusContainer');
+                        if (pausedContainer) pausedContainer.style.display = 'none';
+                        window.lastPauseAnnouncementKey = null;
                         updateDeadlineBadge(null, true);
                         const retryBtn = document.getElementById('connectionRetryBtn');
                         if (retryBtn) retryBtn.style.display = 'none';
@@ -2344,6 +2441,9 @@
                         revealGetApp(true);
                         return;
                     } else {
+                        const pausedContainer = document.getElementById('pausedStatusContainer');
+                        if (pausedContainer) pausedContainer.style.display = 'none';
+                        window.lastPauseAnnouncementKey = null;
                         const dest = typeof data.destination === 'string' ? data.destination.trim() : '';
                         const destinationBadge = document.getElementById('destinationBadge');
                         const destinationTextEl = document.getElementById('destinationText');
@@ -2651,6 +2751,8 @@
 
                     const pos = [lat, lon];
                     const username = cached.username || 'Anonymous';
+                    const pauseState = evaluateLivePauseState(cached);
+                    const showPausedMarker = pauseState.isPaused;
                     window.lastKnownUserName = cached.username || '';
 
                     const trailPoints = Array.isArray(cached.path)
@@ -2707,8 +2809,17 @@
                     }
                     const markerEl = marker.getElement();
                     if (markerEl) {
+                        const pinRoot = typeof markerEl.querySelector === 'function' ? markerEl.querySelector('.rider-pin-root') : null;
+                        if (pinRoot && pinRoot.classList && typeof pinRoot.classList.toggle === 'function') {
+                            pinRoot.classList.toggle('is-paused', showPausedMarker);
+                        }
                         const nameBadge = markerEl.querySelector('.human-marker');
                         if (nameBadge) nameBadge.textContent = username;
+                        const coneWrap = markerEl.querySelector('.heading-cone-wrap');
+                        if (coneWrap) {
+                            coneWrap.innerHTML = buildHeadingConeSvg(false, showPausedMarker);
+                            coneWrap.style.transform = 'none';
+                        }
                     }
 
                     if (isFirstLoad) {
@@ -2721,9 +2832,24 @@
                     }
 
                     const statusEl = document.getElementById('statusText');
+                    const pausedContainer = document.getElementById('pausedStatusContainer');
+                    const pausedText = document.getElementById('pausedStatusText');
                     if (statusEl) {
-                        statusEl.innerText = 'Updating...';
-                        statusEl.className = 'status delayed';
+                        if (showPausedMarker) {
+                            statusEl.innerText = pauseState.statusLabel;
+                            statusEl.className = 'status paused';
+                        } else {
+                            statusEl.innerText = 'Updating...';
+                            statusEl.className = 'status delayed';
+                        }
+                    }
+                    if (pausedContainer) {
+                        if (showPausedMarker && pausedText) {
+                            pausedText.innerText = pauseState.bannerText;
+                            pausedContainer.style.display = 'block';
+                        } else {
+                            pausedContainer.style.display = 'none';
+                        }
                     }
                     const userNameEl = document.getElementById('userNameText');
                     if (userNameEl) {

@@ -586,6 +586,73 @@
     return Math.round(totalMeters);
   }
 
+  function evaluateLivePauseState(data) {
+    if (!data || typeof data !== 'object') {
+      return {
+        isPaused: false,
+        pauseReason: null,
+        statusLabel: 'Live',
+        speedLabel: '0 km/h',
+        metaLabel: 'Live GPS',
+        bannerText: '',
+        a11ySummary: 'Rider live location',
+      };
+    }
+    const status = typeof data.status === 'string' ? data.status.trim().toLowerCase() : '';
+    const isStopped = status === 'stopped' || status === 'ended';
+    if (isStopped) {
+      return {
+        isPaused: false,
+        pauseReason: null,
+        statusLabel: 'Sharing Stopped',
+        speedLabel: 'Stopped',
+        metaLabel: 'Final location',
+        bannerText: '',
+        a11ySummary: 'Live sharing stopped',
+      };
+    }
+    const loc = data.lastLocation && typeof data.lastLocation === 'object' ? data.lastLocation : null;
+    const isPaused = Boolean(data.isPaused || (loc && loc.isPaused) || status === 'paused');
+    if (!isPaused) {
+      return {
+        isPaused: false,
+        pauseReason: null,
+        statusLabel: 'Live',
+        speedLabel: '',
+        metaLabel: 'Live GPS',
+        bannerText: '',
+        a11ySummary: 'Rider live location active',
+      };
+    }
+    const rawReason = data.pauseReason !== undefined && data.pauseReason !== null
+      ? data.pauseReason
+      : (loc ? loc.pauseReason : null);
+    const cleanReason = typeof rawReason === 'string' ? rawReason.trim().toLowerCase() : '';
+    const pauseReason = cleanReason === 'auto' ? 'auto' : (cleanReason === 'manual' ? 'manual' : null);
+    if (pauseReason === 'auto') {
+      return {
+        isPaused: true,
+        pauseReason: 'auto',
+        statusLabel: 'Auto-Paused',
+        speedLabel: 'Auto-paused',
+        metaLabel: 'Auto-paused',
+        bannerText: 'Rider is auto-paused while stationary · Live route will resume on movement',
+        a11ySummary: 'Rider auto-paused while stationary',
+      };
+    }
+    return {
+      isPaused: true,
+      pauseReason,
+      statusLabel: 'Ride Paused',
+      speedLabel: 'Paused',
+      metaLabel: 'Tracking paused',
+      bannerText: pauseReason === 'manual'
+        ? 'Rider paused live tracking'
+        : 'Rider tracking is currently paused',
+      a11ySummary: 'Rider tracking paused',
+    };
+  }
+
   return {
     PREFERRED_UNITS_STORAGE_KEY,
     VALID_SESSION_ID_REGEX,
@@ -600,6 +667,7 @@
     sanitizeRiderName,
     buildLiveShareUrl,
     resolveLiveShareMetadata,
+    evaluateLivePauseState,
     VIEWER_PING_BASE_MS,
     VIEWER_PING_THROTTLED_MS,
     VIEWER_PING_MAX_BACKOFF_MS,

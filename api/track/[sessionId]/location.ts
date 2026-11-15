@@ -19,6 +19,8 @@ import {
 export const VIEWER_VISIBLE_FIELDS = [
   'username',
   'status',
+  'isPaused',
+  'pauseReason',
   'startedAt',
   'stopReason',
   'endReason',
@@ -119,7 +121,7 @@ export default async function handler(
         throw new AuthError(403, 'Forbidden. You do not own this live share session.');
       }
 
-      const { lat, lng, lon, batteryLevel, speed, heading, timestamp, powerSaveMode } = request.body || {};
+      const { lat, lng, lon, batteryLevel, speed, heading, timestamp, powerSaveMode, isPaused, pauseReason } = request.body || {};
       // Canonical field is `lng`; `lon` is accepted for backward compatibility with
       // mobile clients (<= v1.5.7) that still send it. Also support latitude/longitude aliases.
       const rawLat = lat !== undefined ? lat : request.body?.latitude;
@@ -136,15 +138,19 @@ export default async function handler(
         return response.status(400).json({ error: 'Invalid lat or lng coordinate values' });
       }
 
-      const { path, heading: resolvedHeading, isJumpFiltered } = appendPathPoint(
-        sessionData.path,
-        numLat,
-        numLng,
-        heading,
-        sessionData.lastLocation?.timestamp,
-        timestamp,
-      );
-      sessionData.path = path;
+      const resolvedIsPaused =
+        typeof isPaused === 'boolean'
+          ? isPaused
+          : typeof request.body?.paused === 'boolean'
+          ? request.body.paused
+          : false;
+      const resolvedPauseReason =
+        resolvedIsPaused && typeof pauseReason === 'string'
+          ? (() => {
+              const normalized = pauseReason.trim().toLowerCase();
+              return normalized === 'auto' || normalized === 'manual' ? normalized : null;
+            })()
+          : null;
 
       // CIE-015: Low battery threshold defense (<= 15%)
       // If powerSaveMode is explicitly provided, respect it.
@@ -159,37 +165,81 @@ export default async function handler(
       const effectivePowerSave =
         (typeof powerSaveMode === 'boolean' ? powerSaveMode : false) || isLowBattery;
 
-      const validSpeed =
-        typeof speed === 'number' && Number.isFinite(speed) && speed >= 0
-          ? Math.round(speed * 10) / 10
-          : null;
+      sessionData.isPaused = resolvedIsPaused;
+      sessionData.pauseReason = resolvedPauseReason;
 
-      const validHeading =
-        resolvedHeading !== null
-          ? resolvedHeading
-          : typeof heading === 'number' && Number.isFinite(heading) && heading >= 0 && heading <= 360
-          ? Math.round(heading * 10) / 10
-          : null;
+      if (resolvedIsPaused) {
+        // Freeze trail and anchor coordinates at the last valid pre-pause location so stationary GPS
+        // drift during auto-pause or manual pause never plots zig-zag lines on viewers.
+        if (!Array.isArray(sessionData.path)) {
+          sessionData.path = [];
+        }
+        const prevLat = parseCoordinate(sessionData.lastLocation?.lat);
+        const prevLng = parseCoordinate(sessionData.lastLocation?.lng ?? sessionData.lastLocation?.lon);
+        const hasPrevAnchor = prevLat !== null && prevLng !== null && isValidLatLng(prevLat, prevLng);
+        const resolvedBattery =
+          typeof batteryLevel === 'number' && Number.isFinite(batteryLevel)
+            ? batteryLevel
+            : sessionData.lastLocation?.batteryLevel;
 
-      if (isJumpFiltered && sessionData.lastLocation) {
-        console.warn(`[location] Implausible GPS jump filtered for session ${sessionId}: lat=${numLat}, lng=${numLng}`);
-        // Maintain last known valid coordinates on map while updating device battery & freshness
         sessionData.lastLocation = {
-          ...sessionData.lastLocation,
-          batteryLevel: typeof batteryLevel === 'number' && Number.isFinite(batteryLevel) ? batteryLevel : sessionData.lastLocation.batteryLevel,
+          lat: hasPrevAnchor ? prevLat : numLat,
+          lng: hasPrevAnchor ? prevLng : numLng,
+          batteryLevel: resolvedBattery,
+          speed: 0,
+          heading: null,
+          isPaused: true,
+          pauseReason: resolvedPauseReason,
           powerSaveMode: effectivePowerSave,
           timestamp: timestamp || new Date().toISOString(),
         };
       } else {
-        sessionData.lastLocation = {
-          lat: numLat,
-          lng: numLng,
-          batteryLevel,
-          speed: validSpeed,
-          heading: validHeading,
-          powerSaveMode: effectivePowerSave,
-          timestamp: timestamp || new Date().toISOString(),
-        };
+        const { path, heading: resolvedHeading, isJumpFiltered } = appendPathPoint(
+          sessionData.path,
+          numLat,
+          numLng,
+          heading,
+          sessionData.lastLocation?.timestamp,
+          timestamp,
+        );
+        sessionData.path = path;
+
+        const validSpeed =
+          typeof speed === 'number' && Number.isFinite(speed) && speed >= 0
+            ? Math.round(speed * 10) / 10
+            : null;
+
+        const validHeading =
+          resolvedHeading !== null
+            ? resolvedHeading
+            : typeof heading === 'number' && Number.isFinite(heading) && heading >= 0 && heading <= 360
+            ? Math.round(heading * 10) / 10
+            : null;
+
+        if (isJumpFiltered && sessionData.lastLocation) {
+          console.warn(`[location] Implausible GPS jump filtered for session ${sessionId}: lat=${numLat}, lng=${numLng}`);
+          // Maintain last known valid coordinates on map while updating device battery & freshness
+          sessionData.lastLocation = {
+            ...sessionData.lastLocation,
+            batteryLevel: typeof batteryLevel === 'number' && Number.isFinite(batteryLevel) ? batteryLevel : sessionData.lastLocation.batteryLevel,
+            isPaused: false,
+            pauseReason: null,
+            powerSaveMode: effectivePowerSave,
+            timestamp: timestamp || new Date().toISOString(),
+          };
+        } else {
+          sessionData.lastLocation = {
+            lat: numLat,
+            lng: numLng,
+            batteryLevel,
+            speed: validSpeed,
+            heading: validHeading,
+            isPaused: false,
+            pauseReason: null,
+            powerSaveMode: effectivePowerSave,
+            timestamp: timestamp || new Date().toISOString(),
+          };
+        }
       }
 
       // Calculate remaining TTL directly from sessionData.expiresAt.

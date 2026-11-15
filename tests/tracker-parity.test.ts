@@ -295,6 +295,68 @@ test('dismissing #getApp hides banner and tapping #openAppBtn on desktop reveals
   assert.strictEqual(desktop.elements.get('getApp').hidden, false);
 });
 
+test('TrackCore.evaluateLivePauseState distinguishes auto-paused, manual paused, active, and stopped states', () => {
+  const autoPaused = TrackCore.evaluateLivePauseState({
+    status: 'active',
+    isPaused: true,
+    pauseReason: 'auto',
+    lastLocation: { lat: 12.97, lng: 77.59, speed: 0 },
+  });
+  assert.strictEqual(autoPaused.isPaused, true);
+  assert.strictEqual(autoPaused.pauseReason, 'auto');
+  assert.strictEqual(autoPaused.statusLabel, 'Auto-Paused');
+  assert.strictEqual(autoPaused.speedLabel, 'Auto-paused');
+  assert.ok(autoPaused.bannerText.includes('auto-paused'));
+
+  const manualPaused = TrackCore.evaluateLivePauseState({
+    status: 'active',
+    lastLocation: { lat: 12.97, lng: 77.59, isPaused: true, pauseReason: 'manual' },
+  });
+  assert.strictEqual(manualPaused.isPaused, true);
+  assert.strictEqual(manualPaused.pauseReason, 'manual');
+  assert.strictEqual(manualPaused.statusLabel, 'Ride Paused');
+  assert.strictEqual(manualPaused.speedLabel, 'Paused');
+
+  const moving = TrackCore.evaluateLivePauseState({
+    status: 'active',
+    isPaused: false,
+    lastLocation: { lat: 12.97, lng: 77.59, speed: 5.5 },
+  });
+  assert.strictEqual(moving.isPaused, false);
+  assert.strictEqual(moving.statusLabel, 'Live');
+
+  const stopped = TrackCore.evaluateLivePauseState({
+    status: 'stopped',
+    isPaused: true,
+    pauseReason: 'auto',
+  });
+  assert.strictEqual(stopped.isPaused, false);
+  assert.strictEqual(stopped.statusLabel, 'Sharing Stopped');
+});
+
+test('tracker.html renders greyed-out paused circle marker without heading cone and suppresses paused trail growth', () => {
+  const html = fs.readFileSync(path.resolve(__dirname, '../public/tracker.html'), 'utf8');
+  assert.ok(html.includes('id="pausedStatusContainer"'), 'paused status banner container should exist');
+  assert.ok(html.includes('.rider-pin-root.is-paused .human-marker'), 'rider badge should grey out when paused');
+  assert.ok(html.includes('else if (!isRiderPaused)'), 'trailPoints should suppress drift appends when paused');
+
+  const script = extractInlineTrackerScript(html);
+  const fnMatch = script.match(/function buildHeadingConeSvg\([\s\S]*?\n {12}\}/);
+  assert.ok(fnMatch, 'buildHeadingConeSvg should exist in tracker.html');
+  const ctx: Record<string, any> = {};
+  vm.runInNewContext(fnMatch[0], ctx);
+
+  const pausedSvg: string = ctx.buildHeadingConeSvg(true, true);
+  assert.ok(pausedSvg.includes('#94a3b8'), 'paused marker must use muted grey fill');
+  assert.ok(pausedSvg.includes('<circle'), 'paused marker must render a circle');
+  assert.ok(!pausedSvg.includes('<polygon'), 'paused marker must not render a heading arrow');
+  assert.ok(!pausedSvg.includes('coneGrad'), 'paused marker must not render a heading cone');
+
+  const movingSvg: string = ctx.buildHeadingConeSvg(true, false);
+  assert.ok(movingSvg.includes('#00e5ff'), 'moving marker keeps active cyan fill');
+  assert.ok(movingSvg.includes('<polygon'), 'moving marker renders heading arrow');
+});
+
 async function main() {
   let passed = 0;
   const failures: string[] = [];
