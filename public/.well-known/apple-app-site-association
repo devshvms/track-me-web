@@ -1,0 +1,22 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appIDs": [
+          "5BS87KKKN8.in.shvms.track-me-ios"
+        ],
+        "components": [
+          { "/": "/live/*" },
+          { "/": "/g/*" },
+          { "/": "/r/*" }
+        ]
+      }
+    ]
+  },
+  "webcredentials": {
+    "apps": [
+      "5BS87KKKN8.in.shvms.track-me-ios"
+    ]
+  }
+}

@@ -4,3 +4,5 @@ node_modules
 dist
 public/firebase-config.js
 public/posthog-config.js
+.DS_Store
+**/.DS_Store

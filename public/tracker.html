@@ -3,30 +3,102 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Live Location Tracker</title>
+    <meta name="apple-itunes-app" id="smartAppBanner" content="app-id=6800161248, app-argument=https://trackme.shvms.in/live/">
+    <meta name="theme-color" content="#0b1320">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="TrackMe">
+    <meta property="og:title" id="ogTitle" content="TrackMe Live Ride Tracking · Real-Time GPS Sharing">
+    <meta property="og:description" id="ogDesc" content="Follow this ride live in real time with private GPS breadcrumbs, speed, and ETA. Free & open-source.">
+    <meta property="og:image" id="ogImage" content="https://trackme.shvms.in/assets/trackme-social-card.svg">
+    <meta property="og:url" id="ogUrl" content="https://trackme.shvms.in/live">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" id="twTitle" content="TrackMe Live Ride Tracking">
+    <meta name="twitter:description" id="twDesc" content="Follow this ride live in real time with private GPS breadcrumbs, speed, and ETA. Free & open-source.">
+    <meta name="twitter:image" id="twImage" content="https://trackme.shvms.in/assets/trackme-social-card.svg">
+    <title id="pageTitle">TrackMe Live Ride Tracking · Real-Time GPS Sharing</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
-        #map { height: 100vh; width: 100vw; }
-        /* TASK-294. The map keeps the whole viewport until a rider is actually on screen. Once the
-           session renders we give back a strip so the whole band — the line AND both badges — is
-           visible at the bottom edge rather than hidden below the fold. Visible, but never over the
-           map. The strip is taller on narrow screens because the line wraps to two there; a badge
-           the viewer has to scroll to find is a badge that does not exist. Leaflet needs
-           invalidateSize() after the container resizes, which revealGetApp() calls. */
-        :root { --getapp-strip: 122px; }
-        @media (max-width: 520px) { :root { --getapp-strip: 152px; } }
-        body.has-getapp #map { height: calc(100vh - var(--getapp-strip)); }
-        #getApp {
-            box-sizing: border-box; width: 100vw; background: #0b1320; color: #e8eef6;
-            padding: 18px 20px 26px; text-align: center;
+        :root {
+            --getapp-strip: 96px;
+            --hud-bg: rgba(255, 255, 255, 0.96);
+            --hud-surface-subtle: #f1f5f9;
+            --hud-text: #0f172a;
+            --hud-muted: #475569;
+            --hud-border: rgba(15, 23, 42, 0.12);
+            --hud-shadow: 0 6px 20px rgba(15, 23, 42, 0.16);
+            --hud-chip-bg: #f1f5f9;
+            --hud-chip-border: #cbd5e1;
+            --hud-chip-text: #0f172a;
+            --ctrl-bg: rgba(11, 19, 32, 0.92);
+            --ctrl-text: #f1f5f9;
+            --ctrl-border: rgba(255, 255, 255, 0.16);
         }
-        #getApp p { margin: 0 0 14px; font-size: 0.95em; line-height: 1.45; color: #b8c6d9; }
-        #getApp .getapp-badges { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+        html, body {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            overflow: hidden;
+        }
+        body {
+            display: flex;
+            flex-direction: column;
+            height: 100dvh;
+            width: 100vw;
+        }
+        #map {
+            position: relative;
+            flex: 1 1 auto;
+            min-height: 200px;
+            width: 100%;
+        }
+        /* TASK-294. Map flexes dynamically above #getApp so store badges never clip even at large OS font scales. */
+        #getApp {
+            position: relative;
+            flex: 0 0 auto;
+            box-sizing: border-box;
+            width: 100%;
+            background: #0b1320;
+            color: #e8eef6;
+            padding: 10px 36px 12px 16px;
+            text-align: center;
+            border-top: 1px solid rgba(255, 255, 255, 0.12);
+        }
+        #getApp[hidden] { display: none; }
+        #getAppClose {
+            position: absolute;
+            top: 6px;
+            right: 8px;
+            width: 32px;
+            height: 32px;
+            border: none;
+            background: transparent;
+            color: #94a3b8;
+            border-radius: 999px;
+            font-size: 20px;
+            line-height: 1;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+        }
+        #getAppClose:hover { background: rgba(255, 255, 255, 0.1); color: #f8fafc; }
+        #getApp p {
+            margin: 0 0 8px;
+            font-size: 0.85em;
+            line-height: 1.35;
+            color: #cbd5e1;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+        #getApp .getapp-badges { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
         #getApp a {
-            display: inline-flex; align-items: center; gap: 8px; text-decoration: none;
+            display: inline-flex; align-items: center; gap: 7px; text-decoration: none;
             background: #16202f; border: 1px solid #26364d; border-radius: 8px;
-            padding: 10px 14px; color: #e8eef6; font-size: 0.9em; font-weight: 600;
+            padding: 8px 12px; color: #e8eef6; font-size: 0.86em; font-weight: 600;
         }
         #getApp a:hover, #getApp a:focus-visible { background: #1d2a3d; border-color: #3a5170; }
         body.is-ios #getApp a[data-download-platform="ios"],
@@ -35,75 +107,874 @@
             color: #0b1320;
             font-weight: 700;
             border-color: #00e5ff;
-            box-shadow: 0 0 12px rgba(0, 229, 255, 0.45);
+            box-shadow: 0 0 10px rgba(0, 229, 255, 0.35);
             order: -1;
         }
         body.is-ios #getApp a[data-download-platform="ios"] img,
         body.is-android #getApp a[data-download-platform="android"] img {
             filter: brightness(0.2);
         }
-        /* Two badges must share one row on a phone. Stacked, the second falls past the fold and a
-           badge below the fold is a badge that does not exist. Short labels, not shrunk text. */
         #getApp .lbl-short { display: none; }
         @media (max-width: 520px) {
-            #getApp { padding: 14px 12px 20px; }
-            #getApp p { font-size: 0.9em; margin-bottom: 12px; }
-            #getApp a { padding: 9px 12px; font-size: 0.85em; }
+            #getApp { padding: 9px 32px 11px 12px; }
+            #getApp p { font-size: 0.8em; margin-bottom: 7px; }
+            #getApp a { padding: 7px 11px; font-size: 0.82em; }
             #getApp .lbl-long { display: none; }
             #getApp .lbl-short { display: inline; }
         }
         #overlay {
             position: absolute;
-            top: 20px;
+            top: 10px;
             left: 50%;
             transform: translateX(-50%);
-            background: white;
-            padding: 10px 20px;
-            border-radius: 8px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            width: min(400px, calc(100vw - 24px));
+            max-height: min(48%, 330px);
+            overflow-y: auto;
+            box-sizing: border-box;
+            background: var(--hud-bg);
+            color: var(--hud-text);
+            border: 1px solid var(--hud-border);
+            padding: 10px 14px;
+            border-radius: 14px;
+            box-shadow: var(--hud-shadow);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
             z-index: 1000;
-            text-align: center;
+            text-align: left;
         }
-        .status { font-weight: bold; }
-        .active { color: green; }
-        .offline { color: red; }
+        #overlay.is-collapsed {
+            width: auto;
+            min-width: min(260px, calc(100vw - 24px));
+            max-width: calc(100vw - 24px);
+            padding: 7px 12px;
+            border-radius: 999px;
+            overflow: visible;
+        }
+        .overlay-header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 8px;
+        }
+        #overlay.is-collapsed .overlay-header {
+            align-items: center;
+        }
+        .overlay-header-main {
+            flex: 1 1 auto;
+            min-width: 0;
+        }
+        #overlay.is-collapsed .overlay-header-main {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .overlay-header-actions {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            flex-shrink: 0;
+        }
+        .overlay-icon-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--hud-chip-bg);
+            color: var(--hud-chip-text);
+            border: 1px solid var(--hud-chip-border);
+            border-radius: 999px;
+            min-height: 30px;
+            min-width: 30px;
+            padding: 4px 10px;
+            font-size: 0.78em;
+            font-weight: 700;
+            cursor: pointer;
+            line-height: 1;
+        }
+        .overlay-icon-btn.icon-only {
+            padding: 0;
+            width: 30px;
+            height: 30px;
+        }
+        .overlay-icon-btn:hover, .overlay-icon-btn:focus-visible {
+            filter: brightness(0.95);
+        }
+        #overlay.is-collapsed #overlayBody {
+            display: none;
+        }
+        #overlayToggleBtn svg {
+            transition: transform 0.2s ease;
+        }
+        #overlay.is-collapsed #overlayToggleBtn svg {
+            transform: rotate(180deg);
+        }
+        .status-row {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #22c55e;
+            flex-shrink: 0;
+        }
+        .status.offline ~ .status-dot,
+        .status-row:has(.status.offline) .status-dot { background: #ef4444; }
+        .status-row:has(.status.delayed) .status-dot { background: #f59e0b; }
+        .status-row:has(.status.paused) .status-dot { background: #64748b; }
+        .status { font-weight: 700; font-size: 0.84em; }
+        .active { color: #16a34a; }
+        .offline { color: #dc2626; }
         .status.delayed { color: #d97706; }
-        .user-name { font-size: 1.1em; font-weight: bold; margin-top: 5px; color: #333; }
-        .details { font-size: 0.9em; color: #666; margin-top: 5px; }
-        .power-save-badge { display: inline-flex; align-items: center; justify-content: center; gap: 4px; background: #fef3c7; color: #92400e; border: 1px solid #f59e0b; padding: 4px 10px; border-radius: 6px; font-size: 0.82em; font-weight: bold; margin-top: 8px; }
-        .power-save-banner { margin-top: 6px; padding: 6px 10px; background: #fffbeb; border: 1px solid #fde68a; border-radius: 6px; color: #78350f; font-size: 0.8em; line-height: 1.35; max-width: 320px; text-align: left; }
+        .status.paused { color: #475569; }
+        .user-name {
+            font-size: 1em;
+            font-weight: 700;
+            margin-top: 2px;
+            color: var(--hud-text);
+            line-height: 1.25;
+            word-break: break-word;
+        }
+        #overlay.is-collapsed .user-name {
+            margin-top: 0;
+            font-size: 0.88em;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 44vw;
+        }
+        .overlay-badges {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 6px;
+        }
+        .overlay-badges:empty { display: none; }
+        .destination-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            background: #e0f2fe;
+            color: #0369a1;
+            border: 1px solid #7dd3fc;
+            border-radius: 999px;
+            padding: 3px 10px;
+            font-size: 0.78em;
+            font-weight: 600;
+            max-width: 100%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .deadline-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 5px;
+            background: #eef2ff;
+            color: #4338ca;
+            border: 1px solid #c7d2fe;
+            border-radius: 999px;
+            padding: 3px 10px;
+            font-size: 0.82em;
+            font-weight: 600;
+            margin-top: 5px;
+            max-width: 90%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .deadline-badge.overdue {
+            background: #fef3c7;
+            color: #b45309;
+            border-color: #fcd34d;
+        }
+        .details {
+            font-size: 0.84em;
+            color: var(--hud-muted);
+            margin-top: 8px;
+            line-height: 1.4;
+        }
+        .telemetry-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 6px 10px;
+            margin-top: 8px;
+            padding: 8px 10px;
+            background: var(--hud-surface-subtle);
+            border: 1px solid var(--hud-border);
+            border-radius: 10px;
+        }
+        .telemetry-cell {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            min-width: 0;
+            font-size: 0.84em;
+            color: var(--hud-text);
+            font-weight: 600;
+        }
+        .telemetry-cell svg {
+            width: 14px;
+            height: 14px;
+            flex-shrink: 0;
+            color: #0284c7;
+        }
+        .telemetry-cell.is-warn,
+        .telemetry-cell.is-warn svg {
+            color: #dc2626;
+        }
+        .telemetry-val {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .telemetry-meta {
+            grid-column: 1 / -1;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            font-size: 0.78em;
+            color: var(--hud-muted);
+            font-weight: 500;
+            border-top: 1px solid var(--hud-border);
+            padding-top: 5px;
+            margin-top: 1px;
+        }
+        .power-save-badge { display: inline-flex; align-items: center; gap: 5px; background: #fef3c7; color: #92400e; border: 1px solid #f59e0b; padding: 4px 9px; border-radius: 8px; font-size: 0.78em; font-weight: 700; margin-top: 8px; }
+        .power-save-banner { margin-top: 5px; padding: 6px 10px; background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; color: #78350f; font-size: 0.78em; line-height: 1.35; text-align: left; }
+        .stale-signal-banner {
+            margin-top: 8px;
+            padding: 6px 10px;
+            background: #fef2f2;
+            border: 1px solid #fecaca;
+            border-radius: 8px;
+            color: #991b1b;
+            font-size: 0.78em;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+        }
+        .low-battery-banner {
+            margin-top: 8px;
+            padding: 6px 10px;
+            background: #fff1f2;
+            border: 1px solid #fecdd3;
+            border-radius: 8px;
+            color: #9f1239;
+            font-size: 0.78em;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-weight: 500;
+        }
+        .paused-status-banner {
+            margin-top: 8px;
+            padding: 6px 10px;
+            background: #f1f5f9;
+            border: 1px solid #cbd5e1;
+            border-radius: 8px;
+            color: #334155;
+            font-size: 0.78em;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-weight: 500;
+        }
+        .watcher-version-notice {
+            margin-top: 10px;
+            padding: 8px 10px;
+            background: #fffbeb;
+            border: 1px solid #f59e0b;
+            border-radius: 10px;
+            color: #78350f;
+            font-size: 0.78em;
+            line-height: 1.4;
+            text-align: left;
+        }
+        .watcher-version-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            background: #fef3c7;
+            color: #92400e;
+            border: 1px solid #fbbf24;
+            padding: 2px 8px;
+            border-radius: 999px;
+            font-size: 0.92em;
+            font-weight: 700;
+            margin-bottom: 5px;
+        }
+        .watcher-version-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 7px;
+        }
+        .watcher-update-link {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 4px 10px;
+            border-radius: 999px;
+            background: #92400e;
+            color: #ffffff;
+            text-decoration: none;
+            font-weight: 700;
+            font-size: 0.92em;
+        }
+        .watcher-update-link:hover {
+            opacity: 0.92;
+        }
+        .stale-refresh-btn, .retry-btn {
+            background: #ffffff;
+            color: #991b1b;
+            border: 1px solid #fca5a5;
+            border-radius: 999px;
+            padding: 3px 9px;
+            font-size: 0.8em;
+            font-weight: 700;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+            transition: all 0.15s ease;
+        }
+        .retry-btn {
+            color: #d97706;
+            border-color: #fcd34d;
+        }
+        .stale-refresh-btn:hover {
+            background: #fee2e2;
+            border-color: #f87171;
+        }
+        .retry-btn:hover {
+            background: #fef3c7;
+            border-color: #f59e0b;
+        }
+        .open-app-row {
+            margin-top: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .open-app-row:empty,
+        body.has-smart-banner:not(.is-watcher-invite) .open-app-row {
+            display: none;
+        }
+        .open-app-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            background: #0a2540;
+            color: #00e5ff;
+            border: 1px solid #00e5ff;
+            border-radius: 999px;
+            padding: 6px 14px;
+            font-size: 0.82em;
+            font-weight: 700;
+            text-decoration: none;
+            cursor: pointer;
+        }
+        .open-app-btn:hover, .open-app-btn:focus-visible {
+            background: #113256;
+        }
+        .rider-pin-root {
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            pointer-events: auto;
+        }
+        .heading-cone-wrap {
+            width: 44px;
+            height: 44px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.35s ease;
+        }
         .human-marker {
             background-color: white;
             border: 2px solid #007bff;
             border-radius: 20px;
-            padding: 4px 10px;
+            padding: 3px 9px;
             font-weight: bold;
-            font-size: 14px;
-            color: #007bff;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            font-size: 13px;
+            color: #0a2540;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
             white-space: nowrap;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 2px;
+        }
+        .human-marker::before {
+            content: "";
+            width: 14px;
+            height: 14px;
+            margin-right: 5px;
+            flex-shrink: 0;
+            background: no-repeat center / contain url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23007bff' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2'/%3E%3Ccircle cx='12' cy='7' r='4'/%3E%3C/svg%3E");
+        }
+        .rider-pin-root.is-paused .human-marker {
+            background-color: #f1f5f9;
+            border-color: #94a3b8;
+            color: #475569;
+            box-shadow: 0 2px 5px rgba(15, 23, 42, 0.22);
+        }
+        .rider-pin-root.is-paused .human-marker::before {
+            filter: grayscale(1);
+            opacity: 0.65;
+        }
+        .start-pin {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #00e676;
+            border: 3px solid #0a2540;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+        }
+        .finish-pin {
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #ef4444;
+            border: 3px solid #0a2540;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.4);
             display: flex;
             align-items: center;
             justify-content: center;
         }
-        .human-marker::before {
-            content: "👤";
-            margin-right: 6px;
-            font-size: 16px;
+        .finish-pin::after {
+            content: "";
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: #ffffff;
+        }
+        .map-stage {
+            position: relative;
+            flex: 1 1 auto;
+            min-height: 200px;
+            width: 100%;
+            overflow: hidden;
+        }
+        #map {
+            height: 100%;
+            width: 100%;
+        }
+        .leaflet-top.leaflet-left {
+            top: auto;
+            bottom: 28px;
+            left: 10px;
+            z-index: 900;
+        }
+        .leaflet-control-attribution {
+            font-size: 11px !important;
+            line-height: 1.25 !important;
+            max-width: calc(100vw - 12px);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .map-controls {
+            position: absolute;
+            right: 12px;
+            bottom: 32px;
+            z-index: 1050;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 6px;
+        }
+        .map-ctrl-btn {
+            background: var(--ctrl-bg);
+            color: var(--ctrl-text);
+            border: 1px solid var(--ctrl-border);
+            border-radius: 999px;
+            padding: 7px 12px;
+            font-size: clamp(12px, 0.78em, 15px);
+            font-weight: 600;
+            cursor: pointer;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.28);
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            line-height: 1.2;
+        }
+        .map-ctrl-btn[hidden] { display: none; }
+        .map-ctrl-btn svg {
+            width: 14px;
+            height: 14px;
+            flex-shrink: 0;
+        }
+        .map-ctrl-btn.active {
+            border-color: #00e5ff;
+            color: #00e5ff;
+        }
+        .web-toast {
+            position: fixed;
+            bottom: 24px;
+            left: 50%;
+            transform: translateX(-50%) translateY(80px);
+            background: rgba(15, 23, 42, 0.94);
+            color: #ffffff;
+            border: 1px solid rgba(0, 229, 255, 0.35);
+            padding: 9px 18px;
+            border-radius: 999px;
+            font-size: 0.85em;
+            font-weight: 500;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+            z-index: 2000;
+            pointer-events: none;
+            opacity: 0;
+            transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.28s ease;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .web-toast.show {
+            transform: translateX(-50%) translateY(0);
+            opacity: 1;
+        }
+        .web-toast.offline {
+            background: rgba(28, 25, 23, 0.95);
+            color: #f59e0b;
+            border: 1px solid rgba(245, 158, 11, 0.45);
+        }
+        .web-toast.reconnected {
+            background: rgba(6, 78, 59, 0.95);
+            color: #34d399;
+            border: 1px solid rgba(52, 211, 153, 0.45);
+        }
+        /* CIE-033: Mobile Smart App Banner (flex child so it never overlaps map HUD or zoom controls) */
+        #smartBanner {
+            position: relative;
+            flex: 0 0 auto;
+            width: 100%;
+            box-sizing: border-box;
+            min-height: 54px;
+            background: #0f172a;
+            color: #f8fafc;
+            display: flex;
+            align-items: center;
+            padding: 6px 12px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+            z-index: 2000;
+            font-size: 13px;
+        }
+        #smartBanner .smart-banner-close {
+            background: none;
+            border: none;
+            color: #94a3b8;
+            font-size: 22px;
+            line-height: 1;
+            padding: 4px 8px;
+            cursor: pointer;
+            margin-right: 2px;
+        }
+        #smartBanner .smart-banner-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 9px;
+            margin-right: 10px;
+            flex-shrink: 0;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+        }
+        #smartBanner .smart-banner-info {
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+        #smartBanner .smart-banner-title {
+            font-weight: 700;
+            font-size: 13px;
+            color: #ffffff;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        #smartBanner .smart-banner-sub {
+            font-size: 11px;
+            color: #94a3b8;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        #smartBanner .smart-banner-cta {
+            background: #00e5ff;
+            color: #0b1320;
+            font-weight: 700;
+            font-size: 12px;
+            text-decoration: none;
+            padding: 6px 14px;
+            border-radius: 20px;
+            letter-spacing: 0.5px;
+            margin-left: 8px;
+            flex-shrink: 0;
+            box-shadow: 0 0 8px rgba(0, 229, 255, 0.35);
+        }
+
+        /* CIE-035: Smooth, Flash-Free Dark/Light Theme Switching */
+        @media (prefers-color-scheme: dark) {
+            :root {
+                color-scheme: dark;
+                --hud-bg: rgba(15, 23, 42, 0.94);
+                --hud-surface-subtle: rgba(30, 41, 59, 0.82);
+                --hud-text: #f8fafc;
+                --hud-muted: #94a3b8;
+                --hud-border: rgba(255, 255, 255, 0.14);
+                --hud-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+                --hud-chip-bg: rgba(30, 41, 59, 0.92);
+                --hud-chip-border: rgba(148, 163, 184, 0.32);
+                --hud-chip-text: #f1f5f9;
+                --ctrl-bg: rgba(15, 23, 42, 0.92);
+                --ctrl-text: #f1f5f9;
+                --ctrl-border: rgba(255, 255, 255, 0.16);
+            }
+            body {
+                background: #0f172a;
+                color: #f1f5f9;
+            }
+            #overlay, .status-card {
+                background: var(--hud-bg);
+                color: var(--hud-text);
+                border: 1px solid var(--hud-border);
+                box-shadow: var(--hud-shadow);
+            }
+            .active { color: #4ade80; }
+            .offline { color: #f87171; }
+            .status.delayed { color: #fbbf24; }
+            .status.paused { color: #cbd5e1; }
+            .telemetry-cell svg { color: #38bdf8; }
+            .telemetry-cell.is-warn,
+            .telemetry-cell.is-warn svg { color: #f87171; }
+            .map-ctrl-btn {
+                background: var(--ctrl-bg);
+                color: var(--ctrl-text);
+                border: 1px solid var(--ctrl-border);
+                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+            }
+            .map-ctrl-btn:hover {
+                background: #1e293b;
+            }
+            .map-ctrl-btn.active {
+                background: #0284c7;
+                color: #ffffff;
+                border-color: #38bdf8;
+            }
+            .destination-badge {
+                background: rgba(14, 116, 144, 0.25);
+                color: #38bdf8;
+                border-color: rgba(56, 189, 248, 0.35);
+            }
+            .deadline-badge {
+                background: rgba(67, 56, 202, 0.25);
+                color: #a5b4fc;
+                border-color: rgba(165, 180, 252, 0.35);
+            }
+            .deadline-badge.overdue {
+                background: rgba(180, 83, 9, 0.25);
+                color: #fcd34d;
+                border-color: rgba(252, 211, 77, 0.35);
+            }
+            .power-save-banner {
+                background: rgba(120, 53, 15, 0.25);
+                border-color: rgba(245, 158, 11, 0.4);
+                color: #fef3c7;
+            }
+            .stale-signal-banner {
+                background: rgba(153, 27, 27, 0.25);
+                border-color: rgba(239, 68, 68, 0.4);
+                color: #fca5a5;
+            }
+            .low-battery-banner {
+                background: rgba(159, 18, 57, 0.25);
+                border-color: rgba(244, 63, 94, 0.4);
+                color: #fecdd3;
+            }
+            .paused-status-banner {
+                background: rgba(51, 65, 85, 0.55);
+                border-color: rgba(148, 163, 184, 0.45);
+                color: #e2e8f0;
+            }
+            .watcher-version-notice {
+                background: rgba(120, 53, 15, 0.25);
+                border-color: rgba(245, 158, 11, 0.45);
+                color: #fef3c7;
+            }
+            .watcher-version-badge {
+                background: rgba(245, 158, 11, 0.2);
+                color: #fde68a;
+                border-color: rgba(251, 191, 36, 0.45);
+            }
+            .watcher-update-link {
+                background: #f59e0b;
+                color: #0f172a;
+            }
+            .get-app-strip {
+                background: rgba(15, 23, 42, 0.96);
+                border-top: 1px solid rgba(255, 255, 255, 0.12);
+                color: #f1f5f9;
+            }
+            .get-app-copy {
+                color: #e2e8f0;
+            }
+            .web-toast {
+                background: rgba(30, 41, 59, 0.95);
+                color: #f8fafc;
+                border-color: rgba(255, 255, 255, 0.2);
+            }
+            .web-toast.offline {
+                background: rgba(153, 27, 27, 0.95);
+                color: #ffffff;
+                border-color: rgba(239, 68, 68, 0.5);
+            }
+            .web-toast.reconnected {
+                background: rgba(6, 78, 59, 0.95);
+                color: #ffffff;
+                border-color: rgba(16, 185, 129, 0.5);
+            }
+        }
+
+        /* CIE-036: Reduced Motion & Screen Reader Accessibility */
+        .sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border-width: 0;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.001ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.001ms !important;
+                scroll-behavior: auto !important;
+            }
+            .heading-cone-wrap {
+                transition: none !important;
+            }
+            .web-toast {
+                transition: none !important;
+            }
         }
     </style>
 </head>
 <body>
-    <div id="overlay">
-        <div class="status" id="statusText">Connecting...</div>
-        <div class="user-name" id="userNameText"></div>
-        <div class="details" id="detailsText">Waiting for location data</div>
-        <div id="powerSaveContainer" style="display: none;">
-            <div class="power-save-badge">⚠️ Device in Power Saving Mode</div>
-            <div class="power-save-banner">Location updates arrive at longer intervals while Power Saving Mode is active, and live speed readings may be delayed or inaccurate.</div>
+    <!-- CIE-033: Smart App Banner for mobile browsers with direct deep link handoff -->
+    <div id="smartBanner" style="display: none;">
+        <button type="button" class="smart-banner-close" id="smartBannerClose" aria-label="Dismiss smart banner">&times;</button>
+        <img src="/assets/apple-touch-icon.png" class="smart-banner-icon" alt="TrackMe App icon" />
+        <div class="smart-banner-info">
+            <div class="smart-banner-title" id="smartBannerTitle">TrackMe: Live GPS Rides</div>
+            <div class="smart-banner-sub" id="smartBannerSub">Open in TrackMe app for live arrival alerts</div>
+        </div>
+        <a href="#" class="smart-banner-cta" id="smartBannerCta">OPEN</a>
+    </div>
+    <div class="map-stage">
+        <div id="map"></div>
+        <div id="overlay">
+            <div class="overlay-header">
+                <div class="overlay-header-main">
+                    <div class="status-row">
+                        <span class="status-dot" aria-hidden="true"></span>
+                        <span class="status" id="statusText">Connecting...</span>
+                        <button type="button" id="connectionRetryBtn" class="retry-btn" style="display: none;" title="Retry connection" aria-label="Retry connection">Retry</button>
+                    </div>
+                    <div class="user-name" id="userNameText"></div>
+                </div>
+                <div class="overlay-header-actions">
+                    <button type="button" id="unitToggleBtn" class="overlay-icon-btn" aria-label="Toggle units between metric and imperial" title="Toggle units (km/h vs mph)">km/h</button>
+                    <button type="button" id="overlayToggleBtn" class="overlay-icon-btn icon-only" aria-label="Collapse trip details" aria-expanded="true" title="Collapse or expand details">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg>
+                    </button>
+                </div>
+            </div>
+            <div id="overlayBody">
+                <div class="overlay-badges" id="overlayBadges">
+                    <div class="destination-badge" id="destinationBadge" style="display: none;">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
+                        <span id="destinationText"></span>
+                    </div>
+                    <div class="deadline-badge" id="deadlineBadge" style="display: none;">
+                        <span id="deadlineIcon" aria-hidden="true"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></span>
+                        <span id="deadlineText"></span>
+                    </div>
+                </div>
+                <div class="details" id="detailsText">Waiting for location data</div>
+                <div class="open-app-row" id="openAppRow">
+                    <a href="#getApp" id="openAppBtn" class="open-app-btn">Open in TrackMe App</a>
+                </div>
+                <div id="watcherVersionContainer" class="watcher-version-notice" style="display: none;" role="note" aria-live="polite">
+                    <div class="watcher-version-badge" id="watcherVersionBadge">Requires TrackMe v1.9.3 or newer</div>
+                    <div class="watcher-version-text" id="watcherVersionText">Trusted Contact invites require TrackMe v1.9.3+. If opening in the app does not show the invite prompt (or says session expired/not found), please update TrackMe on Google Play or the App Store first, then reopen this link.</div>
+                    <div class="watcher-version-actions">
+                        <a href="https://play.google.com/store/apps/details?id=in.shvms.trackme&referrer=utm_source%3Dwatcher_invite_update%26utm_medium%3Dweb%26utm_campaign%3Dlive_watcher_v193" target="_blank" rel="noopener noreferrer" class="watcher-update-link" data-watcher-update="android">Update on Google Play</a>
+                        <a href="https://apps.apple.com/app/id6800161248?pt=128001612&ct=watcher_invite_update&mt=8" target="_blank" rel="noopener noreferrer" class="watcher-update-link" data-watcher-update="ios">Update on App Store</a>
+                    </div>
+                </div>
+                <div id="powerSaveContainer" style="display: none;">
+                    <div class="power-save-badge">Device in Power Saving Mode</div>
+                    <div class="power-save-banner">Location updates arrive at longer intervals while Power Saving Mode is active, and live speed readings may be delayed or inaccurate.</div>
+                </div>
+                <div id="staleSignalContainer" style="display: none;">
+                    <div class="stale-signal-banner">
+                        <span id="staleSignalText">Signal paused · Waiting for rider GPS</span>
+                        <button type="button" id="staleRefreshBtn" class="stale-refresh-btn" title="Refresh live location">Refresh</button>
+                    </div>
+                </div>
+                <div id="pausedStatusContainer" style="display: none;">
+                    <div class="paused-status-banner">
+                        <span id="pausedStatusText">Rider is auto-paused while stationary · Live route will resume on movement</span>
+                    </div>
+                </div>
+                <div id="lowBatteryContainer" style="display: none;">
+                    <div class="low-battery-banner">
+                        <span id="lowBatteryText">Rider battery low (&lt;15%) · Signal may pause if phone powers off</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="map-controls" id="mapControls" hidden>
+            <button type="button" id="shareBtn" class="map-ctrl-btn" aria-label="Share live ride link">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+                <span>Share</span>
+            </button>
+            <button type="button" id="directionsBtn" class="map-ctrl-btn" aria-label="Get directions to rider" hidden>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>
+                <span>Directions</span>
+            </button>
+            <button type="button" id="lowDataBtn" class="map-ctrl-btn" aria-label="Toggle low data mode" aria-pressed="false" title="Reduce cellular data by polling every 30s">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>
+                <span>Low Data</span>
+            </button>
+            <button type="button" id="followBtn" class="map-ctrl-btn active" hidden>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8"/><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/></svg>
+                <span id="followBtnLabel">Follow</span>
+            </button>
+            <button type="button" id="fitRouteBtn" class="map-ctrl-btn" hidden>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+                <span>Fit Route</span>
+            </button>
         </div>
     </div>
-    <div id="map"></div>
 
     <!--
         TASK-294. 141 non-users watched a live ride and were shown no way to get the app. They
@@ -116,7 +987,8 @@
         first, and a viewer who ignores this can keep watching indefinitely.
     -->
     <section id="getApp" hidden aria-label="Get TrackMe">
-        <p id="getAppCopy">📍 Live via TrackMe — Free offline GPS speedometer & live location sharing · Zero account needed to record</p>
+        <button type="button" id="getAppClose" aria-label="Dismiss TrackMe download banner">&times;</button>
+        <p id="getAppCopy">Live via TrackMe — Free offline GPS speedometer &amp; live location sharing · Zero account needed to record</p>
         <div class="getapp-badges">
             <a href="https://play.google.com/store/apps/details?id=in.shvms.trackme&referrer=utm_source%3Dlive_share_viewer%26utm_medium%3Dweb%26utm_campaign%3Dlive_tracker"
                target="_blank" rel="noopener noreferrer" data-download-platform="android">
@@ -132,22 +1004,100 @@
     </section>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="/js/tracker-core.js"></script>
     <script>
-        // Extract sessionId from URL (e.g., /live/abc-123)
-        const pathParts = window.location.pathname.split('/');
-        const sessionId = pathParts[pathParts.length - 1];
-
-        if (!sessionId || sessionId === 'live') {
-            document.getElementById('statusText').innerText = 'Error';
-            document.getElementById('detailsText').innerText = 'No session ID provided in URL';
-            throw new Error('No session ID');
+        // Keep iOS Smart App Banner synced with the exact current session URL.
+        const smartAppBanner = document.getElementById('smartAppBanner');
+        if (smartAppBanner) {
+            smartAppBanner.setAttribute('content', `app-id=6800161248, app-argument=${window.location.href}`);
         }
 
-        // Generate a random viewer ID to track concurrent users
-        let viewerId = sessionStorage.getItem('viewerId');
-        if (!viewerId) {
-            viewerId = Math.random().toString(36).substring(2, 15);
-            sessionStorage.setItem('viewerId', viewerId);
+        // Extract and sanitize sessionId from URL (e.g., /live/abc-123 or /live/watcher)
+        const parsedLivePath = TrackCore.parseLiveSessionPath(window.location.pathname);
+        const rawSessionId = parsedLivePath.raw;
+        const sessionId = parsedLivePath.sessionId;
+        const queryParams = new URLSearchParams(window.location.search);
+        const isWatcherInvite = sessionId === 'watcher';
+        document.body?.classList?.toggle?.('is-watcher-invite', isWatcherInvite);
+        const isValidSession = parsedLivePath.isValid;
+
+        // CIE-030: Persistent interactive unit preference resolution
+        const PREFERRED_UNITS_STORAGE_KEY = TrackCore.PREFERRED_UNITS_STORAGE_KEY;
+        function detectInitialUnits() {
+            const q = queryParams.get('units') || queryParams.get('unit');
+            let stored = null;
+            try {
+                stored = localStorage.getItem(PREFERRED_UNITS_STORAGE_KEY);
+            } catch (_) {}
+            const languages = navigator.languages || [navigator.language || ''];
+            return TrackCore.resolveInitialUnits(q, stored, languages);
+        }
+
+        let activeUnitSystem = detectInitialUnits();
+
+        function updateUnitToggleButton() {
+            const btn = document.getElementById('unitToggleBtn');
+            if (btn) {
+                btn.textContent = activeUnitSystem === 'imperial' ? 'mph' : 'km/h';
+                btn.setAttribute('aria-label', `Active units: ${activeUnitSystem}. Click to toggle units.`);
+                btn.setAttribute('title', `Active units: ${activeUnitSystem === 'imperial' ? 'imperial (mph · mi)' : 'metric (km/h · km)'}. Click to toggle.`);
+            }
+        }
+
+        // Initialize button label immediately
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', updateUnitToggleButton);
+        } else {
+            updateUnitToggleButton();
+        }
+
+        // CIE-031: Live Share Social Cards & Dynamic Metadata Resolution
+        function sanitizeRiderNameClient(rawName) {
+            return TrackCore.sanitizeRiderName(rawName);
+        }
+
+        function updateSocialMetadata(riderName, isStopped) {
+            const cleanName = sanitizeRiderNameClient(riderName) || sanitizeRiderNameClient(queryParams.get('name'));
+            let titleText;
+            let descText;
+            if (cleanName) {
+                if (isStopped) {
+                    titleText = `${cleanName}'s Ride on TrackMe · Trip Completed`;
+                    descText = `View ${cleanName}'s completed route, distance, and duration on TrackMe. Private, free & open-source.`;
+                } else {
+                    titleText = `${cleanName}'s Live Ride · TrackMe`;
+                    descText = `Follow ${cleanName} live in real time on TrackMe with private GPS breadcrumbs, speed, and ETA. Free & open-source.`;
+                }
+            } else {
+                if (isStopped) {
+                    titleText = 'TrackMe Live Ride Tracking · Trip Completed';
+                    descText = 'View this completed route, distance, and duration on TrackMe. Private, free & open-source.';
+                } else {
+                    titleText = 'TrackMe Live Ride Tracking · Real-Time GPS Sharing';
+                    descText = 'Follow this ride live in real time with private GPS breadcrumbs, speed, and ETA. Free & open-source.';
+                }
+            }
+
+            document.title = titleText;
+            const ogTitle = document.getElementById('ogTitle');
+            if (ogTitle) ogTitle.setAttribute('content', titleText);
+            const twTitle = document.getElementById('twTitle');
+            if (twTitle) twTitle.setAttribute('content', titleText);
+
+            const ogDesc = document.getElementById('ogDesc');
+            if (ogDesc) ogDesc.setAttribute('content', descText);
+            const twDesc = document.getElementById('twDesc');
+            if (twDesc) twDesc.setAttribute('content', descText);
+
+            const canonicalUrl = sessionId
+                ? `${window.location.origin}/live/${encodeURIComponent(sessionId)}${cleanName ? `?name=${encodeURIComponent(cleanName)}` : ''}`
+                : `${window.location.origin}/live`;
+            const ogUrl = document.getElementById('ogUrl');
+            if (ogUrl) ogUrl.setAttribute('content', canonicalUrl);
+
+            if (typeof configureSmartAppBanner === 'function') {
+                configureSmartAppBanner(cleanName);
+            }
         }
 
         // Detect viewer platform to highlight and promote native store badge
@@ -157,313 +1107,1879 @@
         if (isIOS) document.body.classList.add('is-ios');
         else if (isAndroid) document.body.classList.add('is-android');
 
-        // TASK-360: Immediate page-view telemetry so viewers who land on ended/expired trips are not lost
-        fetch('/api/telemetry/event', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                event: 'live_share_viewed',
-                distinctId: viewerId,
-                properties: {
-                    sessionId,
-                    viewerId,
-                    os: viewerOS,
-                    surface: 'live_share_viewer'
-                }
-            })
-        }).catch(() => {});
+        // CIE-033: Smart App Banner with deep link handoff and dismissal persistence
+        const SMART_BANNER_DISMISS_KEY = 'trackme_smart_banner_dismissed_at';
+        const SMART_BANNER_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
-        const map = L.map('map').setView([0, 0], 2);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '© OpenStreetMap contributors'
-        }).addTo(map);
+        // Initialize social metadata from query parameters immediately
+        updateSocialMetadata(null, false);
+
+        // Generate a random viewer ID to track concurrent users
+        let viewerId = sessionStorage.getItem('viewerId');
+        if (!viewerId) {
+            viewerId = Math.random().toString(36).substring(2, 15);
+            sessionStorage.setItem('viewerId', viewerId);
+        }
+
+        // Telemetry helper (keepalive=true survives app-switch / store redirects)
+        function emitTelemetry(event, properties) {
+            fetch('/api/telemetry/event', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                keepalive: true,
+                body: JSON.stringify({
+                    event,
+                    distinctId: viewerId,
+                    properties: Object.assign({
+                        sessionId,
+                        session_id: sessionId,
+                        viewerId,
+                        viewer_id: viewerId,
+                        os: viewerOS,
+                        surface: isWatcherInvite ? 'watcher_invite_viewer' : 'live_share_viewer',
+                    }, properties || {}),
+                }),
+            }).catch(() => {});
+        }
+
+        if (!isWatcherInvite && isValidSession && sessionId) {
+            // TASK-360: Immediate page-view telemetry so viewers who land on ended/expired trips are not lost
+            emitTelemetry('live_share_viewed');
+        } else if (!isValidSession || !sessionId) {
+            // CIE-004: Missing or malformed session fallback recovery
+            emitTelemetry('live_share_missing_session', { rawSessionId });
+            const statusEl = document.getElementById('statusText');
+            if (statusEl) {
+                statusEl.innerText = 'No Live Session';
+                statusEl.className = 'status offline';
+            }
+            const detailsEl = document.getElementById('detailsText');
+            if (detailsEl) {
+                detailsEl.innerText = !sessionId
+                    ? 'No live session specified in link. Return to home or open TrackMe.'
+                    : 'The live session ID in this link is invalid.';
+            }
+            const userEl = document.getElementById('userName');
+            if (userEl) userEl.innerText = 'TrackMe Live Share';
+        }
+
+        // Configure "Open in TrackMe App" CTA button for live sessions & watcher invites
+        function configureOpenInAppButton() {
+            const btn = document.getElementById('openAppBtn');
+            if (!btn) return;
+
+            if (!sessionId || !isValidSession) {
+                btn.textContent = 'Get TrackMe App';
+                btn.href = '/index.html#getApp';
+                btn.addEventListener('click', () => {
+                    emitTelemetry('open_in_app_tapped', { isMissingSession: true });
+                });
+                return;
+            }
+
+            const playFallback = 'https://play.google.com/store/apps/details?id=in.shvms.trackme&referrer=utm_source%3Dlive_share_viewer%26utm_medium%3Dweb%26utm_campaign%3Dlive_tracker_open_app';
+            const appStoreUrl = 'https://apps.apple.com/app/id6800161248?pt=128001612&ct=live_share_viewer_open_app&mt=8';
+
+            if (isWatcherInvite) {
+                btn.textContent = 'Accept Invite in TrackMe App';
+            }
+
+            if (isAndroid) {
+                const pathWithQuery = `${window.location.pathname}${window.location.search}`;
+                btn.href = `intent://trackme.shvms.in${pathWithQuery}#Intent;scheme=https;package=in.shvms.trackme;S.browser_fallback_url=${encodeURIComponent(playFallback)};end`;
+            } else if (isIOS) {
+                if (isWatcherInvite) {
+                    const code = queryParams.get('code') || '';
+                    const inviterName = queryParams.get('inviterName') || '';
+                    btn.href = `trackme://live/watcher?code=${encodeURIComponent(code)}&inviterName=${encodeURIComponent(inviterName)}`;
+                } else {
+                    const cleanName = sanitizeRiderNameClient(queryParams.get('name'));
+                    const nameParam = cleanName ? `?name=${encodeURIComponent(cleanName)}` : '';
+                    btn.href = `trackme://live/${encodeURIComponent(sessionId)}${nameParam}`;
+                }
+            } else {
+                btn.href = '#getApp';
+            }
+
+            btn.addEventListener('click', (event) => {
+                emitTelemetry('open_in_app_tapped', { isWatcherInvite });
+                if (isIOS) {
+                    const timer = setTimeout(() => {
+                        if (document.visibilityState === 'visible') {
+                            window.location.href = appStoreUrl;
+                        }
+                    }, 1200);
+                    const cancelFallback = () => clearTimeout(timer);
+                    window.addEventListener('pagehide', cancelFallback, { once: true });
+                    document.addEventListener('visibilitychange', () => {
+                        if (document.hidden) cancelFallback();
+                    }, { once: true });
+                } else if (!isAndroid) {
+                    event.preventDefault();
+                    revealGetApp(false, true);
+                    document.getElementById('getApp')?.scrollIntoView({ behavior: 'smooth' });
+                }
+            });
+        }
+        configureOpenInAppButton();
+
+        function configureSmartAppBanner(riderName) {
+            if (!isIOS && !isAndroid) return;
+            if (!sessionId || !isValidSession) return;
+
+            try {
+                const dismissedAt = localStorage.getItem(SMART_BANNER_DISMISS_KEY);
+                if (dismissedAt) {
+                    const elapsed = Date.now() - parseInt(dismissedAt, 10);
+                    if (elapsed >= 0 && elapsed < SMART_BANNER_TTL_MS) {
+                        return; // User dismissed within last 7 days
+                    }
+                }
+            } catch (_) {}
+
+            const bannerEl = document.getElementById('smartBanner');
+            const closeBtn = document.getElementById('smartBannerClose');
+            const titleEl = document.getElementById('smartBannerTitle');
+            const subEl = document.getElementById('smartBannerSub');
+            const ctaBtn = document.getElementById('smartBannerCta');
+            if (!bannerEl || !closeBtn || !ctaBtn) return;
+
+            const cleanName = sanitizeRiderNameClient(riderName) || sanitizeRiderNameClient(queryParams.get('name')) || sanitizeRiderNameClient(queryParams.get('inviterName'));
+            if (isWatcherInvite) {
+                if (titleEl) {
+                    titleEl.textContent = cleanName ? `${cleanName}'s Trusted Watcher Invite` : 'Trusted Watcher Invite · TrackMe';
+                }
+                if (subEl) {
+                    subEl.textContent = `Requires TrackMe v${TrackCore.MIN_WATCHER_INVITE_APP_VERSION || '1.9.3'}+ · Update app if invite doesn't open`;
+                }
+            } else if (cleanName && titleEl) {
+                titleEl.textContent = `Track ${cleanName}'s Live Ride`;
+            }
+
+            const playFallback = 'https://play.google.com/store/apps/details?id=in.shvms.trackme&referrer=utm_source%3Dlive_share_smart_banner%26utm_medium%3Dweb%26utm_campaign%3Dlive_tracker';
+            const appStoreUrl = 'https://apps.apple.com/app/id6800161248?pt=128001612&ct=live_share_smart_banner&mt=8';
+
+            let deepLink = '';
+            if (isAndroid) {
+                const pathWithQuery = `${window.location.pathname}${window.location.search}`;
+                deepLink = `intent://trackme.shvms.in${pathWithQuery}#Intent;scheme=https;package=in.shvms.trackme;S.browser_fallback_url=${encodeURIComponent(playFallback)};end`;
+            } else if (isIOS) {
+                if (isWatcherInvite) {
+                    const code = queryParams.get('code') || '';
+                    const inviterName = queryParams.get('inviterName') || '';
+                    deepLink = `trackme://live/watcher?code=${encodeURIComponent(code)}&inviterName=${encodeURIComponent(inviterName)}`;
+                } else {
+                    const nameParam = cleanName ? `?name=${encodeURIComponent(cleanName)}` : '';
+                    deepLink = `trackme://live/${encodeURIComponent(sessionId)}${nameParam}`;
+                }
+            }
+
+            ctaBtn.href = deepLink;
+            ctaBtn.onclick = () => {
+                emitTelemetry('smart_banner_cta_tapped', { platform: isIOS ? 'ios' : 'android', isWatcherInvite });
+                if (isIOS) {
+                    const timer = setTimeout(() => {
+                        if (document.visibilityState === 'visible') {
+                            window.location.href = appStoreUrl;
+                        }
+                    }, 1200);
+                    const cancelFallback = () => clearTimeout(timer);
+                    window.addEventListener('pagehide', cancelFallback, { once: true });
+                    document.addEventListener('visibilitychange', () => {
+                        if (document.hidden) cancelFallback();
+                    }, { once: true });
+                }
+            };
+
+            closeBtn.onclick = () => {
+                bannerEl.style.display = 'none';
+                document.body.classList.remove('has-smart-banner');
+                try {
+                    localStorage.setItem(SMART_BANNER_DISMISS_KEY, Date.now().toString());
+                } catch (_) {}
+                emitTelemetry('smart_banner_dismissed', { platform: isIOS ? 'ios' : 'android' });
+            };
+
+            bannerEl.style.display = 'flex';
+            document.body.classList.add('has-smart-banner');
+        }
+        configureSmartAppBanner();
+
+        // CIE-007: Resilient Leaflet Tile Layer with automatic mirror fallback
+        const TILE_PROVIDERS = [
+            {
+                name: 'OpenStreetMap Primary',
+                url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+                options: {
+                    subdomains: ['a', 'b', 'c'],
+                    maxZoom: 19,
+                    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                }
+            },
+            {
+                name: 'OSM France Humanitarian',
+                url: 'https://tile.openstreetmap.fr/hot/{z}/{x}/{y}.png',
+                options: {
+                    maxZoom: 19,
+                    attribution: '&copy; OpenStreetMap contributors, Tiles style by Humanitarian OpenStreetMap Team hosted by OSM France'
+                }
+            },
+            {
+                name: 'CartoDB Voyager',
+                url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+                options: {
+                    subdomains: ['a', 'b', 'c', 'd'],
+                    maxZoom: 19,
+                    attribution: '&copy; OpenStreetMap contributors &copy; CARTO'
+                }
+            }
+        ];
+
+        let activeTileProviderIndex = 0;
+        let consecutiveTileErrors = 0;
+        let currentTileLayer = null;
+
+        function attachTileLayer(providerIndex) {
+            if (currentTileLayer) {
+                map.removeLayer(currentTileLayer);
+            }
+            const config = TILE_PROVIDERS[providerIndex] || TILE_PROVIDERS[0];
+            currentTileLayer = L.tileLayer(config.url, config.options);
+
+            currentTileLayer.on('tileerror', function() {
+                consecutiveTileErrors++;
+                if (consecutiveTileErrors >= 3 && activeTileProviderIndex < TILE_PROVIDERS.length - 1) {
+                    activeTileProviderIndex++;
+                    consecutiveTileErrors = 0;
+                    console.warn(`Tile errors on ${config.name}. Switching to fallback mirror: ${TILE_PROVIDERS[activeTileProviderIndex].name}`);
+                    attachTileLayer(activeTileProviderIndex);
+                    emitTelemetry('live_share_tile_mirror_fallback', {
+                        provider: TILE_PROVIDERS[activeTileProviderIndex].name,
+                        attempt: activeTileProviderIndex
+                    });
+                }
+            });
+
+            currentTileLayer.on('load', function() {
+                consecutiveTileErrors = 0;
+            });
+
+            currentTileLayer.addTo(map);
+        }
+
+        const map = L.map('map').setView([20, 0], 2);
+        attachTileLayer(0);
 
         let marker = null;
+        let startMarker = null;
+        let finishMarker = null;
+        let trailCasing = null;
+        let trailLine = null;
         let isFirstLoad = true;
 
         // TASK-294 / TASK-342 / TASK-360. Idempotent: called from the first render and from every terminal state.
         let getAppShown = false;
+        let getAppDismissed = false;
         let isTripEnded = false;
-        function revealGetApp(ended = false) {
+        function revealGetApp(ended = false, forceShow = false) {
             if (ended) {
                 isTripEnded = true;
+                getAppDismissed = false;
                 const copyEl = document.getElementById('getAppCopy');
-                if (copyEl) copyEl.innerText = '🏁 This trip has ended. Track your own rides and share live location free with TrackMe.';
+                if (copyEl) copyEl.innerText = 'This trip has ended. Track your own rides and share live location free with TrackMe.';
+            } else if (forceShow) {
+                getAppDismissed = false;
             }
+            if (getAppDismissed && !ended) return;
+            const getAppEl = document.getElementById('getApp');
+            if (getAppEl) getAppEl.hidden = false;
+            document.body?.classList?.add('has-getapp');
+            map?.invalidateSize?.();
             if (getAppShown) return;
             getAppShown = true;
-            document.getElementById('getApp').hidden = false;
-            document.body.classList.add('has-getapp');
-            // The map container just changed height; Leaflet must be told or the tiles and the
-            // marker position go stale.
-            map.invalidateSize();
 
             // TASK-360: Banner impression telemetry
-            fetch('/api/telemetry/event', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    event: 'download_cta_shown',
-                    distinctId: viewerId,
-                    properties: {
-                        sessionId,
-                        surface: 'live_share_viewer',
-                        os: viewerOS,
-                        state: isTripEnded ? 'ended' : 'live'
-                    }
-                })
-            }).catch(() => {});
+            emitTelemetry('download_cta_shown', { state: isTripEnded ? 'ended' : 'live' });
         }
+        document.getElementById('getAppClose')?.addEventListener('click', () => {
+            getAppDismissed = true;
+            const getAppEl = document.getElementById('getApp');
+            if (getAppEl) getAppEl.hidden = true;
+            document.body?.classList?.remove('has-getapp');
+            map?.invalidateSize?.();
+            emitTelemetry('download_cta_dismissed', { state: isTripEnded ? 'ended' : 'live' });
+        });
+        document.getElementById('overlayToggleBtn')?.addEventListener('click', () => {
+            const overlayEl = document.getElementById('overlay');
+            const toggleBtn = document.getElementById('overlayToggleBtn');
+            if (!overlayEl || !toggleBtn) return;
+            const collapsed = overlayEl.classList.toggle('is-collapsed');
+            toggleBtn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+            toggleBtn.setAttribute('aria-label', collapsed ? 'Expand trip details' : 'Collapse trip details');
+            toggleBtn.title = collapsed ? 'Expand trip details' : 'Collapse trip details';
+        });
         document.querySelectorAll('#getApp a[data-download-platform]').forEach((link) => {
             link.addEventListener('click', () => {
-                fetch('/api/telemetry/event', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        // Same name the landing page uses. One action, one event, one funnel.
-                        event: 'download_cta_clicked',
-                        distinctId: viewerId,
-                        properties: {
-                            sessionId,
-                            platform: link.dataset.downloadPlatform,
-                            os: viewerOS,
-                            surface: 'live_share_viewer',
-                            state: isTripEnded ? 'ended' : 'live'
-                        }
-                    })
-                }).catch(() => {});
+                emitTelemetry('download_cta_clicked', {
+                    platform: link.dataset.downloadPlatform,
+                    state: isTripEnded ? 'ended' : 'live',
+                });
             });
         });
 
-        function buildLocationPopup(lat, lon, username, timestamp) {
-            const container = document.createElement('div');
-            container.style.textAlign = 'center';
-            container.style.padding = '5px';
+        // Handle /live/watcher?code=...&inviterName=... cleanly without polling /api/track/watcher/location
+        if (isWatcherInvite) {
+            const inviteCode = (queryParams.get('code') || '').trim();
+            const hasLegacyInviterUid = Boolean((queryParams.get('inviterUid') || '').trim());
+            const inviterName = sanitizeRiderNameClient(queryParams.get('inviterName')) || 'A TrackMe rider';
+            const statusEl = document.getElementById('statusText');
+            const nameEl = document.getElementById('userNameText');
+            const detailsEl = document.getElementById('detailsText');
+            const versionNotice = TrackCore.buildWatcherVersionNotice
+                ? TrackCore.buildWatcherVersionNotice(inviterName)
+                : {
+                    minVersion: '1.9.3',
+                    badgeText: 'Requires TrackMe v1.9.3 or newer',
+                    message: 'Trusted Contact invites require TrackMe v1.9.3+. If opening in the app does not show the invite prompt (or says session expired/not found), please update TrackMe on Google Play or the App Store first, then reopen this link.',
+                    getAppCopy: "Trusted Contact invites require TrackMe v1.9.3 or newer — update or install the app below, then tap 'Accept Invite in TrackMe App'.",
+                };
 
-            const title = document.createElement('p');
-            title.textContent = 'Location Actions';
-            title.style.margin = '0 0 10px 0';
-            title.style.fontWeight = 'bold';
-            container.appendChild(title);
+            if (!inviteCode) {
+                statusEl.innerText = hasLegacyInviterUid ? 'Invite Outdated' : 'Invalid Invite';
+                statusEl.className = 'status offline';
+                nameEl.innerText = 'Trusted Watcher Invite';
+                detailsEl.innerText = hasLegacyInviterUid
+                    ? 'This legacy watcher invite link has expired. Ask the rider to send a fresh single-use Trusted Watcher invite.'
+                    : 'This invite link is missing a valid invite code.';
+            } else {
+                statusEl.innerText = 'Trusted Watcher Invite';
+                statusEl.className = 'status active';
+                nameEl.innerText = `${inviterName} wants to add you as a Trusted Watcher`;
+                detailsEl.innerText = 'Accept in the TrackMe app to get instant live location alerts whenever they start sharing — zero phone contacts permission required.';
+            }
 
-            const shareButton = document.createElement('button');
-            shareButton.type = 'button';
-            shareButton.textContent = 'Share Location';
-            shareButton.style.padding = '8px 12px';
-            shareButton.style.background = '#007bff';
-            shareButton.style.color = 'white';
-            shareButton.style.border = 'none';
-            shareButton.style.borderRadius = '4px';
-            shareButton.style.cursor = 'pointer';
-            shareButton.style.marginBottom = '10px';
-            shareButton.style.width = '100%';
-            shareButton.addEventListener('click', () => window.shareLocation(lat, lon, username, timestamp));
-            container.appendChild(shareButton);
-            container.appendChild(document.createElement('br'));
-
-            const maps = [
-                ['Google Maps', 'https://maps.google.com/?q='],
-                ['Apple Maps', 'https://maps.apple.com/?q=']
-            ];
-            const coordinates = encodeURIComponent(`${lat},${lon}`);
-            maps.forEach(([label, baseUrl], index) => {
-                if (index > 0) container.appendChild(document.createTextNode(' | '));
-                const link = document.createElement('a');
-                link.href = `${baseUrl}${coordinates}`;
-                link.target = '_blank';
-                link.rel = 'noopener noreferrer';
-                link.textContent = label;
-                link.style.fontSize = '0.9em';
-                container.appendChild(link);
+            const versionContainerEl = document.getElementById('watcherVersionContainer');
+            const versionBadgeEl = document.getElementById('watcherVersionBadge');
+            const versionTextEl = document.getElementById('watcherVersionText');
+            if (versionContainerEl) {
+                versionContainerEl.style.display = 'block';
+                if (versionBadgeEl) versionBadgeEl.innerText = versionNotice.badgeText;
+                if (versionTextEl) versionTextEl.innerText = versionNotice.message;
+            }
+            const getAppCopyEl = document.getElementById('getAppCopy');
+            if (getAppCopyEl) {
+                getAppCopyEl.innerText = versionNotice.getAppCopy;
+            }
+            document.querySelectorAll('[data-watcher-update]').forEach((link) => {
+                link.addEventListener('click', () => {
+                    emitTelemetry('watcher_invite_update_store_clicked', {
+                        platform: link.getAttribute('data-watcher-update'),
+                        minVersion: versionNotice.minVersion,
+                    });
+                });
             });
 
-            return container;
-        }
-        
-        window.shareLocation = function(lat, lon, username, timestamp) {
-            fetch('/api/telemetry/event', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ event: 'share_location_clicked', distinctId: viewerId, properties: { sessionId, username } })
-            }).catch(() => {});
-            const googleMapsLink = `https://maps.google.com/?q=${lat},${lon}`;
-            const appleMapsLink = `https://maps.apple.com/?q=${lat},${lon}`;
-            const timeString = new Date(timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-            const text = `${username}'s last location was fetched here at ${timeString}:\nGoogle Maps: ${googleMapsLink}\nApple Maps: ${appleMapsLink}`;
-            
-            if (navigator.share) {
-                navigator.share({ title: `${username}'s Location`, text: text }).catch(console.error);
-            } else {
-                navigator.clipboard.writeText(text).then(() => alert('Copied to clipboard!'));
+            emitTelemetry('trusted_watcher_invite_viewed', { hasInviteCode: Boolean(inviteCode), minAppVersion: versionNotice.minVersion });
+            revealGetApp(false);
+        } else {
+            // Standard Live Session Tracking flow
+            function computeBearingDeg(fromLat, fromLon, toLat, toLon) {
+                if (Math.abs(fromLat - toLat) < 1e-6 && Math.abs(fromLon - toLon) < 1e-6) return null;
+                const toRad = (d) => (d * Math.PI) / 180;
+                const toDeg = (r) => (r * 180) / Math.PI;
+                const lat1 = toRad(fromLat);
+                const lat2 = toRad(toLat);
+                const dLon = toRad(toLon - fromLon);
+                const y = Math.sin(dLon) * Math.cos(lat2);
+                const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
+                return ((toDeg(Math.atan2(y, x)) % 360) + 360) % 360;
             }
-        };
 
-        let pollingInterval = null;
-        let pingInterval = null;
+            // CIE-011: Format elapsed or total trip duration
+            const formatElapsedDuration = TrackCore.formatElapsedDuration;
 
-        async function pingPresence() {
-            try {
-                const response = await fetch(`/api/track/${sessionId}/ping`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ viewerId })
+            // CIE-024: Accumulated path distance computation & formatting
+            const computePathDistanceMeters = TrackCore.computePathDistanceMeters;
+            const formatViewerDistance = TrackCore.formatViewerDistance;
+
+            // CIE-039: Concluded trip average speed computation and formatting
+            const computeAverageSpeed = TrackCore.computeAverageSpeed;
+            const formatAverageSpeed = TrackCore.formatAverageSpeed;
+
+            // CIE-025: Scheduled ETA / Deadline display and overdue evaluation
+            const formatDeadlineStatus = TrackCore.formatDeadlineStatus;
+
+            function updateDeadlineBadge(deadlineRaw, isStopped) {
+                const deadlineBadge = document.getElementById('deadlineBadge');
+                const deadlineTextEl = document.getElementById('deadlineText');
+                if (!deadlineBadge || !deadlineTextEl) return;
+                const status = formatDeadlineStatus(deadlineRaw, isStopped);
+                if (status) {
+                    deadlineTextEl.textContent = status.displayText;
+                    if (status.isOverdue) {
+                        deadlineBadge.classList.add('overdue');
+                    } else {
+                        deadlineBadge.classList.remove('overdue');
+                    }
+                    deadlineBadge.style.display = 'inline-flex';
+                } else {
+                    deadlineBadge.style.display = 'none';
+                }
+            }
+
+            function evaluateLivePauseState(data) {
+                return TrackCore.evaluateLivePauseState(data);
+            }
+
+            function buildHeadingConeSvg(hasHeading, isPaused = false) {
+                if (isPaused) {
+                    return `<svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true">
+                        <circle cx="13" cy="13" r="10" fill="rgba(148, 163, 184, 0.28)"/>
+                        <circle cx="13" cy="13" r="6" fill="#94a3b8" stroke="#475569" stroke-width="2.5"/>
+                    </svg>`;
+                }
+                if (!hasHeading) {
+                    return `<svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true">
+                        <circle cx="13" cy="13" r="10" fill="rgba(0, 229, 255, 0.25)"/>
+                        <circle cx="13" cy="13" r="6" fill="#00e5ff" stroke="#0a2540" stroke-width="2.5"/>
+                    </svg>`;
+                }
+                return `<svg width="42" height="42" viewBox="0 0 42 42" aria-hidden="true">
+                    <defs>
+                        <linearGradient id="coneGrad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stop-color="#00e5ff" stop-opacity="0.05"/>
+                            <stop offset="100%" stop-color="#00e5ff" stop-opacity="0.55"/>
+                        </linearGradient>
+                    </defs>
+                    <path d="M21 21 L7 4 Q21 0 35 4 Z" fill="url(#coneGrad)"/>
+                    <polygon points="21,11 26,22 21,19 16,22" fill="#00e5ff" stroke="#0a2540" stroke-width="1.5" stroke-linejoin="round"/>
+                    <circle cx="21" cy="21" r="5.5" fill="#00e5ff" stroke="#0a2540" stroke-width="2.5"/>
+                </svg>`;
+            }
+
+            function buildLocationPopup(lat, lon, username, timestamp) {
+                const container = document.createElement('div');
+                container.style.textAlign = 'center';
+                container.style.padding = '5px';
+
+                const title = document.createElement('p');
+                title.textContent = 'Location Actions';
+                title.style.margin = '0 0 10px 0';
+                title.style.fontWeight = 'bold';
+                container.appendChild(title);
+
+                const shareButton = document.createElement('button');
+                shareButton.type = 'button';
+                shareButton.textContent = 'Share Location';
+                shareButton.style.padding = '8px 12px';
+                shareButton.style.background = '#007bff';
+                shareButton.style.color = 'white';
+                shareButton.style.border = 'none';
+                shareButton.style.borderRadius = '4px';
+                shareButton.style.cursor = 'pointer';
+                shareButton.style.marginBottom = '10px';
+                shareButton.style.width = '100%';
+                shareButton.addEventListener('click', () => window.shareLocation(lat, lon, username, timestamp));
+                container.appendChild(shareButton);
+                container.appendChild(document.createElement('br'));
+
+                const maps = [
+                    ['Google Maps', 'https://maps.google.com/?q='],
+                    ['Apple Maps', 'https://maps.apple.com/?q=']
+                ];
+                const coordinates = encodeURIComponent(`${lat},${lon}`);
+                maps.forEach(([label, baseUrl], index) => {
+                    if (index > 0) container.appendChild(document.createTextNode(' | '));
+                    const link = document.createElement('a');
+                    link.href = `${baseUrl}${coordinates}`;
+                    link.target = '_blank';
+                    link.rel = 'noopener noreferrer';
+                    link.textContent = label;
+                    link.style.fontSize = '0.9em';
+                    container.appendChild(link);
                 });
-                
-                if (!response.ok) {
-                    if (response.status === 404) {
-                        document.getElementById('statusText').innerText = 'Session Expired';
-                        document.getElementById('statusText').className = 'status offline';
-                        const timeStr = window.lastKnownDuration ? `Location was shared for ${window.lastKnownDuration} minutes and time elapsed.` : 'Location sharing time elapsed or session ended.';
-                        document.getElementById('detailsText').innerText = timeStr;
-                        if (pollingInterval) clearInterval(pollingInterval);
-                        if (pingInterval) clearInterval(pingInterval);
-                        revealGetApp();
-                        return;
-                    }
-                    if (response.status === 429) {
-                        document.getElementById('statusText').innerText = 'Session Full';
-                        document.getElementById('statusText').className = 'status offline';
-                        document.getElementById('detailsText').innerText = 'Maximum number of viewers reached. Try again later.';
-                        if (pollingInterval) clearInterval(pollingInterval);
-                        if (pingInterval) clearInterval(pingInterval);
-                        revealGetApp();
-                        return;
-                    }
-                }
-            } catch (err) {
-                console.error('Ping failed:', err);
+
+                return container;
             }
-        }
 
-        async function fetchLocation() {
-            try {
-                const response = await fetch(`/api/track/${sessionId}/location`);
-                if (!response.ok) {
-                    if (response.status === 404) {
-                        document.getElementById('statusText').innerText = 'Session Expired';
-                        document.getElementById('statusText').className = 'status offline';
-                        const timeStr = window.lastKnownDuration ? `Location was shared for ${window.lastKnownDuration} minutes and time elapsed.` : 'Location sharing time elapsed or session ended.';
-                        document.getElementById('detailsText').innerText = timeStr;
-                        if (pollingInterval) clearInterval(pollingInterval);
-                        if (pingInterval) clearInterval(pingInterval);
-                        revealGetApp(true);
-                        return;
-                    }
-                    if (response.status === 429) {
-                        document.getElementById('statusText').innerText = 'Session Full';
-                        document.getElementById('statusText').className = 'status offline';
-                        document.getElementById('detailsText').innerText = 'Maximum number of viewers reached. Try again later.';
-                        if (pollingInterval) clearInterval(pollingInterval);
-                        if (pingInterval) clearInterval(pingInterval);
-                        revealGetApp(true);
-                        return;
-                    }
-                    throw new Error('Failed to fetch');
-                }
+            let toastTimeout = null;
+            function showWebToast(message) {
+                const toast = document.getElementById('webToast');
+                if (!toast) return;
+                toast.textContent = message;
+                toast.classList.remove('offline', 'reconnected');
+                toast.classList.add('show');
+                if (toastTimeout) clearTimeout(toastTimeout);
+                toastTimeout = setTimeout(() => {
+                    toast.classList.remove('show');
+                }, 2600);
+            }
 
-                const data = await response.json();
-                
-                if (data.initialDuration) {
-                    window.lastKnownDuration = data.initialDuration;
+            // CIE-034: Non-blocking Network Disconnection & Reconnection Toast Pill
+            function showNetworkOfflineToast() {
+                const toast = document.getElementById('webToast');
+                if (!toast) return;
+                toast.textContent = 'Network offline · Retrying automatically';
+                toast.classList.remove('reconnected');
+                toast.classList.add('offline', 'show');
+                if (toastTimeout) {
+                    clearTimeout(toastTimeout);
+                    toastTimeout = null;
                 }
-                
-                if (data.status === 'stopped') {
-                    document.getElementById('statusText').innerText = 'Sharing Stopped';
-                    document.getElementById('statusText').className = 'status offline';
-                    document.getElementById('detailsText').innerText = data.stopReason || 'The rider has ended this trip.';
-                    if (pollingInterval) clearInterval(pollingInterval);
-                    if (pingInterval) clearInterval(pingInterval);
-                    revealGetApp(true);
+            }
+
+            function showNetworkReconnectedToast() {
+                const toast = document.getElementById('webToast');
+                if (!toast) return;
+                toast.textContent = 'Reconnected · Updating location…';
+                toast.classList.remove('offline');
+                toast.classList.add('reconnected', 'show');
+                if (toastTimeout) clearTimeout(toastTimeout);
+                toastTimeout = setTimeout(() => {
+                    toast.classList.remove('show', 'reconnected');
+                }, 2500);
+            }
+
+            function dismissNetworkToast() {
+                const toast = document.getElementById('webToast');
+                if (!toast) return;
+                if (toast.classList.contains('offline') || toast.classList.contains('reconnected')) {
+                    toast.classList.remove('show', 'offline', 'reconnected');
+                    if (toastTimeout) {
+                        clearTimeout(toastTimeout);
+                        toastTimeout = null;
+                    }
+                }
+            }
+
+            // CIE-036: Reduced Motion & Screen Reader Accessibility
+            function isReducedMotionPreferred() {
+                return typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+            }
+
+            function announceA11y(message) {
+                if (!message) return;
+                const announcer = document.getElementById('a11yLiveAnnouncer');
+                if (announcer) {
+                    announcer.textContent = '';
+                    setTimeout(() => {
+                        announcer.textContent = message;
+                    }, 50);
+                }
+            }
+
+            // CIE-037: Low Battery Throttle & Power-Save Mode Parity
+            const clampBatteryLevel = TrackCore.clampBatteryLevel;
+            const shouldAnnounceLowBattery = TrackCore.shouldAnnounceLowBattery;
+
+            // CIE-044: Spectator Battery Optimization & Dynamic Map Render Throttling
+            const evaluateSpectatorThrottleState = TrackCore.evaluateSpectatorThrottleState;
+
+            function computeViewerAdaptivePollMs(isPowerSaveMode, batteryLevel, basePollMs = 5000) {
+                const throttle = evaluateSpectatorThrottleState(
+                    isTripEnded,
+                    document.hidden,
+                    window.lastUserInteractionEpochMs,
+                    Date.now(),
+                    Boolean(isPowerSaveMode),
+                    batteryLevel,
+                    basePollMs,
+                    300000
+                );
+                return throttle.pollDelayMs;
+            }
+
+            const formatPowerSaveCadenceNotice = TrackCore.formatPowerSaveCadenceNotice;
+
+            // CIE-038: Polyline Decimation & Memory Compaction for Extended Rides
+            const computePerpendicularDistanceMeters = TrackCore.computePerpendicularDistanceMeters;
+            const decimatePolyline = TrackCore.decimatePolyline;
+
+            function copyTextWithFallback(text, successMessage) {
+                const feedback = successMessage || 'Link copied to clipboard!';
+                if (navigator.clipboard && window.isSecureContext) {
+                    navigator.clipboard.writeText(text).then(() => {
+                        showWebToast(feedback);
+                    }).catch(() => {
+                        execCommandFallback(text, feedback);
+                    });
+                } else {
+                    execCommandFallback(text, feedback);
+                }
+            }
+
+            function execCommandFallback(text, feedback) {
+                try {
+                    const textarea = document.createElement('textarea');
+                    textarea.value = text;
+                    textarea.style.position = 'fixed';
+                    textarea.style.left = '-9999px';
+                    textarea.style.top = '0';
+                    document.body.appendChild(textarea);
+                    textarea.focus();
+                    textarea.select();
+                    const successful = document.execCommand('copy');
+                    document.body.removeChild(textarea);
+                    if (successful) {
+                        showWebToast(feedback);
+                    } else {
+                        showWebToast('Unable to copy link');
+                    }
+                } catch (e) {
+                    showWebToast('Copy failed');
+                }
+            }
+
+            window.shareLocation = function(lat, lon, username, timestamp) {
+                emitTelemetry('share_location_clicked', { username });
+                const liveUrl = window.location.href;
+                const googleMapsLink = `https://maps.google.com/?q=${lat},${lon}`;
+                const appleMapsLink = `https://maps.apple.com/?q=${lat},${lon}`;
+                const timeString = new Date(timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+                const text = `${username ? `Track ${username}'s live ride on TrackMe: ` : 'Track my live ride on TrackMe: '}${liveUrl}\nLast seen at ${timeString}\nGoogle Maps: ${googleMapsLink}\nApple Maps: ${appleMapsLink}`;
+
+                if (navigator.share) {
+                    navigator.share({ title: username ? `${username}'s Live Ride` : 'TrackMe Live Ride', text: text }).catch(() => {
+                        copyTextWithFallback(liveUrl, 'Live ride link copied!');
+                    });
+                } else {
+                    copyTextWithFallback(text, 'Location copied to clipboard!');
+                }
+            };
+
+            // CIE-003 / CIE-046: Adaptive jittered backoff & concurrency controls to prevent Redis stampedes ($0/mo cost mandate)
+            let consecutiveFetchErrors = 0;
+            let consecutivePingErrors = 0;
+            let isFetchInProgress = false;
+            let fetchTimeoutId = null;
+            let pingTimeoutId = null;
+
+            // CIE-007: Online / Offline Viewer State Management
+            let isViewerOnline = typeof navigator !== 'undefined' && 'onLine' in navigator ? navigator.onLine : true;
+
+            // CIE-022: Deduplicated Low Battery Telemetry & CIE-037 Announcement Throttle
+            let lastEmittedLowBattery = null;
+            let lastAnnouncedLowBattery = null;
+
+            // CIE-019: Manual Refresh & Connection Retry Trigger
+            function manualRefresh(triggerSource) {
+                if (isTripEnded) return;
+                emitTelemetry('live_share_viewer_manual_refresh', { sessionId, trigger: triggerSource });
+                const staleBtn = document.getElementById('staleRefreshBtn');
+                const retryBtn = document.getElementById('connectionRetryBtn');
+                if (staleBtn) staleBtn.innerText = 'Refreshing...';
+                if (retryBtn) retryBtn.innerText = 'Retrying...';
+                consecutiveFetchErrors = 0;
+                consecutivePingErrors = 0;
+                stopPollingTimers();
+                fetchLocation();
+                pingPresence();
+            }
+
+            window.addEventListener('online', function() {
+                isViewerOnline = true;
+                consecutiveFetchErrors = 0;
+                consecutivePingErrors = 0;
+                const statusEl = document.getElementById('statusText');
+                if (statusEl && statusEl.innerText.includes('Offline')) {
+                    statusEl.innerText = 'Reconnecting...';
+                    statusEl.className = 'status delayed';
+                }
+                const retryBtn = document.getElementById('connectionRetryBtn');
+                if (retryBtn) retryBtn.style.display = 'none';
+                if (!isTripEnded) {
+                    showNetworkReconnectedToast();
+                    announceA11y('Network reconnected · Updating location');
+                }
+                // Immediately resume polling and presence ping on reconnection without waiting for backoff
+                if (!isTripEnded && !isFetchInProgress) {
+                    fetchLocation();
+                    pingPresence();
+                }
+                emitTelemetry('live_share_viewer_reconnected', { sessionId });
+            });
+
+            window.addEventListener('offline', function() {
+                isViewerOnline = false;
+                stopPollingTimers();
+                const statusEl = document.getElementById('statusText');
+                if (statusEl && !isTripEnded) {
+                    statusEl.innerText = 'Viewer Offline';
+                    statusEl.className = 'status offline';
+                }
+                const retryBtn = document.getElementById('connectionRetryBtn');
+                if (retryBtn && !isTripEnded) {
+                    retryBtn.innerText = 'Retry';
+                    retryBtn.style.display = 'inline-flex';
+                }
+                if (!isTripEnded) {
+                    showNetworkOfflineToast();
+                    announceA11y('Network offline · Retrying automatically');
+                }
+                emitTelemetry('live_share_viewer_offline', { sessionId });
+            });
+
+            function computeViewerBackoffMs(failures) {
+                return TrackCore.computeBackoffDelay(failures);
+            }
+
+            function getViewerPingDelayMs() {
+                const throttle = evaluateSpectatorThrottleState(
+                    isTripEnded,
+                    document.hidden,
+                    window.lastUserInteractionEpochMs,
+                    Date.now(),
+                    false,
+                    null,
+                    5000,
+                    300000
+                );
+                return TrackCore.computeViewerPingDelay(consecutivePingErrors, {
+                    isLowDataMode: Boolean(window.isLowDataMode),
+                    isBackground: Boolean(document.hidden),
+                    isViewerIdle: Boolean(throttle && throttle.isInactive),
+                });
+            }
+
+            function scheduleNextFetch(delayMs) {
+                if (isTripEnded) return;
+                if (fetchTimeoutId) clearTimeout(fetchTimeoutId);
+                fetchTimeoutId = setTimeout(fetchLocation, delayMs);
+            }
+
+            function scheduleNextPing(delayMs = getViewerPingDelayMs()) {
+                if (isTripEnded) return;
+                if (pingTimeoutId) clearTimeout(pingTimeoutId);
+                pingTimeoutId = setTimeout(pingPresence, delayMs);
+            }
+
+            function stopPollingTimers() {
+                if (fetchTimeoutId) { clearTimeout(fetchTimeoutId); fetchTimeoutId = null; }
+                if (pingTimeoutId) { clearTimeout(pingTimeoutId); pingTimeoutId = null; }
+            }
+
+            async function pingPresence() {
+                if (isTripEnded) return;
+                // Suppress presence pinging if viewer is offline or connectivity is unstable ($0/mo cost mandate)
+                if (TrackCore.shouldSkipPresencePing(consecutiveFetchErrors, isViewerOnline)) {
+                    scheduleNextPing(getViewerPingDelayMs());
                     return;
                 }
-                
-                if (data.lastLocation) {
-                    const { lat, batteryLevel, speed, timestamp, powerSaveMode } = data.lastLocation;
-                    // Canonical field is `lng`; fall back to legacy `lon` for sessions
-                    // written before the schema migration.
-                    const lon = data.lastLocation.lng !== undefined ? data.lastLocation.lng : data.lastLocation.lon;
-                    const pos = [lat, lon];
-                    const username = data.username || 'Anonymous';
-                    
-                    const humanIcon = L.divIcon({
-                        className: 'custom-div-icon',
-                        html: `<div class="human-marker"></div>`,
-                        iconSize: [null, null],
-                        iconAnchor: [0, 0]
+                let terminalPingState = false;
+                try {
+                    const response = await fetch(`/api/track/${sessionId}/ping`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ viewerId })
                     });
 
-                    const popupContent = buildLocationPopup(lat, lon, username, timestamp);
-
-                    if (!marker) {
-                        marker = L.marker(pos, { icon: humanIcon }).bindPopup(popupContent).addTo(map);
+                    if (response.ok) {
+                        consecutivePingErrors = 0;
                     } else {
-                        marker.setLatLng(pos);
-                        marker.setIcon(humanIcon);
-                        marker.setPopupContent(popupContent);
+                        if (response.status === 404) {
+                            terminalPingState = true;
+                            isTripEnded = true;
+                            document.getElementById('statusText').innerText = 'Session Expired';
+                            document.getElementById('statusText').className = 'status offline';
+                            const timeStr = window.lastKnownDuration ? `Location was shared for ${window.lastKnownDuration} minutes and time elapsed.` : 'Location sharing time elapsed or session ended.';
+                            document.getElementById('detailsText').innerText = timeStr;
+                            stopPollingTimers();
+                            revealGetApp(true);
+                            return;
+                        }
+                        if (response.status === 429) {
+                            terminalPingState = true;
+                            document.getElementById('statusText').innerText = 'Session Full';
+                            document.getElementById('statusText').className = 'status offline';
+                            document.getElementById('detailsText').innerText = 'Maximum number of viewers reached. Try again later.';
+                            stopPollingTimers();
+                            revealGetApp(true);
+                            return;
+                        }
+                        consecutivePingErrors++;
+                    }
+                } catch (err) {
+                    consecutivePingErrors++;
+                    console.error('Ping failed:', err);
+                } finally {
+                    if (!isTripEnded && !terminalPingState) {
+                        scheduleNextPing(getViewerPingDelayMs());
+                    }
+                }
+            }
+
+            function createTelemetrySvg(kind) {
+                const ns = 'http://www.w3.org/2000/svg';
+                const svg = document.createElementNS(ns, 'svg');
+                svg.setAttribute('viewBox', '0 0 24 24');
+                svg.setAttribute('fill', 'none');
+                svg.setAttribute('stroke', 'currentColor');
+                svg.setAttribute('stroke-width', '2');
+                svg.setAttribute('stroke-linecap', 'round');
+                svg.setAttribute('stroke-linejoin', 'round');
+                svg.setAttribute('aria-hidden', 'true');
+                const add = (tag, attrs) => {
+                    const el = document.createElementNS(ns, tag);
+                    Object.entries(attrs).forEach(([k, v]) => el.setAttribute(k, v));
+                    svg.appendChild(el);
+                };
+                if (kind === 'speed') {
+                    add('path', { d: 'M12 12l4-4' });
+                    add('path', { d: 'M3.34 19a10 10 0 1 1 17.32 0' });
+                } else if (kind === 'duration') {
+                    add('circle', { cx: '12', cy: '12', r: '9' });
+                    add('polyline', { points: '12 7 12 12 15 14' });
+                } else if (kind === 'distance') {
+                    add('path', { d: 'M3 17l6-6 4 4 8-8' });
+                    add('path', { d: 'M17 7h4v4' });
+                } else if (kind === 'battery') {
+                    add('rect', { x: '2', y: '7', width: '18', height: '10', rx: '2' });
+                    add('line', { x1: '22', y1: '11', x2: '22', y2: '13' });
+                }
+                return svg;
+            }
+
+            function renderTelemetryGrid(detailsEl, cells, metaLeft, metaRight, fallbackText) {
+                if (typeof document.createElement !== 'function' || typeof detailsEl.replaceChildren !== 'function') {
+                    detailsEl.innerText = fallbackText;
+                    return;
+                }
+                const grid = document.createElement('div');
+                grid.className = 'telemetry-grid';
+                cells.forEach(({ icon, label, value, warn }) => {
+                    const cell = document.createElement('div');
+                    cell.className = warn ? 'telemetry-cell is-warn' : 'telemetry-cell';
+                    cell.setAttribute('title', label);
+                    cell.appendChild(createTelemetrySvg(icon));
+                    const valEl = document.createElement('span');
+                    valEl.className = 'telemetry-val';
+                    valEl.textContent = value;
+                    cell.appendChild(valEl);
+                    grid.appendChild(cell);
+                });
+                if (metaLeft || metaRight) {
+                    const meta = document.createElement('div');
+                    meta.className = 'telemetry-meta';
+                    const leftSpan = document.createElement('span');
+                    leftSpan.textContent = metaLeft || '';
+                    meta.appendChild(leftSpan);
+                    if (metaRight) {
+                        const rightSpan = document.createElement('span');
+                        rightSpan.textContent = metaRight;
+                        meta.appendChild(rightSpan);
+                    }
+                    grid.appendChild(meta);
+                }
+                detailsEl.replaceChildren(grid);
+            }
+
+            function renderTelemetryDetails(data) {
+                if (!data) return;
+                const detailsEl = document.getElementById('detailsText');
+                if (!detailsEl) return;
+
+                const isStopped = data.status === 'stopped' || data.status === 'ended';
+                const pauseState = evaluateLivePauseState(data);
+                const isRiderPaused = pauseState.isPaused;
+                const useMiles = activeUnitSystem === 'imperial';
+                const durationStr = formatElapsedDuration(data.startedAt, data.endedAt);
+                const durationPart = durationStr ? ` | Duration: ${durationStr}` : '';
+
+                if (data.lastLocation) {
+                    const { timestamp, batteryLevel, speed, powerSaveMode } = data.lastLocation;
+                    const speedKmh = typeof speed === 'number' && Number.isFinite(speed) && speed >= 0 ? (speed * 3.6) : null;
+                    const rawTimeAgo = Math.round((new Date() - new Date(timestamp)) / 1000);
+                    const timeAgo = Math.max(0, Number.isFinite(rawTimeAgo) ? rawTimeAgo : 0);
+                    const timeAgoStr = timeAgo < 60 ? `${timeAgo}s ago` : `${Math.round(timeAgo/60)}m ago`;
+                    const isStale = !isStopped && (timeAgo >= 180);
+                    const isDelayed = !isRiderPaused && (Boolean(powerSaveMode) || timeAgo >= 45);
+
+                    let batteryDisplay = 'N/A';
+                    let isBatteryWarn = false;
+                    if (typeof batteryLevel === 'number' && Number.isFinite(batteryLevel) && batteryLevel >= 0 && batteryLevel <= 100) {
+                        const roundedBat = Math.round(batteryLevel);
+                        isBatteryWarn = roundedBat <= 15;
+                        batteryDisplay = isBatteryWarn ? `${roundedBat}% Low` : `${roundedBat}%`;
                     }
 
-                    const markerElement = marker.getElement()?.querySelector('.human-marker');
-                    if (markerElement) markerElement.textContent = username;
+                    const pts = (window.lastTrailPoints && window.lastTrailPoints.length > 0) ? window.lastTrailPoints : data.path;
+                    const totalDistanceMeters = computePathDistanceMeters(pts);
+                    const distanceStr = formatViewerDistance(totalDistanceMeters, useMiles);
+                    const distancePart = ` | Distance: ${distanceStr}`;
+
+                    if (isStopped) {
+                        const stopText = data.stopReason || data.endReason || 'The rider has ended this live trip.';
+                        const endedTimeStr = data.endedAt ? new Date(data.endedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : null;
+                        const durationLabel = durationStr ? ` · Duration: ${durationStr}` : '';
+                        const distanceLabel = totalDistanceMeters > 0 ? ` · Distance: ${distanceStr}` : '';
+                        const startMs = data.startedAt ? (typeof data.startedAt === 'number' ? data.startedAt : new Date(data.startedAt).getTime()) : null;
+                        const endMs = data.endedAt ? (typeof data.endedAt === 'number' ? data.endedAt : new Date(data.endedAt).getTime()) : Date.now();
+                        const durSec = (startMs && Number.isFinite(startMs) && endMs >= startMs) ? Math.floor((endMs - startMs) / 1000) : null;
+                        const avgSpeed = computeAverageSpeed(totalDistanceMeters, durSec, useMiles);
+                        const avgSpeedStr = formatAverageSpeed(avgSpeed, useMiles);
+                        const avgSpeedLabel = avgSpeedStr ? ` · Avg Speed: ${avgSpeedStr}` : '';
+
+                        const fallbackEndedText = endedTimeStr
+                            ? `${stopText} at ${endedTimeStr}${durationLabel}${distanceLabel}${avgSpeedLabel} · Final location shown`
+                            : `${stopText}${durationLabel}${distanceLabel}${avgSpeedLabel} · Final location shown`;
+                        const endedCells = [];
+                        if (durationStr) endedCells.push({ icon: 'duration', label: 'Duration', value: durationStr });
+                        endedCells.push({ icon: 'distance', label: 'Distance', value: distanceStr });
+                        if (avgSpeedStr) endedCells.push({ icon: 'speed', label: 'Average speed', value: `Avg ${avgSpeedStr}` });
+                        if (batteryDisplay !== 'N/A') endedCells.push({ icon: 'battery', label: 'Battery', value: batteryDisplay, warn: isBatteryWarn });
+
+                        renderTelemetryGrid(
+                            detailsEl,
+                            endedCells,
+                            endedTimeStr ? `${stopText} · ${endedTimeStr}` : stopText,
+                            'Final location',
+                            fallbackEndedText
+                        );
+
+                        if (!window.hasAnnouncedTripEnded) {
+                            window.hasAnnouncedTripEnded = true;
+                            announceA11y(`Trip ended. ${stopText}. Total distance ${distanceStr}. Duration ${durationStr || 'elapsed'}.${avgSpeedStr ? ` Average speed ${avgSpeedStr}.` : ''}`);
+                        }
+                        return;
+                    }
+
+                    const nowMs = Date.now();
+                    const unit = useMiles ? 'mph' : 'km/h';
+                    let speedDisplay = `0 ${unit}`;
+                    if (isRiderPaused) {
+                        speedDisplay = pauseState.speedLabel;
+                    } else if (speedKmh !== null && speedKmh >= 3.0) {
+                        const rawVal = useMiles ? (speedKmh * 0.621371) : speedKmh;
+                        const roundedSpeed = Math.round(rawVal);
+                        speedDisplay = isDelayed ? `~${roundedSpeed} ${unit}` : `${roundedSpeed} ${unit}`;
+                    } else if (window.lastStoppedSinceMs) {
+                        const stoppedMinutes = Math.floor(Math.max(0, nowMs - window.lastStoppedSinceMs) / 60000);
+                        if (stoppedMinutes >= 1) {
+                            const stoppedDur = formatElapsedDuration(window.lastStoppedSinceMs, nowMs) || `${stoppedMinutes}m`;
+                            speedDisplay = `Stopped · ${stoppedDur}`;
+                        }
+                    }
+
+                    const staleNote = isStale
+                        ? ' (waiting for GPS)'
+                        : (isRiderPaused ? ` (${pauseState.speedLabel.toLowerCase()})` : (isDelayed ? ' (delayed)' : ''));
+                    const fallbackLiveText = `Updated: ${timeAgoStr}${staleNote} | Battery: ${batteryDisplay} | Speed: ${speedDisplay}${durationPart}${distancePart}`;
+                    const liveCells = [
+                        { icon: 'speed', label: 'Speed', value: speedDisplay, warn: !isRiderPaused && isDelayed },
+                        { icon: 'duration', label: 'Duration', value: durationStr || '0m' },
+                        { icon: 'distance', label: 'Distance', value: distanceStr },
+                        { icon: 'battery', label: 'Battery', value: batteryDisplay, warn: isBatteryWarn },
+                    ];
+                    const liveStatusSummary = isStale
+                        ? 'Waiting for GPS'
+                        : (isRiderPaused ? pauseState.metaLabel : (isDelayed ? 'Delayed updates' : 'Live GPS'));
+                    renderTelemetryGrid(
+                        detailsEl,
+                        liveCells,
+                        `Updated ${timeAgoStr}`,
+                        liveStatusSummary,
+                        fallbackLiveText
+                    );
+                } else if (isStopped) {
+                    const stoppedDurationStr = formatElapsedDuration(data.startedAt, data.endedAt);
+                    const stoppedDurationLabel = stoppedDurationStr ? ` · Duration: ${stoppedDurationStr}` : '';
+                    const stoppedDistMeters = computePathDistanceMeters(data.path);
+                    const stoppedDistStr = formatViewerDistance(stoppedDistMeters, useMiles);
+                    const stoppedDistLabel = stoppedDistMeters > 0 ? ` · Distance: ${stoppedDistStr}` : '';
+                    const stopMsg = data.stopReason || data.endReason || 'The rider has ended this live trip.';
+                    const cells = [];
+                    if (stoppedDurationStr) cells.push({ icon: 'duration', label: 'Duration', value: stoppedDurationStr });
+                    cells.push({ icon: 'distance', label: 'Distance', value: stoppedDistStr });
+                    renderTelemetryGrid(detailsEl, cells, stopMsg, null, `${stopMsg}${stoppedDurationLabel}${stoppedDistLabel}`);
+                }
+            }
+
+            async function fetchLocation() {
+                if (isTripEnded || isFetchInProgress) return;
+                if (!isViewerOnline) {
+                    scheduleNextFetch(5000);
+                    return;
+                }
+                isFetchInProgress = true;
+                const pollStartMs = Date.now();
+                try {
+                    const response = await fetch(`/api/track/${sessionId}/location`);
+                    const pollLatencyMs = Math.max(0, Math.round(Date.now() - pollStartMs));
+                    if (!response.ok) {
+                        const errCode = response.status === 404 ? 'not_found_or_expired' : (response.status === 429 ? 'rate_limited' : (response.status >= 500 ? 'server_error' : 'unknown'));
+                        if (consecutiveFetchErrors === 0) {
+                            emitTelemetry('live_share_viewer_error_logged', {
+                                error_code: errCode,
+                                status_code: response.status,
+                            });
+                        }
+                        if (response.status === 404) {
+                            document.getElementById('statusText').innerText = 'Session Expired';
+                            document.getElementById('statusText').className = 'status offline';
+                            const timeStr = window.lastKnownDuration ? `Location was shared for ${window.lastKnownDuration} minutes and time elapsed.` : 'Location sharing time elapsed or session ended.';
+                            document.getElementById('detailsText').innerText = timeStr;
+                            stopPollingTimers();
+                            revealGetApp(true);
+                            return;
+                        }
+                        if (response.status === 429) {
+                            document.getElementById('statusText').innerText = 'Session Full';
+                            document.getElementById('statusText').className = 'status offline';
+                            document.getElementById('detailsText').innerText = 'Maximum number of viewers reached. Try again later.';
+                            stopPollingTimers();
+                            revealGetApp(true);
+                            return;
+                        }
+                        throw new Error(`HTTP ${response.status}`);
+                    }
+
+                    const data = await response.json();
+                    window.lastReceivedSnapshot = data;
+                    consecutiveFetchErrors = 0;
+                    dismissNetworkToast();
+                    const retryBtn = document.getElementById('connectionRetryBtn');
+                    if (retryBtn) {
+                        retryBtn.innerText = 'Retry';
+                        retryBtn.style.display = 'none';
+                    }
+
+                    // CIE-041: Sample 1% of successful polls for viewer health diagnostics ($0/mo cost mandate)
+                    if (Math.random() < 0.01) {
+                        emitTelemetry('live_share_viewer_health_sampled', {
+                            poll_latency_ms: pollLatencyMs,
+                            status_code: response.status,
+                            is_active: data.status !== 'stopped' && data.status !== 'ended',
+                            has_location: Boolean(data.lastLocation),
+                            battery_level: typeof data.lastLocation?.batteryLevel === 'number' ? Math.round(data.lastLocation.batteryLevel) : null,
+                            point_count: Array.isArray(data.path) ? data.path.length : 0,
+                        });
+                    }
+
+                    if (data.initialDuration) {
+                        window.lastKnownDuration = data.initialDuration;
+                    }
+
+                    // CIE-042: Save valid snapshot to sessionStorage for seamless offline rehydration
+                    try {
+                        if (window.sessionStorage && sessionId && data && data.lastLocation) {
+                            const cachePayload = {
+                                sessionId: sessionId,
+                                username: data.username,
+                                status: data.status,
+                                isPaused: Boolean(data.isPaused),
+                                pauseReason: data.pauseReason || null,
+                                lastLocation: data.lastLocation,
+                                path: Array.isArray(data.path) ? (data.path.length > 500 ? data.path.slice(-500) : data.path) : [],
+                                cachedAtEpochMs: Date.now()
+                            };
+                            sessionStorage.setItem('trackme_viewer_cache_' + sessionId, JSON.stringify(cachePayload));
+                        }
+                    } catch (_) {}
+
+                    const isStopped = data.status === 'stopped' || data.status === 'ended';
+                    const pauseState = evaluateLivePauseState(data);
+                    const isRiderPaused = pauseState.isPaused;
+
+                    if (data.lastLocation) {
+                        const { lat, batteryLevel, speed, timestamp, powerSaveMode, heading } = data.lastLocation;
+                        // Canonical field is `lng`; fall back to legacy `lon` for sessions written before schema migration.
+                        const lon = data.lastLocation.lng !== undefined ? data.lastLocation.lng : data.lastLocation.lon;
+                        const pos = [lat, lon];
+                        const username = data.username || 'Anonymous';
+                        window.lastKnownUserName = data.username || '';
+                        updateSocialMetadata(data.username, isStopped);
+
+                        // Build breadcrumb polyline coordinates from accumulated path ([lat, lng] tuples) + latest live point
+                        const trailPoints = Array.isArray(data.path)
+                            ? data.path
+                                .map((pt) => {
+                                    if (Array.isArray(pt) && pt.length >= 2 && typeof pt[0] === 'number' && typeof pt[1] === 'number') {
+                                        return [pt[0], pt[1]];
+                                    }
+                                    if (pt && typeof pt === 'object' && typeof pt.lat === 'number') {
+                                        const ptLon = typeof pt.lng === 'number' ? pt.lng : pt.lon;
+                                        return typeof ptLon === 'number' ? [pt.lat, ptLon] : null;
+                                    }
+                                    return null;
+                                })
+                                .filter(Boolean)
+                            : [];
+
+                        if (trailPoints.length === 0) {
+                            trailPoints.push(pos);
+                        } else if (!isRiderPaused) {
+                            const lastTrailPt = trailPoints[trailPoints.length - 1];
+                            if (Math.abs(lastTrailPt[0] - lat) > 1e-5 || Math.abs(lastTrailPt[1] - lon) > 1e-5) {
+                                trailPoints.push(pos);
+                            }
+                        }
+                        window.lastTrailPoints = trailPoints;
+                        window.lastRiderPos = pos;
+
+                        // Start pin at first breadcrumb point
+                        const startPos = trailPoints[0];
+                        if (!startMarker) {
+                            const startIcon = L.divIcon({
+                                className: 'start-pin-icon',
+                                html: '<div class="start-pin" title="Trip start"></div>',
+                                iconSize: [22, 22],
+                                iconAnchor: [11, 11],
+                            });
+                            startMarker = L.marker(startPos, { icon: startIcon, interactive: false }).addTo(map);
+                        } else {
+                            startMarker.setLatLng(startPos);
+                        }
+
+                        // Two-layer breadcrumb polyline (dark casing + bright cyan trail)
+                        if (trailPoints.length >= 2) {
+                            // CIE-038: RDP polyline decimation eliminates SVG path bloat and DOM lag on extended rides
+                            const renderPoints = decimatePolyline(trailPoints, 3.5, 200);
+                            if (!trailCasing) {
+                                trailCasing = L.polyline(renderPoints, {
+                                    color: '#0a2540',
+                                    weight: 7,
+                                    opacity: 0.78,
+                                    lineCap: 'round',
+                                    lineJoin: 'round',
+                                }).addTo(map);
+                                trailLine = L.polyline(renderPoints, {
+                                    color: '#00e5ff',
+                                    weight: 4,
+                                    opacity: 0.95,
+                                    lineCap: 'round',
+                                    lineJoin: 'round',
+                                }).addTo(map);
+                            } else {
+                                trailCasing.setLatLngs(renderPoints);
+                                trailLine.setLatLngs(renderPoints);
+                            }
+                        }
+
+                        // Heading cone direction: explicit GPS heading -> fallback bearing from previous trail point
+                        let headingDeg = !isRiderPaused && typeof heading === 'number' && Number.isFinite(heading) && heading >= 0 ? heading : null;
+                        if (!isRiderPaused && headingDeg === null && trailPoints.length >= 2) {
+                            const prev = trailPoints[trailPoints.length - 2];
+                            headingDeg = computeBearingDeg(prev[0], prev[1], lat, lon);
+                        }
+
+                        const popupContent = buildLocationPopup(lat, lon, username, timestamp);
+
+                        if (!marker) {
+                            const humanIcon = L.divIcon({
+                                className: 'custom-div-icon',
+                                html: '<div class="rider-pin-root"><div class="human-marker"></div><div class="heading-cone-wrap"></div></div>',
+                                iconSize: [140, 68],
+                                iconAnchor: [70, 46]
+                            });
+                            marker = L.marker(pos, { icon: humanIcon }).bindPopup(popupContent).addTo(map);
+                        } else {
+                            marker.setLatLng(pos);
+                            marker.setPopupContent(popupContent);
+                        }
+
+                        const speedVal = data.lastLocation ? data.lastLocation.speed : null;
+                        const speedKmh = typeof speedVal === 'number' && Number.isFinite(speedVal) ? Math.max(0, speedVal) : null;
+                        const isStationary = speedKmh === null || speedKmh < 3.0;
+                        const hasHeading = !isRiderPaused && headingDeg !== null && !isStopped && !isStationary;
+                        const showPausedMarker = isRiderPaused && !isStopped;
+
+                        const markerEl = marker.getElement();
+                        if (markerEl) {
+                            const pinRoot = typeof markerEl.querySelector === 'function' ? markerEl.querySelector('.rider-pin-root') : null;
+                            if (pinRoot && pinRoot.classList && typeof pinRoot.classList.toggle === 'function') {
+                                pinRoot.classList.toggle('is-paused', showPausedMarker);
+                            }
+                            const nameBadge = markerEl.querySelector('.human-marker');
+                            if (nameBadge) nameBadge.textContent = username;
+                            const coneWrap = markerEl.querySelector('.heading-cone-wrap');
+                            if (coneWrap) {
+                                coneWrap.innerHTML = buildHeadingConeSvg(hasHeading, showPausedMarker);
+                                if (hasHeading) {
+                                    if (window.lastContinuousHeading === undefined || window.lastContinuousHeading === null) {
+                                        window.lastContinuousHeading = headingDeg;
+                                        coneWrap.style.transform = `rotate(${Math.round(window.lastContinuousHeading)}deg)`;
+                                    } else {
+                                        let c = window.lastContinuousHeading % 360;
+                                        if (c < 0) c += 360;
+                                        let t = headingDeg % 360;
+                                        if (t < 0) t += 360;
+                                        const delta = ((t - c + 540) % 360) - 180;
+                                        // CIE-032: Deadband threshold (>= 3.0 deg) prevents battery-draining continuous CSS transitions on sensor noise
+                                        if (Math.abs(delta) >= 3.0) {
+                                            window.lastContinuousHeading += delta;
+                                            coneWrap.style.transform = `rotate(${Math.round(window.lastContinuousHeading)}deg)`;
+                                        }
+                                    }
+                                } else {
+                                    coneWrap.style.transform = 'none';
+                                }
+                            }
+                        }
+
+                        if (isFirstLoad) {
+                            isFirstLoad = false;
+                            revealGetApp(isStopped);
+                            if (trailPoints.length >= 2) {
+                                map.fitBounds(L.latLngBounds(trailPoints), { padding: [70, 70], maxZoom: 16 });
+                            } else {
+                                map.setView(pos, 15);
+                            }
+                            emitTelemetry('live_share_location_rendered', {
+                                path_points: trailPoints.length,
+                                pathPoints: trailPoints.length,
+                                has_heading: headingDeg !== null,
+                                hasHeading: headingDeg !== null,
+                                is_stopped: isStopped,
+                                isStopped,
+                            });
+                        } else if (!isStopped && window.isFollowingRider) {
+                            // CIE-032 / CIE-036 / CIE-044: Throttle camera panning when rider is stationary or spectator is idle
+                            const throttle = evaluateSpectatorThrottleState(
+                                isTripEnded,
+                                document.hidden,
+                                window.lastUserInteractionEpochMs,
+                                Date.now(),
+                                Boolean(powerSaveMode),
+                                batteryLevel,
+                                5000,
+                                300000
+                            );
+                            const distMeters = window.lastRiderPos ? map.distance(window.lastRiderPos, pos) : 999;
+                            if (!isRiderPaused && distMeters >= 3.0) {
+                                map.panTo(pos, { animate: !isReducedMotionPreferred() && throttle.shouldAnimateMap });
+                            }
+                        }
+
+                        const mapControls = document.getElementById('mapControls');
+                        const followBtn = document.getElementById('followBtn');
+                        const fitRouteBtn = document.getElementById('fitRouteBtn');
+                        const dirBtn = document.getElementById('directionsBtn');
+                        if (mapControls && followBtn && fitRouteBtn) {
+                            mapControls.hidden = false;
+                            followBtn.hidden = isStopped;
+                            fitRouteBtn.hidden = trailPoints.length < 2;
+                            if (dirBtn) dirBtn.hidden = !window.lastRiderPos;
+                            if (typeof updateFollowButtonState === 'function') {
+                                updateFollowButtonState();
+                            }
+                        }
+
+                        const rawTimeAgo = Math.round((new Date() - new Date(timestamp)) / 1000);
+                        const timeAgo = Math.max(0, Number.isFinite(rawTimeAgo) ? rawTimeAgo : 0);
+                        const timeAgoStr = timeAgo < 60 ? `${timeAgo}s ago` : `${Math.round(timeAgo/60)}m ago`;
+                        const isStale = !isStopped && (timeAgo >= 180);
+                        const isDelayed = !isRiderPaused && (Boolean(powerSaveMode) || timeAgo >= 45);
+
+                        const powerSaveContainer = document.getElementById('powerSaveContainer');
+                        if (powerSaveContainer) {
+                            powerSaveContainer.style.display = !isStopped && powerSaveMode ? 'block' : 'none';
+                        }
+                        // CIE-007 / CIE-037: Battery display with low battery alert (<15%) & throttled voice announcement
+                        let batteryDisplay = 'N/A';
+                        const clampedBat = clampBatteryLevel(batteryLevel);
+                        const isLowBattery = !isStopped && clampedBat !== null && clampedBat <= 15;
+                        const lowBatteryContainer = document.getElementById('lowBatteryContainer');
+                        const lowBatteryTextEl = document.getElementById('lowBatteryText');
+                        if (clampedBat !== null) {
+                            batteryDisplay = clampedBat <= 15 ? `${clampedBat}% (Low)` : `${clampedBat}%`;
+                        }
+                        if (lowBatteryContainer && lowBatteryTextEl) {
+                            if (isLowBattery) {
+                                lowBatteryTextEl.innerText = `Rider battery low (${clampedBat}%) · Location updates every ~15s · Signal may pause if phone powers off`;
+                                lowBatteryContainer.style.display = 'block';
+
+                                // Deduplicated screen reader announcement (CIE-037)
+                                if (shouldAnnounceLowBattery(lastAnnouncedLowBattery, clampedBat)) {
+                                    lastAnnouncedLowBattery = clampedBat;
+                                    announceA11y(`Rider phone battery low: ${clampedBat}% · Location updates every 15 seconds`);
+                                }
+
+                                // Deduplicated telemetry emission (CIE-022)
+                                if (lastEmittedLowBattery !== clampedBat) {
+                                    lastEmittedLowBattery = clampedBat;
+                                    emitTelemetry('live_share_viewer_low_battery_shown', {
+                                        batteryLevel: clampedBat,
+                                        battery_level: clampedBat,
+                                    });
+                                }
+                            } else {
+                                lowBatteryContainer.style.display = 'none';
+                            }
+                        }
+
+                        const dest = typeof data.destination === 'string' ? data.destination.trim() : '';
+                        const destinationBadge = document.getElementById('destinationBadge');
+                        const destinationTextEl = document.getElementById('destinationText');
+                        if (destinationBadge && destinationTextEl) {
+                            if (dest) {
+                                destinationTextEl.textContent = isStopped ? `Destination: ${dest}` : `Heading to: ${dest}`;
+                                destinationBadge.style.display = 'inline-flex';
+                            } else {
+                                destinationBadge.style.display = 'none';
+                            }
+                        }
+                        updateDeadlineBadge(data.deadlineAt || data.etaAt, isStopped);
+
+                        if (isStopped) {
+                            // Render finish arrival marker on map at the last coordinate of the route
+                            if (trailPoints.length >= 1) {
+                                const finishPos = trailPoints[trailPoints.length - 1] || pos;
+                                if (!finishMarker) {
+                                    const finishIcon = L.divIcon({
+                                        className: 'finish-pin-icon',
+                                        html: '<div class="finish-pin" title="Trip arrival point"></div>',
+                                        iconSize: [22, 22],
+                                        iconAnchor: [11, 11],
+                                    });
+                                    finishMarker = L.marker(finishPos, { icon: finishIcon, interactive: false }).addTo(map);
+                                } else {
+                                    finishMarker.setLatLng(finishPos);
+                                }
+                            }
+
+                            document.getElementById('statusText').innerText = 'Sharing Stopped';
+                            document.getElementById('statusText').className = 'status offline';
+                            document.getElementById('userNameText').innerText = `${username}'s Final Location`;
+                            renderTelemetryDetails(data);
+                            const staleContainer = document.getElementById('staleSignalContainer');
+                            if (staleContainer) staleContainer.style.display = 'none';
+                            const pausedContainer = document.getElementById('pausedStatusContainer');
+                            if (pausedContainer) pausedContainer.style.display = 'none';
+                            window.lastPauseAnnouncementKey = null;
+                            if (lowBatteryContainer) lowBatteryContainer.style.display = 'none';
+                            updateDeadlineBadge(null, true);
+                            const retryBtn = document.getElementById('connectionRetryBtn');
+                            if (retryBtn) retryBtn.style.display = 'none';
+                            stopPollingTimers();
+                            revealGetApp(true);
+                            return;
+                        }
+
+                        const statusEl = document.getElementById('statusText');
+                        const staleContainer = document.getElementById('staleSignalContainer');
+                        const pausedContainer = document.getElementById('pausedStatusContainer');
+                        const pausedText = document.getElementById('pausedStatusText');
+
+                        if (isStale) {
+                            if (statusEl) {
+                                statusEl.innerText = 'Signal Paused';
+                                statusEl.className = 'status delayed';
+                            }
+                            if (pausedContainer) pausedContainer.style.display = 'none';
+                            window.lastPauseAnnouncementKey = null;
+                            const staleText = document.getElementById('staleSignalText');
+                            const staleBtn = document.getElementById('staleRefreshBtn');
+                            if (staleContainer && staleText) {
+                                const mins = Math.floor(timeAgo / 60);
+                                staleText.innerText = mins >= 1 ? `Signal paused · Waiting for rider GPS (${mins}m ago)` : 'Signal paused · Waiting for rider GPS';
+                                staleContainer.style.display = 'block';
+                                if (staleBtn) staleBtn.innerText = 'Refresh';
+                            }
+                        } else {
+                            if (staleContainer) staleContainer.style.display = 'none';
+                            if (isRiderPaused) {
+                                if (statusEl) {
+                                    statusEl.innerText = pauseState.statusLabel;
+                                    statusEl.className = 'status paused';
+                                }
+                                if (pausedContainer && pausedText) {
+                                    pausedText.innerText = pauseState.bannerText;
+                                    pausedContainer.style.display = 'block';
+                                }
+                                const pauseAnnounceKey = pauseState.pauseReason || 'paused';
+                                if (window.lastPauseAnnouncementKey !== pauseAnnounceKey) {
+                                    window.lastPauseAnnouncementKey = pauseAnnounceKey;
+                                    announceA11y(pauseState.a11ySummary);
+                                }
+                            } else {
+                                if (pausedContainer) pausedContainer.style.display = 'none';
+                                window.lastPauseAnnouncementKey = null;
+                                if (isDelayed) {
+                                    if (statusEl) {
+                                        statusEl.innerText = 'Delayed Updates';
+                                        statusEl.className = 'status delayed';
+                                    }
+                                } else if (statusEl) {
+                                    statusEl.innerText = 'Live';
+                                    statusEl.className = 'status active';
+                                }
+                            }
+                        }
+
+                        const locTimeMs = (typeof timestamp === 'number' ? timestamp : new Date(timestamp).getTime());
+                        const nowMs = Date.now();
+
+                        if (!isRiderPaused && speedKmh !== null && speedKmh >= 3.0) {
+                            window.lastStoppedSinceMs = null;
+                        } else {
+                            if (!window.lastStoppedSinceMs) {
+                                window.lastStoppedSinceMs = (Number.isFinite(locTimeMs) && (nowMs - locTimeMs) < 1800000) ? locTimeMs : nowMs;
+                            }
+                        }
+
+                        document.getElementById('userNameText').innerText = `${username}'s Live Location`;
+                        renderTelemetryDetails(data);
+                    } else if (isStopped) {
+                        const dest = typeof data.destination === 'string' ? data.destination.trim() : '';
+                        const destinationBadge = document.getElementById('destinationBadge');
+                        const destinationTextEl = document.getElementById('destinationText');
+                        if (destinationBadge && destinationTextEl) {
+                            if (dest) {
+                                destinationTextEl.textContent = `Destination: ${dest}`;
+                                destinationBadge.style.display = 'inline-flex';
+                            } else {
+                                destinationBadge.style.display = 'none';
+                            }
+                        }
+                        document.getElementById('statusText').innerText = 'Sharing Stopped';
+                        document.getElementById('statusText').className = 'status offline';
+                        renderTelemetryDetails(data);
+                        const staleContainer = document.getElementById('staleSignalContainer');
+                        if (staleContainer) staleContainer.style.display = 'none';
+                        const pausedContainer = document.getElementById('pausedStatusContainer');
+                        if (pausedContainer) pausedContainer.style.display = 'none';
+                        window.lastPauseAnnouncementKey = null;
+                        updateDeadlineBadge(null, true);
+                        const retryBtn = document.getElementById('connectionRetryBtn');
+                        if (retryBtn) retryBtn.style.display = 'none';
+                        stopPollingTimers();
+                        revealGetApp(true);
+                        return;
+                    } else {
+                        const pausedContainer = document.getElementById('pausedStatusContainer');
+                        if (pausedContainer) pausedContainer.style.display = 'none';
+                        window.lastPauseAnnouncementKey = null;
+                        const dest = typeof data.destination === 'string' ? data.destination.trim() : '';
+                        const destinationBadge = document.getElementById('destinationBadge');
+                        const destinationTextEl = document.getElementById('destinationText');
+                        if (destinationBadge && destinationTextEl) {
+                            if (dest) {
+                                destinationTextEl.textContent = `Heading to: ${dest}`;
+                                destinationBadge.style.display = 'inline-flex';
+                            } else {
+                                destinationBadge.style.display = 'none';
+                            }
+                        }
+                        updateDeadlineBadge(data.deadlineAt || data.etaAt, false);
+                        document.getElementById('statusText').innerText = 'Waiting...';
+                        document.getElementById('statusText').className = 'status delayed';
+                        document.getElementById('userNameText').innerText = `${data.username || 'Anonymous'}'s Live Location`;
+                        document.getElementById('detailsText').innerText = 'Session active, waiting for first location ping from rider.';
+                    }
+                    if (!isStopped) {
+                        const psMode = Boolean(data && data.lastLocation && data.lastLocation.powerSaveMode);
+                        const batLevel = data && data.lastLocation ? data.lastLocation.batteryLevel : null;
+                        const baseDelay = computeViewerAdaptivePollMs(psMode, batLevel, 5000);
+                        const nextPollDelay = window.isLowDataMode ? 30000 : baseDelay;
+                        scheduleNextFetch(nextPollDelay);
+                    }
+                } catch (err) {
+                    console.error('Location fetch error:', err);
+                    if (consecutiveFetchErrors === 0) {
+                        const errMsg = (err && (err.message || err.name || String(err))) || '';
+                        const errCode = (errMsg.toLowerCase().includes('syntax') || errMsg.toLowerCase().includes('json'))
+                            ? 'malformed_response'
+                            : 'offline_network';
+                        emitTelemetry('live_share_viewer_error_logged', {
+                            error_code: errCode,
+                            status_code: 0,
+                        });
+                    }
+                    consecutiveFetchErrors++;
+                    // Defensive UX: Do not destroy the existing rider marker or map context on transient cellular glitches.
+                    // If we have previously rendered the rider, show a non-blocking "Connecting..." indicator.
+                    if (window.lastRiderPos && !isTripEnded) {
+                        const statusEl = document.getElementById('statusText');
+                        if (statusEl) {
+                            statusEl.innerText = 'Connecting...';
+                            statusEl.className = 'status delayed';
+                        }
+                    } else if (!isTripEnded) {
+                        document.getElementById('statusText').innerText = 'Connection Error';
+                        document.getElementById('statusText').className = 'status offline';
+                    }
+                    if (!isTripEnded) {
+                        const retryBtn = document.getElementById('connectionRetryBtn');
+                        if (retryBtn) {
+                            retryBtn.innerText = 'Retry';
+                            retryBtn.style.display = 'inline-flex';
+                        }
+                        const backoffDelay = computeViewerBackoffMs(consecutiveFetchErrors);
+                        scheduleNextFetch(backoffDelay);
+                    }
+                } finally {
+                    isFetchInProgress = false;
+                }
+            }
+
+            window.isFollowingRider = true;
+            window.lastTrailPoints = [];
+            window.lastRiderPos = null;
+            window.lastUserInteractionEpochMs = Date.now();
+
+            const computeOffCenterDistanceMeters = TrackCore.computeOffCenterDistanceMeters;
+            const formatOffCenterDistance = TrackCore.formatOffCenterDistance;
+            const formatRecenterButtonLabel = TrackCore.formatRecenterButtonLabel;
+            const formatRecenterAccessibilityLabel = TrackCore.formatRecenterAccessibilityLabel;
+            const shouldResumeFollowMode = TrackCore.shouldResumeFollowMode;
+
+            function updateFollowButtonState() {
+                const followBtn = document.getElementById('followBtn');
+                if (!followBtn) return;
+                const followLabelEl = document.getElementById('followBtnLabel');
+                const setFollowText = (text) => {
+                    if (followLabelEl) {
+                        followLabelEl.textContent = text;
+                    } else {
+                        followBtn.textContent = text;
+                    }
+                };
+                followBtn.classList.toggle('active', Boolean(window.isFollowingRider));
+                if (window.isFollowingRider || !window.lastRiderPos) {
+                    setFollowText('Follow');
+                    followBtn.setAttribute('aria-label', 'Follow rider');
+                } else {
+                    const center = map.getCenter();
+                    const distMeters = computeOffCenterDistanceMeters(center.lat, center.lng, window.lastRiderPos[0], window.lastRiderPos[1]);
+                    const isImperial = activeUnitSystem === 'imperial';
+                    const label = formatRecenterButtonLabel(distMeters, isImperial, 250, 'Follow');
+                    const a11y = formatRecenterAccessibilityLabel(distMeters, isImperial, 250, 'Follow rider');
+                    setFollowText(label);
+                    followBtn.setAttribute('aria-label', a11y);
+                }
+            }
+
+            map.on('dragstart zoomstart', () => {
+                window.isFollowingRider = false;
+                window.lastUserInteractionEpochMs = Date.now();
+                updateFollowButtonState();
+            });
+
+            map.on('moveend', () => {
+                if (!window.isFollowingRider) {
+                    updateFollowButtonState();
+                }
+            });
+
+            document.getElementById('followBtn')?.addEventListener('click', () => {
+                window.isFollowingRider = true;
+                window.lastUserInteractionEpochMs = Date.now();
+                updateFollowButtonState();
+                if (window.lastRiderPos) {
+                    map.setView(window.lastRiderPos, Math.max(map.getZoom(), 15), { animate: !isReducedMotionPreferred() });
+                }
+            });
+
+            document.getElementById('fitRouteBtn')?.addEventListener('click', () => {
+                window.isFollowingRider = false;
+                window.lastUserInteractionEpochMs = Date.now();
+                updateFollowButtonState();
+                if (window.lastTrailPoints && window.lastTrailPoints.length >= 2) {
+                    map.fitBounds(L.latLngBounds(window.lastTrailPoints), { padding: [70, 70], maxZoom: 16, animate: !isReducedMotionPreferred() });
+                } else if (window.lastRiderPos) {
+                    map.setView(window.lastRiderPos, 15, { animate: !isReducedMotionPreferred() });
+                }
+            });
+
+            // CIE-043: Share ride button & native maps directions handoff
+            document.getElementById('shareBtn')?.addEventListener('click', () => {
+                const username = sanitizeRiderNameClient(window.lastKnownUserName) || sanitizeRiderNameClient(queryParams.get('name'));
+                const liveUrl = window.location.href;
+                const caption = username
+                    ? `Track ${username}'s live ride on TrackMe`
+                    : 'Track my live ride on TrackMe';
+
+                emitTelemetry('live_share_forward_clicked', { sessionId, surface: 'map_controls' });
+
+                if (navigator.share) {
+                    navigator.share({
+                        title: username ? `${username}'s Live Ride` : 'TrackMe Live Ride',
+                        text: caption,
+                        url: liveUrl
+                    }).catch(() => {
+                        copyTextWithFallback(liveUrl, 'Live ride link copied!');
+                    });
+                } else {
+                    copyTextWithFallback(`${caption}: ${liveUrl}`, 'Live ride link copied!');
+                }
+            });
+
+            document.getElementById('directionsBtn')?.addEventListener('click', () => {
+                if (!window.lastRiderPos) return;
+                const lat = window.lastRiderPos[0];
+                const lon = window.lastRiderPos[1];
+                const isAppleDevice = /Mac|iPhone|iPad|iPod/.test(navigator.userAgent);
+                const navUrl = isAppleDevice
+                    ? `https://maps.apple.com/?daddr=${lat},${lon}`
+                    : `https://maps.google.com/?daddr=${lat},${lon}`;
+                emitTelemetry('live_share_directions_clicked', {
+                    sessionId,
+                    provider: isAppleDevice ? 'apple_maps' : 'google_maps'
+                });
+                window.open(navUrl, '_blank', 'noopener,noreferrer');
+            });
+
+            // CIE-045: Low data mode toggle
+            window.isLowDataMode = (function() {
+                try {
+                    return localStorage.getItem('trackme_low_data_mode') === 'true';
+                } catch (_) {
+                    return false;
+                }
+            })();
+
+            const lowDataBtn = document.getElementById('lowDataBtn');
+            if (lowDataBtn) {
+                if (window.isLowDataMode) {
+                    lowDataBtn.classList.add('active');
+                    lowDataBtn.setAttribute('aria-pressed', 'true');
+                }
+                lowDataBtn.addEventListener('click', () => {
+                    window.isLowDataMode = !window.isLowDataMode;
+                    lowDataBtn.classList.toggle('active', window.isLowDataMode);
+                    lowDataBtn.setAttribute('aria-pressed', window.isLowDataMode ? 'true' : 'false');
+                    try {
+                        localStorage.setItem('trackme_low_data_mode', window.isLowDataMode ? 'true' : 'false');
+                    } catch (_) {}
+                    emitTelemetry('live_share_low_data_mode_toggled', {
+                        sessionId,
+                        enabled: window.isLowDataMode
+                    });
+                    if (window.isLowDataMode) {
+                        announceA11y('Low data mode enabled. Updates slowed to 30 seconds.');
+                        if (!isTripEnded) {
+                            scheduleNextPing(getViewerPingDelayMs());
+                        }
+                    } else {
+                        announceA11y('Low data mode disabled. Regular updates restored.');
+                        if (!isTripEnded) {
+                            scheduleNextPing(getViewerPingDelayMs());
+                            if (!isFetchInProgress) {
+                                fetchLocation();
+                            }
+                        }
+                    }
+                });
+            }
+
+            // CIE-044: Track spectator interaction across touch, pointer, and keyboard events
+            ['pointerdown', 'keydown', 'wheel', 'touchstart'].forEach((evt) => {
+                window.addEventListener(evt, () => {
+                    window.lastUserInteractionEpochMs = Date.now();
+                }, { passive: true });
+            });
+
+            // CIE-040: Auto-resume follow mode after 20s inactivity during an active trip
+            setInterval(() => {
+                if (!window.isFollowingRider && !isTripEnded && window.lastRiderPos) {
+                    if (shouldResumeFollowMode(window.isFollowingRider, isTripEnded, window.lastUserInteractionEpochMs, Date.now(), 20000)) {
+                        window.isFollowingRider = true;
+                        updateFollowButtonState();
+                        map.panTo(window.lastRiderPos, { animate: !isReducedMotionPreferred() });
+                    }
+                }
+            }, 2500);
+
+            // CIE-035: Device Orientation & Viewport Resize State Preservation
+            let resizeDebounceTimer = null;
+            function handleViewportResize() {
+                if (!map) return;
+                if (resizeDebounceTimer) clearTimeout(resizeDebounceTimer);
+                resizeDebounceTimer = setTimeout(() => {
+                    const previousCenter = map.getCenter();
+                    const previousZoom = map.getZoom();
+                    map.invalidateSize({ pan: false });
+                    if (window.isFollowingRider && window.lastRiderPos) {
+                        map.panTo(window.lastRiderPos, { animate: false });
+                    } else if (previousCenter) {
+                        map.setView(previousCenter, previousZoom, { animate: false });
+                    }
+                }, 80);
+            }
+
+            window.addEventListener('resize', handleViewportResize, { passive: true });
+            window.addEventListener('orientationchange', handleViewportResize, { passive: true });
+
+            document.getElementById('staleRefreshBtn')?.addEventListener('click', () => manualRefresh('stale_banner'));
+            document.getElementById('connectionRetryBtn')?.addEventListener('click', () => manualRefresh('connection_retry'));
+
+            document.getElementById('unitToggleBtn')?.addEventListener('click', () => {
+                activeUnitSystem = activeUnitSystem === 'imperial' ? 'metric' : 'imperial';
+                try {
+                    localStorage.setItem(PREFERRED_UNITS_STORAGE_KEY, activeUnitSystem);
+                } catch (_) {}
+                updateUnitToggleButton();
+                showWebToast(`Units changed to ${activeUnitSystem === 'imperial' ? 'imperial (mph · mi)' : 'metric (km/h · km)'}`);
+                emitTelemetry('live_share_unit_toggled', { units: activeUnitSystem });
+                if (window.lastReceivedSnapshot) {
+                    renderTelemetryDetails(window.lastReceivedSnapshot);
+                }
+                updateFollowButtonState();
+            });
+
+            document.addEventListener('visibilitychange', () => {
+                if (document.hidden) {
+                    stopPollingTimers();
+                } else if (!isTripEnded) {
+                    if (typeof navigator !== 'undefined' && 'onLine' in navigator) {
+                        isViewerOnline = navigator.onLine;
+                    }
+                    consecutiveFetchErrors = 0;
+                    consecutivePingErrors = 0;
+                    isFetchInProgress = false;
+                    stopPollingTimers();
+                    const statusEl = document.getElementById('statusText');
+                    if (statusEl && isViewerOnline && (statusEl.innerText.includes('Offline') || statusEl.innerText.includes('Error') || statusEl.innerText.includes('Connecting'))) {
+                        statusEl.innerText = 'Reconnecting...';
+                        statusEl.className = 'status delayed';
+                    }
+                    // Refresh immediately upon foreground return
+                    if (isViewerOnline) {
+                        fetchLocation();
+                        pingPresence();
+                    }
+                }
+            });
+
+            // CIE-042: Seamless offline-to-online reconnection & cache rehydration
+            function hydrateViewerFromCache() {
+                try {
+                    if (!window.sessionStorage || !sessionId || !isValidSession) return;
+                    const cachedStr = sessionStorage.getItem('trackme_viewer_cache_' + sessionId);
+                    if (!cachedStr) return;
+                    const cached = JSON.parse(cachedStr);
+                    if (!cached || cached.sessionId !== sessionId || !cached.lastLocation) return;
+
+                    const lat = Number(cached.lastLocation.lat);
+                    const lon = Number(cached.lastLocation.lng !== undefined ? cached.lastLocation.lng : cached.lastLocation.lon);
+                    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+
+                    const pos = [lat, lon];
+                    const username = cached.username || 'Anonymous';
+                    const pauseState = evaluateLivePauseState(cached);
+                    const showPausedMarker = pauseState.isPaused;
+                    window.lastKnownUserName = cached.username || '';
+
+                    const trailPoints = Array.isArray(cached.path)
+                        ? cached.path.filter(p => Array.isArray(p) && p.length >= 2 && Number.isFinite(p[0]) && Number.isFinite(p[1]))
+                        : [];
+                    if (trailPoints.length === 0) {
+                        trailPoints.push(pos);
+                    }
+                    window.lastTrailPoints = trailPoints;
+                    window.lastRiderPos = pos;
+
+                    // Render start pin
+                    const startPos = trailPoints[0];
+                    if (!startMarker) {
+                        const startIcon = L.divIcon({
+                            className: 'start-pin-icon',
+                            html: '<div class="start-pin" title="Trip start"></div>',
+                            iconSize: [22, 22],
+                            iconAnchor: [11, 11],
+                        });
+                        startMarker = L.marker(startPos, { icon: startIcon, interactive: false }).addTo(map);
+                    }
+
+                    // Render polyline trail
+                    if (trailPoints.length >= 2) {
+                        const renderPoints = decimatePolyline(trailPoints, 3.5, 200);
+                        if (!trailCasing) {
+                            trailCasing = L.polyline(renderPoints, {
+                                color: '#0a2540',
+                                weight: 7,
+                                opacity: 0.78,
+                                lineCap: 'round',
+                                lineJoin: 'round',
+                            }).addTo(map);
+                            trailLine = L.polyline(renderPoints, {
+                                color: '#00e5ff',
+                                weight: 4,
+                                opacity: 0.95,
+                                lineCap: 'round',
+                                lineJoin: 'round',
+                            }).addTo(map);
+                        }
+                    }
+
+                    // Render marker
+                    if (!marker) {
+                        const humanIcon = L.divIcon({
+                            className: 'custom-div-icon',
+                            html: '<div class="rider-pin-root"><div class="human-marker"></div><div class="heading-cone-wrap"></div></div>',
+                            iconSize: [140, 68],
+                            iconAnchor: [70, 46]
+                        });
+                        marker = L.marker(pos, { icon: humanIcon }).addTo(map);
+                    }
+                    const markerEl = marker.getElement();
+                    if (markerEl) {
+                        const pinRoot = typeof markerEl.querySelector === 'function' ? markerEl.querySelector('.rider-pin-root') : null;
+                        if (pinRoot && pinRoot.classList && typeof pinRoot.classList.toggle === 'function') {
+                            pinRoot.classList.toggle('is-paused', showPausedMarker);
+                        }
+                        const nameBadge = markerEl.querySelector('.human-marker');
+                        if (nameBadge) nameBadge.textContent = username;
+                        const coneWrap = markerEl.querySelector('.heading-cone-wrap');
+                        if (coneWrap) {
+                            coneWrap.innerHTML = buildHeadingConeSvg(false, showPausedMarker);
+                            coneWrap.style.transform = 'none';
+                        }
+                    }
 
                     if (isFirstLoad) {
-                        map.setView(pos, 15);
                         isFirstLoad = false;
-                        fetch('/api/telemetry/event', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                event: 'live_share_location_rendered',
-                                distinctId: viewerId,
-                                properties: { sessionId, viewerId, os: viewerOS }
-                            })
-                        }).catch(() => {});
-                        revealGetApp();
+                        if (trailPoints.length >= 2) {
+                            map.fitBounds(L.latLngBounds(trailPoints), { padding: [70, 70], maxZoom: 16 });
+                        } else {
+                            map.setView(pos, 15);
+                        }
                     }
 
-                    const timeAgo = Math.round((new Date() - new Date(timestamp)) / 1000);
-                    const timeAgoStr = timeAgo < 60 ? `${timeAgo}s ago` : `${Math.round(timeAgo/60)}m ago`;
-                    const isDelayed = Boolean(powerSaveMode) || timeAgo >= 45;
-
-                    const powerSaveContainer = document.getElementById('powerSaveContainer');
-                    if (powerSaveContainer) {
-                        powerSaveContainer.style.display = powerSaveMode ? 'block' : 'none';
+                    const statusEl = document.getElementById('statusText');
+                    const pausedContainer = document.getElementById('pausedStatusContainer');
+                    const pausedText = document.getElementById('pausedStatusText');
+                    if (statusEl) {
+                        if (showPausedMarker) {
+                            statusEl.innerText = pauseState.statusLabel;
+                            statusEl.className = 'status paused';
+                        } else {
+                            statusEl.innerText = 'Updating...';
+                            statusEl.className = 'status delayed';
+                        }
                     }
-
-                    if (isDelayed) {
-                        document.getElementById('statusText').innerText = 'Delayed Updates';
-                        document.getElementById('statusText').className = 'status delayed';
-                    } else {
-                        document.getElementById('statusText').innerText = 'Live';
-                        document.getElementById('statusText').className = 'status active';
+                    if (pausedContainer) {
+                        if (showPausedMarker && pausedText) {
+                            pausedText.innerText = pauseState.bannerText;
+                            pausedContainer.style.display = 'block';
+                        } else {
+                            pausedContainer.style.display = 'none';
+                        }
                     }
-
-                    let speedDisplay = 'N/A';
-                    if (speed !== undefined && speed !== null) {
-                        const roundedSpeed = Math.round(speed);
-                        speedDisplay = isDelayed ? `~${roundedSpeed} km/h ⚠️ (delayed)` : `${roundedSpeed} km/h`;
+                    const userNameEl = document.getElementById('userNameText');
+                    if (userNameEl) {
+                        userNameEl.innerText = `${username}'s Live Location`;
                     }
+                } catch (_) {}
+            }
 
-                    document.getElementById('userNameText').innerText = `${data.username || 'Anonymous'}'s Live Location`;
-                    document.getElementById('detailsText').innerText = 
-                        `Updated: ${timeAgoStr} | Battery: ${batteryLevel ? batteryLevel + '%' : 'N/A'} | Speed: ${speedDisplay}`;
-                } else {
-                    document.getElementById('statusText').innerText = 'Waiting...';
-                    document.getElementById('statusText').className = 'status offline';
-                    document.getElementById('userNameText').innerText = `${data.username || 'Anonymous'}'s Live Location`;
-                    document.getElementById('detailsText').innerText = 'Session active, waiting for first location ping from rider.';
-                }
-            } catch (err) {
-                console.error(err);
-                document.getElementById('statusText').innerText = 'Connection Error';
-                document.getElementById('statusText').className = 'status offline';
+            // Restore cached snapshot immediately to eliminate blank map jump on reload or transient dead zones
+            if (sessionId && isValidSession) {
+                hydrateViewerFromCache();
+            }
+
+            // Fetch immediately, then poll adaptively while tab is visible
+            if (sessionId && isValidSession) {
+                fetchLocation();
+                pingPresence();
+            } else {
+                revealGetApp(false);
+                const copyEl = document.getElementById('getAppCopy');
+                if (copyEl) copyEl.innerText = 'No active session found. Download TrackMe to record rides and share your live location free.';
             }
         }
-
-        // Fetch immediately, then poll every 5 seconds
-        fetchLocation();
-        pingPresence();
-        pollingInterval = setInterval(fetchLocation, 5000);
-        pingInterval = setInterval(pingPresence, 15000);
     </script>
+    <div id="webToast" class="web-toast" role="status" aria-live="polite"></div>
+    <div id="a11yLiveAnnouncer" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
 </body>
 </html>

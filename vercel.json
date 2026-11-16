@@ -10,6 +10,14 @@
       "destination": "/blog/:slug.html"
     },
     {
+      "source": "/live",
+      "destination": "/tracker.html"
+    },
+    {
+      "source": "/live/",
+      "destination": "/tracker.html"
+    },
+    {
       "source": "/live/:sessionId",
       "destination": "/tracker.html"
     },
@@ -44,6 +52,20 @@
     {
       "source": "/api/telemetry/:route",
       "destination": "/api/telemetry?route=:route"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/.well-known/apple-app-site-association",
+      "headers": [
+        { "key": "Content-Type", "value": "application/json" }
+      ]
+    },
+    {
+      "source": "/.well-known/assetlinks.json",
+      "headers": [
+        { "key": "Content-Type", "value": "application/json" }
+      ]
     }
   ]
 }

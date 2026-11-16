@@ -259,6 +259,18 @@ if (exportBtn) {
 const pinnedReleases = {
     'track-me-android': [
         {
+            tag_name: 'v1.9.3',
+            name: 'TrackMe v1.9.3',
+            published_at: '2026-11-16T00:00:00Z',
+            body: [
+                '1-Tap Live Location Sharing: Share your live location straight from the Home screen or during any ride. Family and friends can follow your live path, speed, direction, and arrival countdown in any browser or inside the TrackMe app.',
+                'Trusted Contacts (Zero Address-Book Access): Pair with up to 5 family members or close friends via a private one-time link. Your Trusted Contacts receive an instant notification the moment you start sharing — without TrackMe ever reading your phone contacts.',
+                'Hands-Free Auto-Stop & Auto-Start (Continuous Trip Tracking): Opt in under Advanced Settings to automatically end trips when you arrive indoors (5, 10, 15, or 30 min window), trim out idle indoor time, and auto-start your next trip when you head back out.',
+                'Smart Pause & Battery Defense: Clean paused indicator on live maps (no GPS zig-zags while stopped), 15s default live-share pulse, and automatic battery-saving cadence when your phone is low on power or no one is currently watching.',
+                'Live & Group Ride History Markers: Completed rides now highlight Full/Partial Live Share and Group Ride segments directly on your history cards and interactive speed/altitude charts.'
+            ].join('\n\n')
+        },
+        {
             tag_name: 'v1.9.0',
             name: 'TrackMe v1.9.0',
             published_at: '2026-10-23T00:00:00Z',
@@ -302,6 +314,18 @@ const pinnedReleases = {
         }
     ],
     'track-me-ios': [
+        {
+            tag_name: 'v1.9.3',
+            name: 'TrackMe v1.9.3',
+            published_at: '2026-11-16T00:00:00Z',
+            body: [
+                '1-Tap Live Location Sharing: Start sharing your live location directly from the Home screen or during any ride. Friends and family can watch your live breadcrumb trail, speed, heading, and arrival ETA in any browser or inside the TrackMe app.',
+                'Trusted Contacts (Zero Address-Book Access): Connect with up to 5 family members or close friends using a private invite link and send automatic push alerts when you share — with zero phone contacts permission.',
+                'Hands-Free Auto-Stop & Auto-Start (Continuous Trip Tracking): Automatically completes your trip when you arrive indoors (5, 10, 15, or 30 min window), trims out stationary indoor time, and auto-starts your next trip when you head back out.',
+                'Smart Pause & Battery Optimization: Shows a clear paused marker when stationary without plotting GPS drift zig-zags, defaults live-share updates to a battery-friendly 15s pulse, and slows down updates when battery is low.',
+                'Live & Group Ride History Markers: View Full/Partial Live Share and Group Ride badges on ride cards plus shaded live-share intervals on speed and elevation charts.'
+            ].join('\n\n')
+        },
         {
             tag_name: 'v1.9.0',
             name: 'TrackMe v1.9.0',
@@ -470,7 +494,7 @@ function initReleases() {
     fetchReleases(
         'track-me-ios',
         'dynamic-ios-releases',
-        'iOS release notes will appear here as they are published. The latest App Store release is v1.9.0.'
+        'iOS release notes will appear here as they are published. The latest App Store release is v1.9.3.'
     );
 }
 
