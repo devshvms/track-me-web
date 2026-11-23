@@ -238,13 +238,25 @@ function runTests() {
       'TASK-374: index.html must include #stickyMobileCta sticky mobile install bar'
     );
     assert.ok(
+      /<aside[^>]*id="stickyMobileCta"[^>]*aria-hidden="true"[^>]*\binert\b/.test(indexHtml),
+      'TASK-374: hidden #stickyMobileCta must start inert so off-screen links are excluded from tab order'
+    );
+    assert.ok(
+      indexHtml.includes('stickyMobileCta.inert = !shouldShow'),
+      'TASK-374: syncStickyMobileCta must toggle inert alongside visibility'
+    );
+    assert.ok(
+      indexHtml.includes("el.setAttribute('tabindex', '-1')") && indexHtml.includes("el.removeAttribute('tabindex')"),
+      'TASK-374: syncStickyMobileCta must toggle link tabindex as fallback for browsers without inert'
+    );
+    assert.ok(
       indexHtml.includes("ctaObserver.observe(releasesSection)"),
       'TASK-374: ctaObserver must observe #releases to hide sticky bar when releases enters view'
     );
     const styleCss = fs.readFileSync(path.join(ROOT_DIR, 'public/style.css'), 'utf-8');
     assert.ok(
-      styleCss.includes('.sticky-mobile-cta.is-visible'),
-      'TASK-374: style.css must style visible sticky mobile CTA bar'
+      styleCss.includes('.sticky-mobile-cta.is-visible') && styleCss.includes('visibility: hidden;'),
+      'TASK-374: style.css must style visible sticky mobile CTA bar and hide inactive bar from focus'
     );
     assert.ok(
       trackerHtml.includes('TrackCore.buildViewerGetAppCopy'),

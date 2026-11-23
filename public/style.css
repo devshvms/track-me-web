@@ -250,13 +250,16 @@ body.is-android .store-cta[data-download-platform="android"] img {
         box-shadow: 0 -10px 28px rgba(0, 0, 0, 0.38);
         transform: translateY(115%);
         opacity: 0;
+        visibility: hidden;
         pointer-events: none;
-        transition: transform 0.24s var(--ease), opacity 0.2s ease;
+        transition: transform 0.24s var(--ease), opacity 0.2s ease, visibility 0s linear 0.24s;
     }
     .sticky-mobile-cta.is-visible {
         transform: translateY(0);
         opacity: 1;
+        visibility: visible;
         pointer-events: auto;
+        transition: transform 0.24s var(--ease), opacity 0.2s ease, visibility 0s linear 0s;
     }
     .sticky-mobile-cta-meta {
         display: flex;

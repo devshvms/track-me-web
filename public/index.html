@@ -381,7 +381,7 @@
     <footer class="site-footer"><div class="section-shell footer-inner"><a class="brand brand-footer" href="#top"><img class="brand-mark" src="/assets/trackme-logo.png" width="32" height="32" alt="" aria-hidden="true"><span>TrackMe</span></a><div><a href="/blogs">Blog</a><a href="/privacy.html">Privacy policy</a><a href="#support">Support</a><a href="mailto:dev.shvms@gmail.com">Contact</a></div><p>&copy; 2026 TrackMe. Built for people who want their routes to stay theirs.</p></div></footer>
 
     <!-- TASK-374: Compact mobile sticky bottom install bar toggled by ctaObserver -->
-    <aside id="stickyMobileCta" class="sticky-mobile-cta" aria-label="Download TrackMe" aria-hidden="true">
+    <aside id="stickyMobileCta" class="sticky-mobile-cta" aria-label="Download TrackMe" aria-hidden="true" inert>
         <div class="sticky-mobile-cta-meta">
             <img class="brand-mark" src="/assets/trackme-logo.png" width="30" height="30" alt="" aria-hidden="true">
             <div>
@@ -390,11 +390,11 @@
             </div>
         </div>
         <div class="sticky-mobile-cta-actions">
-            <a class="sticky-store-btn download-cta" href="https://play.google.com/store/apps/details?id=in.shvms.trackme" target="_blank" rel="noreferrer" data-download-platform="android">
+            <a class="sticky-store-btn download-cta" href="https://play.google.com/store/apps/details?id=in.shvms.trackme" target="_blank" rel="noreferrer" data-download-platform="android" tabindex="-1">
                 <img src="/assets/store/google-play-48.png" width="20" height="20" alt="" aria-hidden="true">
                 <span>Google Play</span>
             </a>
-            <a class="sticky-store-btn download-cta" href="https://apps.apple.com/app/id6800161248" target="_blank" rel="noreferrer" data-download-platform="ios">
+            <a class="sticky-store-btn download-cta" href="https://apps.apple.com/app/id6800161248" target="_blank" rel="noreferrer" data-download-platform="ios" tabindex="-1">
                 <img src="/assets/store/app-store-48.png" width="20" height="20" alt="" aria-hidden="true">
                 <span>App Store</span>
             </a>
@@ -520,12 +520,20 @@
             let releasesInView = false;
             const seenCtaSections = new Set();
 
+            const stickyMobileLinks = stickyMobileCta ? stickyMobileCta.querySelectorAll('a, button') : [];
+
             const syncStickyMobileCta = () => {
                 if (!stickyMobileCta) return;
                 const shouldShow = !heroActionsInView && !releasesInView;
                 stickyMobileCta.classList.toggle('is-visible', shouldShow);
                 stickyMobileCta.setAttribute('aria-hidden', shouldShow ? 'false' : 'true');
+                stickyMobileCta.inert = !shouldShow;
+                stickyMobileLinks.forEach((el) => {
+                    if (shouldShow) el.removeAttribute('tabindex');
+                    else el.setAttribute('tabindex', '-1');
+                });
             };
+            syncStickyMobileCta();
 
             const ctaObserver = new IntersectionObserver((entries) => {
                 entries.forEach((entry) => {
