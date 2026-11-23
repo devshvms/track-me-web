@@ -125,6 +125,20 @@
     return { title, description, ogImage, canonicalUrl };
   }
 
+  function buildViewerGetAppCopy(riderName, isStopped) {
+    const cleanName = sanitizeRiderName(riderName);
+    if (cleanName) {
+      if (isStopped) {
+        return `${cleanName}'s trip has ended · Track your own drives, rides & walks free with TrackMe`;
+      }
+      return `Following ${cleanName} live · Get instant arrival & pause alerts in the free TrackMe app`;
+    }
+    if (isStopped) {
+      return 'This trip has ended. Track your own rides and share live location free with TrackMe.';
+    }
+    return 'Live via TrackMe — Free offline GPS speedometer & live location sharing · Zero account needed to record';
+  }
+
   const VIEWER_PING_BASE_MS = 15000;
   const VIEWER_PING_THROTTLED_MS = 30000;
   const VIEWER_PING_MAX_BACKOFF_MS = 60000;
@@ -689,6 +703,7 @@
     sanitizeRiderName,
     buildLiveShareUrl,
     resolveLiveShareMetadata,
+    buildViewerGetAppCopy,
     evaluateLivePauseState,
     VIEWER_PING_BASE_MS,
     VIEWER_PING_THROTTLED_MS,

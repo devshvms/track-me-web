@@ -3,6 +3,7 @@ import {
   sanitizeRiderName,
   buildLiveShareUrl,
   resolveLiveShareMetadata,
+  buildViewerGetAppCopy,
 } from '../lib/track/metadata';
 
 type TestCase = { name: string; fn: () => void | Promise<void> };
@@ -117,6 +118,29 @@ test('resolveLiveShareMetadata handles null sessionId gracefully', () => {
     baseUrl: 'https://trackme.shvms.in',
   });
   assert.strictEqual(meta.canonicalUrl, 'https://trackme.shvms.in/live');
+});
+
+test('TASK-374: buildViewerGetAppCopy personalizes active and ended banner copy safely', () => {
+  assert.strictEqual(
+    buildViewerGetAppCopy('Shivam', false),
+    'Following Shivam live · Get instant arrival & pause alerts in the free TrackMe app'
+  );
+  assert.strictEqual(
+    buildViewerGetAppCopy('Shivam', true),
+    "Shivam's trip has ended · Track your own drives, rides & walks free with TrackMe"
+  );
+  assert.strictEqual(
+    buildViewerGetAppCopy('<b>Alex</b>', false),
+    'Following Alex live · Get instant arrival & pause alerts in the free TrackMe app'
+  );
+  assert.strictEqual(
+    buildViewerGetAppCopy('   ', false),
+    'Live via TrackMe — Free offline GPS speedometer & live location sharing · Zero account needed to record'
+  );
+  assert.strictEqual(
+    buildViewerGetAppCopy(null, true),
+    'This trip has ended. Track your own rides and share live location free with TrackMe.'
+  );
 });
 
 async function main() {

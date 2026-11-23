@@ -233,6 +233,23 @@ function runTests() {
       indexHtml.includes("'.download-cta[data-download-platform=\"ios\"]'"),
       'index.html must dynamically decorate iOS App Store CTAs with campaign token'
     );
+    assert.ok(
+      indexHtml.includes('id="stickyMobileCta"'),
+      'TASK-374: index.html must include #stickyMobileCta sticky mobile install bar'
+    );
+    assert.ok(
+      indexHtml.includes("ctaObserver.observe(releasesSection)"),
+      'TASK-374: ctaObserver must observe #releases to hide sticky bar when releases enters view'
+    );
+    const styleCss = fs.readFileSync(path.join(ROOT_DIR, 'public/style.css'), 'utf-8');
+    assert.ok(
+      styleCss.includes('.sticky-mobile-cta.is-visible'),
+      'TASK-374: style.css must style visible sticky mobile CTA bar'
+    );
+    assert.ok(
+      trackerHtml.includes('TrackCore.buildViewerGetAppCopy'),
+      'TASK-374: tracker.html must personalize #getAppCopy via TrackCore.buildViewerGetAppCopy'
+    );
     passed++;
   }
 
