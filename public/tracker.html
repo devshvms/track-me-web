@@ -1051,13 +1051,25 @@
             updateUnitToggleButton();
         }
 
-        // CIE-031: Live Share Social Cards & Dynamic Metadata Resolution
+        // CIE-031 / TASK-374: Live Share Social Cards, Dynamic Metadata & Arrival-Alert CTA Resolution
         function sanitizeRiderNameClient(rawName) {
             return TrackCore.sanitizeRiderName(rawName);
         }
 
+        let currentRiderName = null;
+        let isTripEnded = false;
+
+        function syncGetAppCopy(riderName, ended) {
+            if (isWatcherInvite) return;
+            const copyEl = document.getElementById('getAppCopy');
+            if (!copyEl) return;
+            const resolvedName = sanitizeRiderNameClient(riderName) || currentRiderName || sanitizeRiderNameClient(queryParams.get('name'));
+            copyEl.textContent = TrackCore.buildViewerGetAppCopy(resolvedName, Boolean(ended));
+        }
+
         function updateSocialMetadata(riderName, isStopped) {
             const cleanName = sanitizeRiderNameClient(riderName) || sanitizeRiderNameClient(queryParams.get('name'));
+            if (cleanName) currentRiderName = cleanName;
             let titleText;
             let descText;
             if (cleanName) {
@@ -1094,6 +1106,8 @@
                 : `${window.location.origin}/live`;
             const ogUrl = document.getElementById('ogUrl');
             if (ogUrl) ogUrl.setAttribute('content', canonicalUrl);
+
+            syncGetAppCopy(cleanName, Boolean(isStopped || isTripEnded));
 
             if (typeof configureSmartAppBanner === 'function') {
                 configureSmartAppBanner(cleanName);
@@ -1377,18 +1391,18 @@
         let trailLine = null;
         let isFirstLoad = true;
 
-        // TASK-294 / TASK-342 / TASK-360. Idempotent: called from the first render and from every terminal state.
+        // TASK-294 / TASK-342 / TASK-360 / TASK-374. Idempotent: called from the first render and from every terminal state.
         let getAppShown = false;
         let getAppDismissed = false;
-        let isTripEnded = false;
         function revealGetApp(ended = false, forceShow = false) {
             if (ended) {
                 isTripEnded = true;
                 getAppDismissed = false;
-                const copyEl = document.getElementById('getAppCopy');
-                if (copyEl) copyEl.innerText = 'This trip has ended. Track your own rides and share live location free with TrackMe.';
             } else if (forceShow) {
                 getAppDismissed = false;
+            }
+            if (!isWatcherInvite) {
+                syncGetAppCopy(currentRiderName, isTripEnded);
             }
             if (getAppDismissed && !ended) return;
             const getAppEl = document.getElementById('getApp');

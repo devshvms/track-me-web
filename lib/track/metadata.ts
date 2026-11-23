@@ -35,3 +35,10 @@ export function resolveLiveShareMetadata(options: {
   return TrackCore.resolveLiveShareMetadata(options);
 }
 
+export function buildViewerGetAppCopy(
+  riderName?: string | null,
+  isStopped: boolean = false
+): string {
+  return TrackCore.buildViewerGetAppCopy(riderName, isStopped);
+}
+
