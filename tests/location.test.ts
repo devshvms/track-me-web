@@ -48,6 +48,7 @@ test('VIEWER_VISIBLE_FIELDS includes master tracker and v1.9.3 trail fields', ()
   assert.ok(fields.includes('username'), 'username missing from VIEWER_VISIBLE_FIELDS');
   assert.ok(fields.includes('status'), 'status missing from VIEWER_VISIBLE_FIELDS');
   assert.ok(fields.includes('startedAt'), 'startedAt missing from VIEWER_VISIBLE_FIELDS');
+  assert.ok(fields.includes('stopKind'), 'stopKind missing from VIEWER_VISIBLE_FIELDS');
   assert.ok(fields.includes('stopReason'), 'stopReason missing from VIEWER_VISIBLE_FIELDS');
   assert.ok(fields.includes('lastLocation'), 'lastLocation missing from VIEWER_VISIBLE_FIELDS');
   assert.ok(fields.includes('path'), 'path missing from VIEWER_VISIBLE_FIELDS');

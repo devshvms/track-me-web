@@ -139,6 +139,114 @@
     return 'Live via TrackMe — Free offline GPS speedometer & live location sharing · Zero account needed to record';
   }
 
+  function normalizeStopKind(rawStopKind, rawStopReason) {
+    if (typeof rawStopKind === 'string') {
+      const clean = rawStopKind.trim().toLowerCase();
+      if (clean === 'rider_confirmed' || clean === 'auto_dwell_ended' || clean === 'expired') {
+        return clean;
+      }
+    }
+    if (typeof rawStopReason === 'string' && rawStopReason.trim().length > 0) {
+      const reason = rawStopReason.trim();
+      if (/auto[- ]?end|stillness|dwell/i.test(reason)) {
+        return 'auto_dwell_ended';
+      }
+      if (/time limit|sharing limit|time elapsed|session expired/i.test(reason)) {
+        return 'expired';
+      }
+    }
+    return 'rider_confirmed';
+  }
+
+  function sanitizeStopReasonText(rawReason) {
+    if (!rawReason || typeof rawReason !== 'string') return null;
+    const stripped = rawReason.replace(/<[^>]*>/g, '').replace(/[\r\n\t]+/g, ' ').trim();
+    return stripped ? stripped.slice(0, 256) : null;
+  }
+
+  function resolveConcludedSessionState(data) {
+    const rawReason = data && (data.stopReason || data.endReason);
+    const stopKind = normalizeStopKind(data && data.stopKind, rawReason);
+    const customReason = sanitizeStopReasonText(rawReason);
+
+    let defaultSummary = 'The rider has ended this live trip.';
+    let statusBadgeLabel = 'Sharing Stopped';
+    if (stopKind === 'auto_dwell_ended') {
+      defaultSummary = 'Trip auto-ended after extended stillness.';
+      statusBadgeLabel = 'Auto-Ended (Stillness)';
+    } else if (stopKind === 'expired') {
+      defaultSummary = 'Sharing time limit elapsed.';
+      statusBadgeLabel = 'Sharing Time Ended';
+    }
+
+    // Never allow unconfirmed auto-dwell or expired states to claim "safe arrival".
+    let stopSummary = customReason || defaultSummary;
+    if (stopKind !== 'rider_confirmed' && /arrived\s+safely|safe\s+arrival/i.test(stopSummary)) {
+      stopSummary = defaultSummary;
+    }
+
+    return {
+      stopKind,
+      statusBadgeLabel,
+      stopSummary,
+      metaRightLabel: 'Final recorded location',
+    };
+  }
+
+  function buildViewerForwardSharePayload(options) {
+    const opts = options || {};
+    const cleanName = sanitizeRiderName(opts.riderName);
+    const url = String(opts.url || '').trim();
+    const isStopped = Boolean(opts.isStopped);
+    if (!isStopped) {
+      const title = cleanName ? `${cleanName}'s Live Ride` : 'TrackMe Live Ride';
+      const text = cleanName
+        ? `Track ${cleanName}'s live ride on TrackMe`
+        : 'Track my live ride on TrackMe';
+      return {
+        title,
+        text,
+        url,
+        copyToast: 'Live ride link copied!',
+        buttonLabel: 'Share live ride link',
+      };
+    }
+
+    const stopKind = normalizeStopKind(opts.stopKind, opts.stopReason);
+    const statsParts = [];
+    if (opts.distanceStr && typeof opts.distanceStr === 'string' && !/^0(\.0)?\s*(km|mi)$/i.test(opts.distanceStr.trim())) {
+      statsParts.push(opts.distanceStr.trim());
+    }
+    if (opts.durationStr && typeof opts.durationStr === 'string' && opts.durationStr.trim()) {
+      statsParts.push(opts.durationStr.trim());
+    }
+    const statsSuffix = statsParts.length > 0 ? ` (${statsParts.join(' · ')})` : '';
+    const title = cleanName ? `${cleanName}'s Concluded Trip · TrackMe` : 'Concluded Trip · TrackMe';
+
+    let actionPhrase;
+    if (stopKind === 'auto_dwell_ended') {
+      actionPhrase = cleanName
+        ? `${cleanName}'s shared trip auto-ended after stillness on TrackMe`
+        : 'Shared trip auto-ended after stillness on TrackMe';
+    } else if (stopKind === 'expired') {
+      actionPhrase = cleanName
+        ? `${cleanName}'s live sharing window ended on TrackMe`
+        : 'Live sharing window ended on TrackMe';
+    } else {
+      actionPhrase = cleanName
+        ? `${cleanName} ended a shared trip on TrackMe`
+        : 'Concluded shared trip on TrackMe';
+    }
+
+    return {
+      title,
+      text: `${actionPhrase}${statsSuffix}`,
+      url,
+      copyToast: 'Trip summary link copied!',
+      buttonLabel: 'Share concluded trip summary',
+    };
+  }
+
   const VIEWER_PING_BASE_MS = 15000;
   const VIEWER_PING_THROTTLED_MS = 30000;
   const VIEWER_PING_MAX_BACKOFF_MS = 60000;
@@ -704,6 +812,9 @@
     buildLiveShareUrl,
     resolveLiveShareMetadata,
     buildViewerGetAppCopy,
+    normalizeStopKind,
+    resolveConcludedSessionState,
+    buildViewerForwardSharePayload,
     evaluateLivePauseState,
     VIEWER_PING_BASE_MS,
     VIEWER_PING_THROTTLED_MS,

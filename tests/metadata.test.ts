@@ -143,6 +143,74 @@ test('TASK-374: buildViewerGetAppCopy personalizes active and ended banner copy 
   );
 });
 
+test('TASK-384: resolveConcludedSessionState distinguishes rider_confirmed, auto_dwell_ended, and expired honestly', () => {
+  const {
+    normalizeStopKind,
+    resolveConcludedSessionState,
+    buildViewerForwardSharePayload,
+  } = require('../lib/track/metadata');
+
+  assert.strictEqual(normalizeStopKind('rider_confirmed'), 'rider_confirmed');
+  assert.strictEqual(normalizeStopKind('auto_dwell_ended'), 'auto_dwell_ended');
+  assert.strictEqual(normalizeStopKind('expired'), 'expired');
+  assert.strictEqual(normalizeStopKind(undefined, 'Auto-end triggered after 15m stillness'), 'auto_dwell_ended');
+  assert.strictEqual(normalizeStopKind(undefined, 'Sharing time limit reached'), 'expired');
+  assert.strictEqual(normalizeStopKind('unknown_value', ''), 'rider_confirmed');
+
+  const riderEnded = resolveConcludedSessionState({
+    stopKind: 'rider_confirmed',
+    stopReason: '<b>Ended</b> by rider at home',
+  });
+  assert.strictEqual(riderEnded.stopKind, 'rider_confirmed');
+  assert.strictEqual(riderEnded.statusBadgeLabel, 'Sharing Stopped');
+  assert.strictEqual(riderEnded.stopSummary, 'Ended by rider at home');
+  assert.strictEqual(riderEnded.metaRightLabel, 'Final recorded location');
+
+  // Guardrail: inferred auto_dwell_ended or expired must NEVER claim "arrived safely"
+  const dwellWithArrivalClaim = resolveConcludedSessionState({
+    stopKind: 'auto_dwell_ended',
+    stopReason: 'Rider arrived safely at destination',
+  });
+  assert.strictEqual(dwellWithArrivalClaim.stopKind, 'auto_dwell_ended');
+  assert.strictEqual(dwellWithArrivalClaim.statusBadgeLabel, 'Auto-Ended (Stillness)');
+  assert.strictEqual(dwellWithArrivalClaim.stopSummary, 'Trip auto-ended after extended stillness.');
+
+  const expiredState = resolveConcludedSessionState({ stopKind: 'expired' });
+  assert.strictEqual(expiredState.statusBadgeLabel, 'Sharing Time Ended');
+  assert.strictEqual(expiredState.stopSummary, 'Sharing time limit elapsed.');
+
+  const activeShare = buildViewerForwardSharePayload({
+    riderName: 'Shivam',
+    url: 'https://trackme.shvms.in/live/abc',
+    isStopped: false,
+  });
+  assert.strictEqual(activeShare.title, "Shivam's Live Ride");
+  assert.strictEqual(activeShare.text, "Track Shivam's live ride on TrackMe");
+  assert.strictEqual(activeShare.copyToast, 'Live ride link copied!');
+
+  const concludedShare = buildViewerForwardSharePayload({
+    riderName: '<script>x</script>Shivam',
+    url: 'https://trackme.shvms.in/live/abc',
+    isStopped: true,
+    stopKind: 'rider_confirmed',
+    distanceStr: '14.2 km',
+    durationStr: '32m',
+  });
+  assert.strictEqual(concludedShare.title, "xShivam's Concluded Trip · TrackMe");
+  assert.strictEqual(concludedShare.text, 'xShivam ended a shared trip on TrackMe (14.2 km · 32m)');
+  assert.strictEqual(concludedShare.copyToast, 'Trip summary link copied!');
+
+  const autoDwellShare = buildViewerForwardSharePayload({
+    riderName: 'Shivam',
+    url: 'https://trackme.shvms.in/live/abc',
+    isStopped: true,
+    stopKind: 'auto_dwell_ended',
+    distanceStr: '0.0 km',
+    durationStr: '15m',
+  });
+  assert.strictEqual(autoDwellShare.text, "Shivam's shared trip auto-ended after stillness on TrackMe (15m)");
+});
+
 async function main() {
   let passed = 0;
   const failures: string[] = [];

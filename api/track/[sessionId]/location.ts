@@ -22,6 +22,7 @@ export const VIEWER_VISIBLE_FIELDS = [
   'isPaused',
   'pauseReason',
   'startedAt',
+  'stopKind',
   'stopReason',
   'endReason',
   'endedAt',

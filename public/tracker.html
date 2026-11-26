@@ -2022,7 +2022,16 @@
                     const distancePart = ` | Distance: ${distanceStr}`;
 
                     if (isStopped) {
-                        const stopText = data.stopReason || data.endReason || 'The rider has ended this live trip.';
+                        const concludedState = TrackCore.resolveConcludedSessionState(data);
+                        const stopText = concludedState.stopSummary;
+                        window.lastConcludedStopKind = concludedState.stopKind;
+                        window.lastConcludedDistanceStr = distanceStr;
+                        window.lastConcludedDurationStr = durationStr || '';
+                        const shareBtnEl = document.getElementById('shareBtn');
+                        if (shareBtnEl) {
+                            shareBtnEl.setAttribute('title', 'Share concluded trip summary');
+                            shareBtnEl.setAttribute('aria-label', 'Share concluded trip summary');
+                        }
                         const endedTimeStr = data.endedAt ? new Date(data.endedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : null;
                         const durationLabel = durationStr ? ` · Duration: ${durationStr}` : '';
                         const distanceLabel = totalDistanceMeters > 0 ? ` · Distance: ${distanceStr}` : '';
@@ -2034,8 +2043,8 @@
                         const avgSpeedLabel = avgSpeedStr ? ` · Avg Speed: ${avgSpeedStr}` : '';
 
                         const fallbackEndedText = endedTimeStr
-                            ? `${stopText} at ${endedTimeStr}${durationLabel}${distanceLabel}${avgSpeedLabel} · Final location shown`
-                            : `${stopText}${durationLabel}${distanceLabel}${avgSpeedLabel} · Final location shown`;
+                            ? `${stopText} at ${endedTimeStr}${durationLabel}${distanceLabel}${avgSpeedLabel} · ${concludedState.metaRightLabel}`
+                            : `${stopText}${durationLabel}${distanceLabel}${avgSpeedLabel} · ${concludedState.metaRightLabel}`;
                         const endedCells = [];
                         if (durationStr) endedCells.push({ icon: 'duration', label: 'Duration', value: durationStr });
                         endedCells.push({ icon: 'distance', label: 'Distance', value: distanceStr });
@@ -2046,7 +2055,7 @@
                             detailsEl,
                             endedCells,
                             endedTimeStr ? `${stopText} · ${endedTimeStr}` : stopText,
-                            'Final location',
+                            concludedState.metaRightLabel,
                             fallbackEndedText
                         );
 
@@ -2095,16 +2104,25 @@
                         fallbackLiveText
                     );
                 } else if (isStopped) {
+                    const concludedState = TrackCore.resolveConcludedSessionState(data);
                     const stoppedDurationStr = formatElapsedDuration(data.startedAt, data.endedAt);
                     const stoppedDurationLabel = stoppedDurationStr ? ` · Duration: ${stoppedDurationStr}` : '';
                     const stoppedDistMeters = computePathDistanceMeters(data.path);
                     const stoppedDistStr = formatViewerDistance(stoppedDistMeters, useMiles);
                     const stoppedDistLabel = stoppedDistMeters > 0 ? ` · Distance: ${stoppedDistStr}` : '';
-                    const stopMsg = data.stopReason || data.endReason || 'The rider has ended this live trip.';
+                    const stopMsg = concludedState.stopSummary;
+                    window.lastConcludedStopKind = concludedState.stopKind;
+                    window.lastConcludedDistanceStr = stoppedDistStr;
+                    window.lastConcludedDurationStr = stoppedDurationStr || '';
+                    const shareBtnEl = document.getElementById('shareBtn');
+                    if (shareBtnEl) {
+                        shareBtnEl.setAttribute('title', 'Share concluded trip summary');
+                        shareBtnEl.setAttribute('aria-label', 'Share concluded trip summary');
+                    }
                     const cells = [];
                     if (stoppedDurationStr) cells.push({ icon: 'duration', label: 'Duration', value: stoppedDurationStr });
                     cells.push({ icon: 'distance', label: 'Distance', value: stoppedDistStr });
-                    renderTelemetryGrid(detailsEl, cells, stopMsg, null, `${stopMsg}${stoppedDurationLabel}${stoppedDistLabel}`);
+                    renderTelemetryGrid(detailsEl, cells, stopMsg, concludedState.metaRightLabel, `${stopMsg}${stoppedDurationLabel}${stoppedDistLabel}`);
                 }
             }
 
@@ -2435,13 +2453,14 @@
                         updateDeadlineBadge(data.deadlineAt || data.etaAt, isStopped);
 
                         if (isStopped) {
-                            // Render finish arrival marker on map at the last coordinate of the route
+                            const concludedState = TrackCore.resolveConcludedSessionState(data);
+                            // Render finish marker on map at the last recorded coordinate of the route
                             if (trailPoints.length >= 1) {
                                 const finishPos = trailPoints[trailPoints.length - 1] || pos;
                                 if (!finishMarker) {
                                     const finishIcon = L.divIcon({
                                         className: 'finish-pin-icon',
-                                        html: '<div class="finish-pin" title="Trip arrival point"></div>',
+                                        html: '<div class="finish-pin" title="Final recorded location"></div>',
                                         iconSize: [22, 22],
                                         iconAnchor: [11, 11],
                                     });
@@ -2451,7 +2470,7 @@
                                 }
                             }
 
-                            document.getElementById('statusText').innerText = 'Sharing Stopped';
+                            document.getElementById('statusText').innerText = concludedState.statusBadgeLabel;
                             document.getElementById('statusText').className = 'status offline';
                             document.getElementById('userNameText').innerText = `${username}'s Final Location`;
                             renderTelemetryDetails(data);
@@ -2534,6 +2553,7 @@
                         document.getElementById('userNameText').innerText = `${username}'s Live Location`;
                         renderTelemetryDetails(data);
                     } else if (isStopped) {
+                        const concludedState = TrackCore.resolveConcludedSessionState(data);
                         const dest = typeof data.destination === 'string' ? data.destination.trim() : '';
                         const destinationBadge = document.getElementById('destinationBadge');
                         const destinationTextEl = document.getElementById('destinationText');
@@ -2545,7 +2565,7 @@
                                 destinationBadge.style.display = 'none';
                             }
                         }
-                        document.getElementById('statusText').innerText = 'Sharing Stopped';
+                        document.getElementById('statusText').innerText = concludedState.statusBadgeLabel;
                         document.getElementById('statusText').className = 'status offline';
                         renderTelemetryDetails(data);
                         const staleContainer = document.getElementById('staleSignalContainer');
@@ -2695,26 +2715,35 @@
                 }
             });
 
-            // CIE-043: Share ride button & native maps directions handoff
+            // CIE-043 & TASK-384: Share live ride or concluded trip summary button
             document.getElementById('shareBtn')?.addEventListener('click', () => {
                 const username = sanitizeRiderNameClient(window.lastKnownUserName) || sanitizeRiderNameClient(queryParams.get('name'));
-                const liveUrl = window.location.href;
-                const caption = username
-                    ? `Track ${username}'s live ride on TrackMe`
-                    : 'Track my live ride on TrackMe';
+                const sharePayload = TrackCore.buildViewerForwardSharePayload({
+                    riderName: username,
+                    url: window.location.href,
+                    isStopped: Boolean(isTripEnded),
+                    stopKind: window.lastConcludedStopKind,
+                    distanceStr: window.lastConcludedDistanceStr,
+                    durationStr: window.lastConcludedDurationStr,
+                });
 
-                emitTelemetry('live_share_forward_clicked', { sessionId, surface: 'map_controls' });
+                emitTelemetry('live_share_forward_clicked', {
+                    sessionId,
+                    surface: 'map_controls',
+                    is_concluded: Boolean(isTripEnded),
+                    stop_kind: isTripEnded ? (window.lastConcludedStopKind || 'rider_confirmed') : null,
+                });
 
                 if (navigator.share) {
                     navigator.share({
-                        title: username ? `${username}'s Live Ride` : 'TrackMe Live Ride',
-                        text: caption,
-                        url: liveUrl
+                        title: sharePayload.title,
+                        text: sharePayload.text,
+                        url: sharePayload.url
                     }).catch(() => {
-                        copyTextWithFallback(liveUrl, 'Live ride link copied!');
+                        copyTextWithFallback(sharePayload.url, sharePayload.copyToast);
                     });
                 } else {
-                    copyTextWithFallback(`${caption}: ${liveUrl}`, 'Live ride link copied!');
+                    copyTextWithFallback(`${sharePayload.text}: ${sharePayload.url}`, sharePayload.copyToast);
                 }
             });
 

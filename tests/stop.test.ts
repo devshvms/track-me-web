@@ -2,8 +2,11 @@ import assert from 'node:assert';
 import stopHandler, {
   MAX_STOP_REASON_LENGTH,
   DEFAULT_STOP_REASON,
+  DEFAULT_AUTO_DWELL_STOP_REASON,
+  DEFAULT_EXPIRED_STOP_REASON,
   MIN_POST_RIDE_BUFFER_SECONDS,
   MAX_SESSION_TTL_SECONDS,
+  normalizeStopKind,
 } from '../api/track/[sessionId]/stop';
 import { getRedisClient } from '../lib/redis';
 import { auth } from '../lib/firebase';
@@ -346,6 +349,81 @@ test('stopHandler caps post-ride TTL at MAX_SESSION_TTL_SECONDS (86400s)', async
   );
 
   await redis.del(`session:${sessionId}`);
+});
+
+test('TASK-384: stopHandler persists normalized stopKind, strips HTML tags from stopReason, and applies honest defaults', async () => {
+  const redis = await getRedisClient();
+  const expiresAt = new Date(Date.now() + 3600_000).toISOString();
+
+  // 1. auto_dwell_ended with empty reason -> DEFAULT_AUTO_DWELL_STOP_REASON
+  const dwellSessionId = 'session-stop-auto-dwell';
+  await redis.set(`session:${dwellSessionId}`, JSON.stringify({
+    sessionId: dwellSessionId,
+    ownerUid: 'user-owner-123',
+    username: 'Test Rider',
+    status: 'active',
+    expiresAt,
+  }), { EX: 3600 });
+
+  const dwellRes = fakeResponse();
+  await stopHandler({
+    method: 'POST',
+    query: { sessionId: dwellSessionId },
+    headers: { authorization: 'Bearer valid-owner-token' },
+    body: { stopKind: 'auto_dwell_ended' },
+  } as any, dwellRes as any);
+  assert.strictEqual(dwellRes.captured.statusCode, 200);
+  const dwellSaved = JSON.parse((await redis.get(`session:${dwellSessionId}`))!);
+  assert.strictEqual(dwellSaved.stopKind, 'auto_dwell_ended');
+  assert.strictEqual(dwellSaved.stopReason, DEFAULT_AUTO_DWELL_STOP_REASON);
+  await redis.del(`session:${dwellSessionId}`);
+
+  // 2. expired with HTML-injected reason -> stripped & expired kind preserved
+  const expiredSessionId = 'session-stop-expired';
+  await redis.set(`session:${expiredSessionId}`, JSON.stringify({
+    sessionId: expiredSessionId,
+    ownerUid: 'user-owner-123',
+    username: 'Test Rider',
+    status: 'active',
+    expiresAt,
+  }), { EX: 3600 });
+
+  const expiredRes = fakeResponse();
+  await stopHandler({
+    method: 'POST',
+    query: { sessionId: expiredSessionId },
+    headers: { authorization: 'Bearer valid-owner-token' },
+    body: { stopKind: 'expired', stopReason: '' },
+  } as any, expiredRes as any);
+  assert.strictEqual(expiredRes.captured.statusCode, 200);
+  const expiredSaved = JSON.parse((await redis.get(`session:${expiredSessionId}`))!);
+  assert.strictEqual(expiredSaved.stopKind, 'expired');
+  assert.strictEqual(expiredSaved.stopReason, DEFAULT_EXPIRED_STOP_REASON);
+  await redis.del(`session:${expiredSessionId}`);
+
+  // 3. HTML tags stripped on custom rider_confirmed stopReason
+  const xssSessionId = 'session-stop-xss';
+  await redis.set(`session:${xssSessionId}`, JSON.stringify({
+    sessionId: xssSessionId,
+    ownerUid: 'user-owner-123',
+    username: 'Test Rider',
+    status: 'active',
+    expiresAt,
+  }), { EX: 3600 });
+
+  const xssRes = fakeResponse();
+  await stopHandler({
+    method: 'POST',
+    query: { sessionId: xssSessionId },
+    headers: { authorization: 'Bearer valid-owner-token' },
+    body: { stopKind: 'rider_confirmed', stopReason: '<img src=x onerror=alert(1)>Ended trip' },
+  } as any, xssRes as any);
+  assert.strictEqual(xssRes.captured.statusCode, 200);
+  const xssSaved = JSON.parse((await redis.get(`session:${xssSessionId}`))!);
+  assert.strictEqual(xssSaved.stopKind, 'rider_confirmed');
+  assert.strictEqual(xssSaved.stopReason, 'Ended trip');
+  assert.strictEqual(normalizeStopKind('AUTO_DWELL_ENDED'), 'auto_dwell_ended');
+  await redis.del(`session:${xssSessionId}`);
 });
 
 async function main() {

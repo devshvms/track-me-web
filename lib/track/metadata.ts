@@ -42,3 +42,48 @@ export function buildViewerGetAppCopy(
   return TrackCore.buildViewerGetAppCopy(riderName, isStopped);
 }
 
+export type ConcludedStopKind = 'rider_confirmed' | 'auto_dwell_ended' | 'expired';
+
+export interface ConcludedSessionState {
+  stopKind: ConcludedStopKind;
+  statusBadgeLabel: string;
+  stopSummary: string;
+  metaRightLabel: string;
+}
+
+export interface ViewerForwardSharePayload {
+  title: string;
+  text: string;
+  url: string;
+  copyToast: string;
+  buttonLabel: string;
+}
+
+export function normalizeStopKind(
+  rawStopKind?: unknown,
+  rawStopReason?: unknown
+): ConcludedStopKind {
+  return TrackCore.normalizeStopKind(rawStopKind, rawStopReason);
+}
+
+export function resolveConcludedSessionState(data?: {
+  stopKind?: string | null;
+  stopReason?: string | null;
+  endReason?: string | null;
+} | null): ConcludedSessionState {
+  return TrackCore.resolveConcludedSessionState(data);
+}
+
+export function buildViewerForwardSharePayload(options: {
+  riderName?: string | null;
+  url: string;
+  isStopped?: boolean;
+  stopKind?: string | null;
+  stopReason?: string | null;
+  distanceStr?: string | null;
+  durationStr?: string | null;
+}): ViewerForwardSharePayload {
+  return TrackCore.buildViewerForwardSharePayload(options);
+}
+
+

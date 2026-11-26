@@ -7,8 +7,37 @@ import { parseTimestampMs } from '../../../lib/track/duration';
 
 export const MAX_STOP_REASON_LENGTH = 256;
 export const DEFAULT_STOP_REASON = 'The rider has ended this live trip.';
+export const DEFAULT_AUTO_DWELL_STOP_REASON = 'Trip auto-ended after extended stillness.';
+export const DEFAULT_EXPIRED_STOP_REASON = 'Sharing time limit elapsed.';
+export const STOP_KINDS = ['rider_confirmed', 'auto_dwell_ended', 'expired'] as const;
+export type StopKind = (typeof STOP_KINDS)[number];
 export const MIN_POST_RIDE_BUFFER_SECONDS = 3600; // 1 hour post-ride viewing buffer
 export const MAX_SESSION_TTL_SECONDS = 86400; // 24 hours max session retention
+
+export function normalizeStopKind(rawStopKind: unknown, rawStopReason?: unknown): StopKind {
+  if (typeof rawStopKind === 'string') {
+    const clean = rawStopKind.trim().toLowerCase();
+    if (clean === 'rider_confirmed' || clean === 'auto_dwell_ended' || clean === 'expired') {
+      return clean;
+    }
+  }
+  if (typeof rawStopReason === 'string' && rawStopReason.trim().length > 0) {
+    const reason = rawStopReason.trim();
+    if (/auto[- ]?end|stillness|dwell/i.test(reason)) {
+      return 'auto_dwell_ended';
+    }
+    if (/time limit|sharing limit|time elapsed|session expired/i.test(reason)) {
+      return 'expired';
+    }
+  }
+  return 'rider_confirmed';
+}
+
+export function defaultStopReasonForKind(stopKind: StopKind): string {
+  if (stopKind === 'auto_dwell_ended') return DEFAULT_AUTO_DWELL_STOP_REASON;
+  if (stopKind === 'expired') return DEFAULT_EXPIRED_STOP_REASON;
+  return DEFAULT_STOP_REASON;
+}
 
 export default async function handler(
   request: VercelRequest,
@@ -34,18 +63,22 @@ export default async function handler(
     if (!sessionDataStr) {
       return response.status(404).json({ error: 'Session not found or already expired' });
     }
-    const { stopReason } = request.body || {};
+    const { stopReason, stopKind } = request.body || {};
 
     const sessionData = JSON.parse(sessionDataStr);
     if (sessionData.ownerUid && sessionData.ownerUid !== decoded.uid) {
       throw new AuthError(403, 'Forbidden. You do not own this live share session.');
     }
 
+    const resolvedStopKind = normalizeStopKind(stopKind, stopReason);
     sessionData.status = 'stopped';
-    const rawReason = typeof stopReason === 'string' ? stopReason.trim() : '';
+    sessionData.stopKind = resolvedStopKind;
+    const rawReason = typeof stopReason === 'string'
+      ? stopReason.replace(/<[^>]*>/g, '').replace(/[\r\n\t]+/g, ' ').trim()
+      : '';
     sessionData.stopReason = rawReason.length > 0
       ? rawReason.slice(0, MAX_STOP_REASON_LENGTH)
-      : DEFAULT_STOP_REASON;
+      : defaultStopReasonForKind(resolvedStopKind);
     sessionData.endedAt = sessionData.endedAt || new Date().toISOString();
 
     const parsedStart = parseTimestampMs(sessionData.startedAt);
@@ -102,6 +135,8 @@ export default async function handler(
       sessionId: cleanSessionId,
       session_id: cleanSessionId,
       username: sessionData.username,
+      stopKind: resolvedStopKind,
+      stop_kind: resolvedStopKind,
       stopReason: sessionData.stopReason,
       initialDurationMinutes: sessionData.initialDuration,
       actualDurationMinutes: Math.round(elapsedMinutes * 10) / 10,
