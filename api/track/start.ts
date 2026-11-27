@@ -194,7 +194,7 @@ export default async function handler(
       return response.status(200).json({ success: true, paired: true, inviterUid, inviterName });
     }
 
-    const { durationMinutes, username, watcherUids } = request.body || {};
+    const { durationMinutes, username, watcherUids, notifyWatchersOnEnd } = request.body || {};
     let duration = parseInt(durationMinutes, 10);
     if (isNaN(duration) || duration <= 0) {
       duration = 1440;
@@ -207,6 +207,7 @@ export default async function handler(
       : 'Anonymous';
 
     const cleanWatcherUids = normalizeWatcherUids(watcherUids, decoded.uid);
+    const shouldNotifyWatchersOnEnd = notifyWatchersOnEnd !== false;
 
     const redis = await getRedisClient();
 
@@ -223,6 +224,8 @@ export default async function handler(
       startedAt: now,
       expiresAt: expiresAt.toISOString(),
       status: 'active',
+      watcherUids: cleanWatcherUids,
+      notifyWatchersOnEnd: shouldNotifyWatchersOnEnd,
       lastLocation: null,
       path: [] as [number, number][]
     };

@@ -10,6 +10,10 @@ import stopHandler, {
 } from '../api/track/[sessionId]/stop';
 import { getRedisClient } from '../lib/redis';
 import { auth } from '../lib/firebase';
+import {
+  dispatchTrustedWatcherTripEndedNotifications,
+  formatTripEndedWatcherSummary,
+} from '../lib/track/watchers';
 
 type TestCase = { name: string; fn: () => void | Promise<void> };
 const tests: TestCase[] = [];
@@ -424,6 +428,132 @@ test('TASK-384: stopHandler persists normalized stopKind, strips HTML tags from 
   assert.strictEqual(xssSaved.stopReason, 'Ended trip');
   assert.strictEqual(normalizeStopKind('AUTO_DWELL_ENDED'), 'auto_dwell_ended');
   await redis.del(`session:${xssSessionId}`);
+});
+
+test('TASK-382: trip-ended watcher notification dispatches honest copy ONLY for rider_confirmed with opt-in', async () => {
+  const redis = await getRedisClient();
+  const sentPayloads: any[] = [];
+  const fakeDb = {
+    collection: (rootName: string) => ({
+      doc: (docId: string) => ({
+        collection: (_sub: string) => ({
+          doc: (watcherId: string) => ({
+            get: async () => {
+              if (docId === 'owner-1' && watcherId === 'watcher-a') {
+                return { exists: true, data: () => ({ autoNotify: true }) };
+              }
+              if (docId === 'owner-1' && watcherId === 'watcher-muted') {
+                return { exists: true, data: () => ({ autoNotify: false }) };
+              }
+              return { exists: false };
+            },
+          }),
+        }),
+        get: async () => {
+          if (rootName === 'users' && docId === 'watcher-a') {
+            return { exists: true, data: () => ({ fcmToken: 'fcm-token-a' }) };
+          }
+          if (rootName === 'users' && docId === 'watcher-muted') {
+            return { exists: true, data: () => ({ fcmToken: 'fcm-token-muted' }) };
+          }
+          return { exists: false };
+        },
+      }),
+    }),
+  };
+  const fakeMessaging = {
+    sendEachForMulticast: async (msg: any) => {
+      sentPayloads.push(msg);
+      return { successCount: msg.tokens.length, failureCount: 0 };
+    },
+  };
+
+  // Seed watcher_inbox key to ensure stop clears it even for non-rider stops
+  await redis.set('watcher_inbox:watcher-a', JSON.stringify({ sessionId: 'sess-1' }), { EX: 600 });
+
+  // 1. auto_dwell_ended must NEVER send live_share_ended FCM push, even if opt-in is true
+  const dwellSent = await dispatchTrustedWatcherTripEndedNotifications({
+    ownerUid: 'owner-1',
+    riderName: 'Shubham',
+    sessionId: 'sess-1',
+    shareUrl: 'https://trackme.shvms.in/live/sess-1',
+    stopKind: 'auto_dwell_ended',
+    notifyWatchersOnEnd: true,
+    elapsedMinutes: 25,
+    distanceKm: 8.4,
+    watcherUids: ['watcher-a', 'watcher-muted'],
+    db: fakeDb,
+    messaging: fakeMessaging,
+    redis,
+  });
+  assert.strictEqual(dwellSent, 0);
+  assert.strictEqual(sentPayloads.length, 0);
+  assert.strictEqual(await redis.get('watcher_inbox:watcher-a'), null, 'watcher inbox cleared on auto_dwell_ended');
+
+  // 2. expired must NEVER send live_share_ended FCM push
+  const expiredSent = await dispatchTrustedWatcherTripEndedNotifications({
+    ownerUid: 'owner-1',
+    riderName: 'Shubham',
+    sessionId: 'sess-1',
+    shareUrl: 'https://trackme.shvms.in/live/sess-1',
+    stopKind: 'expired',
+    notifyWatchersOnEnd: true,
+    elapsedMinutes: 30,
+    watcherUids: ['watcher-a'],
+    db: fakeDb,
+    messaging: fakeMessaging,
+    redis,
+  });
+  assert.strictEqual(expiredSent, 0);
+  assert.strictEqual(sentPayloads.length, 0);
+
+  // 3. rider_confirmed with notifyWatchersOnEnd = false must NOT send FCM push
+  const optedOutSent = await dispatchTrustedWatcherTripEndedNotifications({
+    ownerUid: 'owner-1',
+    riderName: 'Shubham',
+    sessionId: 'sess-1',
+    shareUrl: 'https://trackme.shvms.in/live/sess-1',
+    stopKind: 'rider_confirmed',
+    notifyWatchersOnEnd: false,
+    elapsedMinutes: 30,
+    watcherUids: ['watcher-a'],
+    db: fakeDb,
+    messaging: fakeMessaging,
+    redis,
+  });
+  assert.strictEqual(optedOutSent, 0);
+  assert.strictEqual(sentPayloads.length, 0);
+
+  // 4. rider_confirmed with notifyWatchersOnEnd = true dispatches honest summary ONLY to autoNotify=true watchers
+  await redis.set('watcher_inbox:watcher-a', JSON.stringify({ sessionId: 'sess-1' }), { EX: 600 });
+  const sent = await dispatchTrustedWatcherTripEndedNotifications({
+    ownerUid: 'owner-1',
+    riderName: 'Shubham',
+    sessionId: 'sess-1',
+    shareUrl: 'https://trackme.shvms.in/live/sess-1',
+    stopKind: 'rider_confirmed',
+    notifyWatchersOnEnd: true,
+    elapsedMinutes: 75,
+    distanceKm: 18.24,
+    watcherUids: ['watcher-a', 'watcher-muted', 'owner-1'],
+    db: fakeDb,
+    messaging: fakeMessaging,
+    redis,
+  });
+  assert.strictEqual(sent, 1);
+  assert.strictEqual(sentPayloads.length, 1);
+  assert.deepStrictEqual(sentPayloads[0].tokens, ['fcm-token-a']);
+  assert.strictEqual(sentPayloads[0].data.type, 'live_share_ended');
+  assert.strictEqual(sentPayloads[0].data.stopKind, 'rider_confirmed');
+  assert.ok(sentPayloads[0].notification.title.includes('ended their shared trip'));
+  assert.ok(!/safe|safely/i.test(sentPayloads[0].notification.title + sentPayloads[0].notification.body));
+  assert.ok(sentPayloads[0].notification.body.includes('18.2 km · 1h 15m'));
+  assert.strictEqual(await redis.get('watcher_inbox:watcher-a'), null);
+
+  assert.strictEqual(
+    formatTripEndedWatcherSummary(42, null),
+    '42 min · Tap to view the concluded route on TrackMe.'
+  );
 });
 
 async function main() {

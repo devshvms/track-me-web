@@ -4,6 +4,9 @@ import { captureTelemetryEvent } from '../../../lib/posthog';
 import { AuthError, requireUser, sendAuthError } from '../../../lib/auth';
 import { deriveSessionTtlSeconds } from './location';
 import { parseTimestampMs } from '../../../lib/track/duration';
+import { absoluteUrl } from '../../../lib/http';
+import { db, messaging } from '../../../lib/firebase';
+import { dispatchTrustedWatcherTripEndedNotifications } from '../../../lib/track/watchers';
 
 export const MAX_STOP_REASON_LENGTH = 256;
 export const DEFAULT_STOP_REASON = 'The rider has ended this live trip.';
@@ -63,7 +66,7 @@ export default async function handler(
     if (!sessionDataStr) {
       return response.status(404).json({ error: 'Session not found or already expired' });
     }
-    const { stopReason, stopKind } = request.body || {};
+    const { stopReason, stopKind, notifyWatchersOnEnd, distanceKm } = request.body || {};
 
     const sessionData = JSON.parse(sessionDataStr);
     if (sessionData.ownerUid && sessionData.ownerUid !== decoded.uid) {
@@ -71,8 +74,12 @@ export default async function handler(
     }
 
     const resolvedStopKind = normalizeStopKind(stopKind, stopReason);
+    const resolvedNotifyOnEnd = typeof notifyWatchersOnEnd === 'boolean'
+      ? notifyWatchersOnEnd
+      : sessionData.notifyWatchersOnEnd !== false;
     sessionData.status = 'stopped';
     sessionData.stopKind = resolvedStopKind;
+    sessionData.notifyWatchersOnEnd = resolvedNotifyOnEnd;
     const rawReason = typeof stopReason === 'string'
       ? stopReason.replace(/<[^>]*>/g, '').replace(/[\r\n\t]+/g, ' ').trim()
       : '';
@@ -131,6 +138,35 @@ export default async function handler(
       } catch (_) {}
     }
 
+    let notifiedWatchersOnEndCount = 0;
+    const sessionWatcherUids = Array.isArray(sessionData.watcherUids) ? sessionData.watcherUids : [];
+    if (sessionWatcherUids.length > 0 && sessionData.ownerUid) {
+      try {
+        const parsedDistanceKm = typeof distanceKm === 'number' && Number.isFinite(distanceKm) && distanceKm >= 0
+          ? distanceKm
+          : null;
+        const shareUrl = absoluteUrl(request, `/live/${cleanSessionId}`);
+        notifiedWatchersOnEndCount = await dispatchTrustedWatcherTripEndedNotifications({
+          ownerUid: sessionData.ownerUid,
+          riderName: typeof sessionData.username === 'string' && sessionData.username.trim()
+            ? sessionData.username.trim()
+            : 'Rider',
+          sessionId: cleanSessionId,
+          shareUrl,
+          stopKind: resolvedStopKind,
+          notifyWatchersOnEnd: resolvedNotifyOnEnd,
+          elapsedMinutes,
+          distanceKm: parsedDistanceKm,
+          watcherUids: sessionWatcherUids,
+          db,
+          messaging,
+          redis,
+        });
+      } catch (watchErr) {
+        console.error('Trusted watcher trip-ended dispatch failed safely:', watchErr);
+      }
+    }
+
     await captureTelemetryEvent(cleanSessionId, 'web_live_share_session_stopped', {
       sessionId: cleanSessionId,
       session_id: cleanSessionId,
@@ -138,6 +174,8 @@ export default async function handler(
       stopKind: resolvedStopKind,
       stop_kind: resolvedStopKind,
       stopReason: sessionData.stopReason,
+      notifyWatchersOnEnd: resolvedNotifyOnEnd,
+      notifiedWatchersOnEndCount,
       initialDurationMinutes: sessionData.initialDuration,
       actualDurationMinutes: Math.round(elapsedMinutes * 10) / 10,
     });
